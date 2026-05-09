@@ -306,8 +306,10 @@ async def upload_factory_config(filename: str = None, config: dict = None):
 @app.post("/factory/control/reset")
 async def reset_factory_control():
     """重置工厂控制端点"""
-
     global current_factory_proxy
+
+    print(f"[Reset] 收到请求, 代理: {type(current_factory_proxy).__name__ if current_factory_proxy else 'None'}")
+    print(f"[Reset] initialized={current_factory_proxy.get_initialized() if current_factory_proxy else 'N/A'}")
 
     if current_factory_proxy is None:
         return {"status": "error", "message": "No factory loaded"}
@@ -349,7 +351,10 @@ async def switch_factory_proxy(factory_id: str = Body(..., embed=True)):
     """
     global current_factory_proxy, current_factory_type, current_config
 
-    print(f"Switching factory proxy to {factory_id}...")
+    print(f"===============================")
+    print(f"[Switch] 切换工厂代理: {factory_id}")
+    print(f"[Switch] 当前代理类型: {current_factory_type}")
+    print(f"[Switch] 当前代理实例: {type(current_factory_proxy).__name__ if current_factory_proxy else 'None'}")
     try:
         if not factory_id:
             return {"status": "error", "message": "工厂ID不能为空"}
@@ -385,18 +390,19 @@ async def switch_factory_proxy(factory_id: str = Body(..., embed=True)):
         # Create factory proxy using ProxyFactory registry
         try:
             current_factory_proxy = ProxyFactory.create(factory_type)
+            print(f"[Switch] 创建成功: {type(current_factory_proxy).__name__}")
 
-            # todo 
             if factory_type == "packet_factory":
-                # todo fix 不成立，因为现在工厂代理的初始化是异步的，需要上传config之后才能init.不能在这里直接调用 initialize 方法
                 await current_factory_proxy.initialize()
-                
                 # 注册后端路由
                 RouteRegistry.register_to_app(app)
                 print(f"✅ 已注册 {len(RouteRegistry.get_routes())} 条后端路由")
-                
-                print("✅ PacketFactoryProxy 已初始化并注册所有路由")
-                print(f"📋 可用路由列表：{list(RouteRegistry.get_routes().keys())}")
+
+            elif factory_type == "grid_factory_new":
+                # DockerProxy: 进页面时立即启动 engine 容器预热
+                print("[Switch] DockerProxy: 启动 engine 容器预热...")
+                await current_factory_proxy.initialize()
+                print("[Switch] DockerProxy: engine 就绪")
         except ValueError as e:
             return {"status": "error", "message": str(e)}
 
@@ -420,6 +426,9 @@ async def switch_factory_proxy(factory_id: str = Body(..., embed=True)):
 async def play_factory_control():
     """播放/启动工厂控制端点"""
     global current_factory_proxy
+
+    print(f"[Play] 收到请求, 代理: {type(current_factory_proxy).__name__ if current_factory_proxy else 'None'}")
+    print(f"[Play] initialized={current_factory_proxy.get_initialized() if current_factory_proxy else 'N/A'}")
 
     if current_factory_proxy is None:
         return {"status": "error", "message": "No factory loaded"}
@@ -470,16 +479,14 @@ async def pause_factory_control():
 async def set_algorithm(algorithm: str = Body(..., embed=True)):
     """
     设置当前工厂的调度算法
-
-    Args:
-        algorithm: 算法标识符 (如 'default', 'greedy', 'ortools', 'rl' 等)
-
-    Returns:
-        设置结果
     """
     global current_factory_proxy
 
+    print(f"[Algorithm] 收到请求: algorithm={algorithm}")
+    print(f"[Algorithm] 当前代理: {type(current_factory_proxy).__name__ if current_factory_proxy else 'None'}")
+
     if current_factory_proxy is None:
+        print(f"[Algorithm] 错误: 无工厂代理")
         return {"status": "error", "message": "No factory loaded"}
 
     try:
@@ -532,6 +539,25 @@ async def get_factory_control_state():
     except Exception as e:
         print(f"❌ 获取状态失败: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+
+@app.post("/factory/control/disconnect")
+async def disconnect_factory():
+    """断开工厂连接，清理代理资源"""
+    global current_factory_proxy, current_factory_type, current_config
+
+    print(f"[Disconnect] 清理工厂代理: {current_factory_type}")
+    if current_factory_proxy is not None:
+        try:
+            await current_factory_proxy.cleanup()
+        except Exception as e:
+            print(f"[Disconnect] cleanup 失败: {e}")
+        current_factory_proxy = None
+
+    current_factory_type = "base_factory"
+    current_config = None
+    print("[Disconnect] 工厂代理已清理")
+    return {"status": "ok", "message": "Factory disconnected"}
 
 
 @app.get("/health")

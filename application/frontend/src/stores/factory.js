@@ -119,6 +119,13 @@ export const useFactoryStore = defineStore("factory", () => {
         "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&w=1000&auto=format&fit=crop",
       description: "地处西南核心制造区，拥有先进的铝材生产线。",
     },
+    {
+      id: "grid_factory_new",
+      name: "翼辉原料分拣仓 (容器化)",
+      image: getAssetUrl("grid_factory.jpg"),
+      description:
+        "Docker 容器化仿真引擎，算法按需启动，支持动态调度。",
+    },
   ]);
 
   const selectedFactoryId = ref(
@@ -481,6 +488,21 @@ export const useFactoryStore = defineStore("factory", () => {
   }
 
   // ══════════════════════════════════════════
+  // 全量清理 (退出工厂时调用)
+  // ══════════════════════════════════════════
+  function clearAll() {
+    // 动画状态
+    reset();
+    // 配置
+    factoryConfigs.value = {};
+    currentConfigId.value = null;
+    // localStorage
+    localStorage.removeItem(STORAGE_KEYS.SELECTED_FACTORY);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_CONFIG_ID);
+    localStorage.removeItem(STORAGE_KEYS.FACTORY_CONFIGS);
+  }
+
+  // ══════════════════════════════════════════
   // 公开接口
   // ══════════════════════════════════════════
   return {
@@ -518,6 +540,7 @@ export const useFactoryStore = defineStore("factory", () => {
     totalSteps,
     currentState,
     reset,
+    clearAll,
     pushSnapshot,
     loadData,
     loadCommandQueue,

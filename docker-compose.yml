@@ -1,0 +1,58 @@
+services:
+  backend:
+    image: skyengine-backend:latest
+    build:
+      context: .
+      dockerfile: application/dockerfile/backend.Dockerfile
+      network: host
+    container_name: skyengine-backend
+    ports:
+      - "8233:8000"
+    volumes:
+      - ./application:/app/application
+      - ./executor:/app/executor
+      - ./config:/app/config
+      - ./dataset:/app/dataset
+      - /app/.venv
+      # Docker Socket — 用于 DockerProxy 按需启停 SkyEngine compose 栈
+      - /var/run/docker.sock:/var/run/docker.sock
+      # SkyEngine 仓库 — 提供 docker-compose-online.yaml + sim_server.py
+      - ${SKYENGINE_DIR:-/opt/skyengine}:/opt/skyengine:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      # SkyEngine 在线服务 compose 文件 (容器内路径)
+      - SKYENGINE_COMPOSE_PATH=/opt/skyengine/docker-compose-online.yaml
+      # SkyEngine 仓库目录 (宿主机路径, 用于创建引擎容器的 volume 挂载)
+      - SKYENGINE_DIR=${SKYENGINE_DIR:-/opt/skyengine}
+      # SkyEngine 数据集目录 (宿主机路径, compose 会挂载给引擎容器)
+      - SKYENGINE_DATASET_DIR=${SKYENGINE_DATASET_DIR:-/opt/skyengine/dataset}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+    networks:
+      - skyengine-network
+    restart: unless-stopped
+
+  frontend:
+    image: skyengine-frontend:latest
+    build:
+      context: .
+      dockerfile: application/dockerfile/frontend.Dockerfile
+      network: host
+    container_name: skyengine-frontend
+    ports:
+      - "5180:5173"
+    volumes:
+      - ./application/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - skyengine-network
+    restart: unless-stopped
+
+networks:
+  skyengine-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1

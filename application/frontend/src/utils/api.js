@@ -3,7 +3,7 @@
  * 集中管理所有后端 API 路由和请求
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 /**
  * API 路由配置
@@ -19,6 +19,7 @@ export const API_ROUTES = {
   FACTORY_CONTROL_RESET: "/factory/control/reset",
   FACTORY_CONTROL_PLAY: "/factory/control/play",
   FACTORY_CONTROL_SWITCH: "/factory/control/switch",
+  FACTORY_CONTROL_DISCONNECT: "/factory/control/disconnect",
 
   // 调度算法相关
   FACTORY_ALGORITHM_SET: "/factory/algorithm/set",

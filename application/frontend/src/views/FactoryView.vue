@@ -127,8 +127,18 @@ const enterFactory = async (factoryId) => {
   }
 };
 
-// 返回选择列表
-const backToSelector = () => {
+// 返回选择列表 — 清理状态 + 断联后端
+const backToSelector = async () => {
+  // 1. 清理前端 store (动画 + config + localStorage)
+  factoryStore.clearAll();
+
+  // 2. 断联后端，清理 proxy
+  try {
+    await apiPost(API_ROUTES.FACTORY_CONTROL_DISCONNECT);
+  } catch (e) {
+    console.warn("[FactoryView] disconnect 失败:", e);
+  }
+
   isInFactory.value = false;
   currentFactoryId.value = null;
 };
@@ -159,6 +169,10 @@ const currentFactoryComponent = computed(() => {
     case "southwest_logistics":
       return defineAsyncComponent(
         () => import("@/views/factory/ComingSoonFactory.vue"),
+      );
+    case "grid_factory_new":
+      return defineAsyncComponent(
+        () => import("@/views/factory/DockerFactoryManage.vue"),
       );
     default:
       return defineAsyncComponent(

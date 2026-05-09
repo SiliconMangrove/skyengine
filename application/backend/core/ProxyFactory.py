@@ -86,6 +86,15 @@ class ProxyFactory:
             except ImportError as e:
                 raise ImportError(f"创建 {name} 失败。请先安装必要的依赖包: {e}")
 
+        elif name == "grid_factory_new":
+            try:
+                from application.backend.core.DockerProxy import DockerProxy
+
+                if name not in cls._registry:
+                    cls.register(name, DockerProxy)
+            except ImportError as e:
+                raise ImportError(f"创建 {name} 失败。请先安装必要的依赖包: {e}")
+
         if name not in cls._registry:
             raise ValueError(
                 f"未知的 FactoryProxy 类型: {name}，可选项为: {list(cls._registry.keys())}"
