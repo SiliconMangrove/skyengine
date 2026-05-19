@@ -73,8 +73,8 @@ class BaseFactoryProxy:
 
     def __init__(self):
         # Execution State
-        self.status: ExecutionStatus = ExecutionStatus.IDLE
-        self.current_step: int = 0
+        self._status: ExecutionStatus = ExecutionStatus.IDLE
+        self._current_step: int = 0
         self._total_steps: int = 0
 
         # Data Streaming

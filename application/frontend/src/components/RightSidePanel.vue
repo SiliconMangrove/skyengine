@@ -16,6 +16,7 @@
         @update:show-grid="$emit('update:show-grid', $event)"
         @update:show-labels="$emit('update:show-labels', $event)"
         @update:show-status="$emit('update:show-status', $event)"
+        @edit-mode-change="$emit('edit-mode-change', $event)"
       >
         <slot name="config-extra"></slot>
       </ConfigPanel>
@@ -61,6 +62,7 @@ defineEmits([
   'update:show-grid',
   'update:show-labels',
   'update:show-status',
+  'edit-mode-change',
 ])
 
 // 暴露 ConfigPanel 的方法

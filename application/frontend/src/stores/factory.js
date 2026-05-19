@@ -17,6 +17,60 @@ const DEFAULT_RENDER_CONFIG = Object.freeze({
   colors: {},
 });
 
+// ─────────────────────────────────────────────
+// 资产模板注册表
+// ─────────────────────────────────────────────
+export const ASSET_TEMPLATES = Object.freeze({
+  zone_restricted: {
+    type: 'zone',
+    icon: '🔒',
+    name: '禁区',
+    template: { type: 'restricted', area: { x: 0, y: 0, w: 2, h: 2 }, color: 'rgba(255,235,59,0.15)' },
+  },
+  zone_workbench: {
+    type: 'zone',
+    icon: '🔧',
+    name: '工位',
+    template: { type: 'workbench', area: { x: 0, y: 0, w: 1, h: 1 }, color: 'rgba(0,136,204,0.15)' },
+  },
+  zone_obstacle: {
+    type: 'zone',
+    icon: '🚫',
+    name: '障碍物',
+    template: { type: 'obstacle', area: { x: 0, y: 0, w: 1, h: 1 }, color: 'rgba(102,51,51,0.15)' },
+  },
+  zone_workarea: {
+    type: 'zone',
+    icon: '📦',
+    name: '工作区',
+    template: { type: 'workarea', area: { x: 0, y: 0, w: 3, h: 2 }, color: 'rgba(0,170,102,0.15)' },
+  },
+  machine: {
+    type: 'machine',
+    icon: '⚙️',
+    name: '加工机器',
+    template: { size: [2, 2], status: 'IDLE' },
+  },
+  waypoint_dock: {
+    type: 'waypoint',
+    icon: '🚪',
+    name: '停靠点',
+    template: { type: 'dock' },
+  },
+  waypoint_route: {
+    type: 'waypoint',
+    icon: '📍',
+    name: '路由点',
+    template: { type: 'route' },
+  },
+  agv: {
+    type: 'agv',
+    icon: '🤖',
+    name: 'AGV',
+    template: { velocity: 1.0, capacity: 100, status: 'IDLE' },
+  },
+});
+
 const EMPTY_GRID_STATE = Object.freeze({
   env_timeline: "0",
   grid_state: { positions_xy: [], is_active: [] },
@@ -297,6 +351,7 @@ export const useFactoryStore = defineStore("factory", () => {
 
   function getAssetsStats() {
     const { zones = [], machines = {}, waypoints = {} } = getCurrentAssets();
+    const agvCount = getAGVs().length;
     const zoneCount = zones.length;
     const machineCount = Object.keys(machines).length;
     const waypointCount = Object.keys(waypoints).length;
@@ -304,12 +359,14 @@ export const useFactoryStore = defineStore("factory", () => {
       zoneCount,
       machineCount,
       waypointCount,
-      totalAssets: zoneCount + machineCount + waypointCount,
+      agvCount,
+      totalAssets: zoneCount + machineCount + waypointCount + agvCount,
     };
   }
 
   function formatAssetsList() {
     const { zones = [], machines = {}, waypoints = {} } = getCurrentAssets();
+    const agvs = getAGVs();
     const list = [];
 
     zones.forEach((zone) => {
@@ -342,7 +399,233 @@ export const useFactoryStore = defineStore("factory", () => {
       });
     });
 
+    agvs.forEach((agv) => {
+      list.push({
+        type: "agv",
+        icon: "🤖",
+        name: agv.name ?? `AGV-${agv.id}`,
+        description: `速度: ${agv.velocity ?? 1.0}, 容量: ${agv.capacity ?? 100}`,
+        data: agv,
+      });
+    });
+
     return list;
+  }
+
+  // ──────────────────────────────────────────
+  // 资产编辑 CRUD
+  // ──────────────────────────────────────────
+
+  /**
+   * 获取所有已占用的网格坐标集合。
+   * 返回 Set<string>，key 格式 "gx,gy"。
+   */
+  function getOccupiedCells(excludeAssetId = null, excludeAssetType = null) {
+    const cfg = currentConfig.value;
+    if (!cfg) return new Set();
+    const topo = cfg.topology;
+    const occupied = new Set();
+
+    // 机器占用 location 所在格
+    Object.entries(topo.machines || {}).forEach(([key, m]) => {
+      if (excludeAssetType === 'machine' && key === excludeAssetId) return;
+      if (m.location) {
+        const [x, y] = m.location;
+        const sw = m.size?.[0] || 1;
+        const sh = m.size?.[1] || 1;
+        for (let dx = 0; dx < sw; dx++) {
+          for (let dy = 0; dy < sh; dy++) {
+            occupied.add(`${x + dx},${y + dy}`);
+          }
+        }
+      }
+    });
+
+    // 路由点占 1 格
+    Object.entries(topo.waypoints || {}).forEach(([key, wp]) => {
+      if (excludeAssetType === 'waypoint' && key === excludeAssetId) return;
+      if (wp.location) occupied.add(`${wp.location[0]},${wp.location[1]}`);
+    });
+
+    // 区域占 area 范围
+    (topo.zones || []).forEach((z) => {
+      if (excludeAssetType === 'zone' && z.id === excludeAssetId) return;
+      if (z.area) {
+        const { x, y, w, h } = z.area;
+        for (let dx = 0; dx < (w || 1); dx++) {
+          for (let dy = 0; dy < (h || 1); dy++) {
+            occupied.add(`${x + dx},${y + dy}`);
+          }
+        }
+      }
+    });
+
+    // AGV 占 initialLocation 所在格
+    (cfg.agvs || []).forEach((agv) => {
+      if (excludeAssetType === 'agv' && String(agv.id) === String(excludeAssetId)) return;
+      if (agv.initialLocation) occupied.add(`${agv.initialLocation[0]},${agv.initialLocation[1]}`);
+    });
+
+    return occupied;
+  }
+
+  /**
+   * 从中心开始螺旋扫描，找到第一个空闲位置。
+   */
+  function findFreeCell(occupied, gridW, gridH) {
+    const cx = Math.floor(gridW / 2);
+    const cy = Math.floor(gridH / 2);
+    // 螺旋搜索
+    for (let r = 0; r < Math.max(gridW, gridH); r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // 只检查边界
+          const gx = cx + dx;
+          const gy = cy + dy;
+          if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) continue;
+          if (!occupied.has(`${gx},${gy}`)) return [gx, gy];
+        }
+      }
+    }
+    return [cx, cy]; // fallback
+  }
+
+  /**
+   * 从模板添加资产到当前配置，返回新资产名称。
+   * 自动寻找空闲网格位置。
+   */
+  function addAssetFromTemplate(templateId) {
+    const tpl = ASSET_TEMPLATES[templateId];
+    if (!tpl) throw new Error(`未知模板: ${templateId}`);
+    const cfg = currentConfig.value;
+    if (!cfg) throw new Error('请先加载或创建配置');
+
+    const topo = cfg.topology;
+    const gw = topo.gridWidth || 20;
+    const gh = topo.gridHeight || 14;
+    const id = `${tpl.type}_${Date.now()}`;
+    const defaultName = `${tpl.name}_${Object.keys(
+      tpl.type === 'zone' ? (topo.zones || []) :
+      tpl.type === 'machine' ? (topo.machines || {}) :
+      (topo.waypoints || {})
+    ).length + 1}`;
+
+    const occupied = getOccupiedCells();
+    const [freeX, freeY] = findFreeCell(occupied, gw, gh);
+
+    if (tpl.type === 'zone') {
+      if (!topo.zones) topo.zones = [];
+      const area = { ...(tpl.template.area || { x: 0, y: 0, w: 1, h: 1 }) };
+      area.x = freeX;
+      area.y = freeY;
+      topo.zones.push({ id, name: defaultName, ...tpl.template, area });
+    } else if (tpl.type === 'machine') {
+      if (!topo.machines) topo.machines = {};
+      topo.machines[id] = { id, name: defaultName, location: [freeX, freeY], ...tpl.template };
+    } else if (tpl.type === 'waypoint') {
+      if (!topo.waypoints) topo.waypoints = {};
+      topo.waypoints[id] = { location: [freeX, freeY], ...tpl.template, name: defaultName, id };
+    } else if (tpl.type === 'agv') {
+      if (!cfg.agvs) cfg.agvs = [];
+      const agvId = cfg.agvs.length;
+      cfg.agvs.push({
+        id: agvId,
+        name: defaultName,
+        initialLocation: [freeX, freeY],
+        ...tpl.template,
+      });
+    }
+
+    _persistConfigs();
+    return defaultName;
+  }
+
+  /**
+   * 检查目标位置是否被其他资产占用。
+   */
+  function isCellOccupied(gridX, gridY, excludeAssetId = null, excludeAssetType = null) {
+    const occupied = getOccupiedCells(excludeAssetId, excludeAssetType);
+    return occupied.has(`${gridX},${gridY}`);
+  }
+
+  /**
+   * 更新资产网格位置（带碰撞校验）。
+   * 返回 true 表示移动成功，false 表示位置被占用。
+   */
+  function updateAssetPosition(assetType, assetId, gridX, gridY) {
+    const cfg = currentConfig.value;
+    if (!cfg) return false;
+    const topo = cfg.topology;
+
+    // 碰撞校验：排除自身
+    if (isCellOccupied(gridX, gridY, assetId, assetType)) return false;
+
+    if (assetType === 'machine' && topo.machines?.[assetId]) {
+      topo.machines[assetId].location = [gridX, gridY];
+    } else if (assetType === 'waypoint' && topo.waypoints?.[assetId]) {
+      topo.waypoints[assetId].location = [gridX, gridY];
+    } else if (assetType === 'zone' && topo.zones) {
+      const zone = topo.zones.find(z => z.id === assetId);
+      if (zone && zone.area) {
+        zone.area.x = gridX;
+        zone.area.y = gridY;
+      }
+    } else if (assetType === 'agv' && cfg.agvs) {
+      const agv = cfg.agvs.find(a => String(a.id) === String(assetId));
+      if (agv) agv.initialLocation = [gridX, gridY];
+    }
+    _persistConfigs();
+    return true;
+  }
+
+  /**
+   * 重命名资产。
+   */
+  function renameAsset(assetType, assetId, newName) {
+    const cfg = currentConfig.value;
+    if (!cfg) return;
+    const topo = cfg.topology;
+
+    if (assetType === 'machine' && topo.machines?.[assetId]) {
+      topo.machines[assetId].name = newName;
+    } else if (assetType === 'waypoint' && topo.waypoints?.[assetId]) {
+      topo.waypoints[assetId].name = newName;
+    } else if (assetType === 'zone' && topo.zones) {
+      const zone = topo.zones.find(z => z.id === assetId);
+      if (zone) zone.name = newName;
+    } else if (assetType === 'agv' && cfg.agvs) {
+      const agv = cfg.agvs.find(a => String(a.id) === String(assetId));
+      if (agv) agv.name = newName;
+    }
+    _persistConfigs();
+  }
+
+  /**
+   * 删除资产。
+   */
+  function removeAsset(assetType, assetId) {
+    const cfg = currentConfig.value;
+    if (!cfg) return;
+    const topo = cfg.topology;
+
+    if (assetType === 'machine' && topo.machines) {
+      delete topo.machines[assetId];
+    } else if (assetType === 'waypoint' && topo.waypoints) {
+      delete topo.waypoints[assetId];
+    } else if (assetType === 'zone' && topo.zones) {
+      topo.zones = topo.zones.filter(z => z.id !== assetId);
+    } else if (assetType === 'agv' && cfg.agvs) {
+      cfg.agvs = cfg.agvs.filter(a => String(a.id) !== String(assetId));
+    }
+    _persistConfigs();
+  }
+
+  /**
+   * 导出当前配置的深拷贝（用于下载）。
+   */
+  function exportCurrentConfig() {
+    if (!currentConfig.value) return null;
+    return JSON.parse(JSON.stringify(currentConfig.value));
   }
 
   // ══════════════════════════════════════════
@@ -529,6 +812,13 @@ export const useFactoryStore = defineStore("factory", () => {
     getCurrentAssets,
     getAssetsStats,
     formatAssetsList,
+    addAssetFromTemplate,
+    getOccupiedCells,
+    isCellOccupied,
+    updateAssetPosition,
+    renameAsset,
+    removeAsset,
+    exportCurrentConfig,
 
     // ── 动画状态 ──
     historyBuffer,

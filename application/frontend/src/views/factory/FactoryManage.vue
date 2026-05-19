@@ -1,11 +1,11 @@
 <template>
   <div class="factory-manage-container">
     <div class="left-panel">
-      <ControlPanel />
+      <ControlPanel :disabled="isEditMode" />
     </div>
 
     <div class="middle-panel">
-      <FactoryPlayerSSE :hide-control-panel="true" />
+      <FactoryPlayerSSE :hide-control-panel="true" :edit-mode="isEditMode" />
 
       <div class="floating-toolbar-wrapper">
         <div class="floating-toolbar">
@@ -62,6 +62,7 @@
       config-panel-title="⚙️ 仿真配置"
       :show-chart="true"
       event-panel-title="📋 系统日志"
+      @edit-mode-change="isEditMode = $event"
     />
   </div>
 </template>
@@ -83,6 +84,7 @@ const store = useFactoryStore();
 const monitorStore = useMonitorStore();
 
 const isRunningTest = ref(false);
+const isEditMode = ref(false);
 const selectedEnvironment = ref("simulation");
 const selectedAlgorithm = ref("default");
 const connectionStatus = ref({

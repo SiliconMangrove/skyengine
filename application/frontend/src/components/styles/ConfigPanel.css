@@ -1,13 +1,11 @@
 .data-panel {
-  /* 基础面板样式 */
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #eee;
   display: flex;
   flex-direction: column;
-  /* 确保在父容器中不被压缩，且能撑满高度（如果需要） */
   flex-shrink: 0;
   height: 100%;
 }
@@ -31,8 +29,9 @@
   flex-direction: column;
   padding: 16px;
   gap: 20px;
-  overflow-y: auto; /* 内容过长可滚动 */
+  overflow-y: auto;
   min-height: 0;
+  background: transparent;
 }
 
 /* 通用区块样式 */
@@ -43,7 +42,7 @@
 }
 
 .section-block.flex-grow {
-  flex: 1; /* 让列表区域占据剩余空间 */
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -52,7 +51,7 @@
 .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: #555;
+  color: #666;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -66,15 +65,28 @@
 
 /* --- 上传区域样式 --- */
 .upload-area {
-  border: 1px dashed #dcdfe6;
-  border-radius: 8px;
-  padding: 12px;
-  background: #f8f9fa;
-  transition: border-color 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  border: 2px dashed #d9d9d9;
+  border-radius: 6px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 12px;
 }
 
 .upload-area:hover {
   border-color: #667eea;
+  background: #f5f5ff;
+}
+
+.upload-area.drag-active {
+  border-color: #667eea;
+  background: #f0f0ff;
+  box-shadow: 0 0 12px rgba(102, 126, 234, 0.15);
 }
 
 /* 覆盖 Element Upload 的默认样式，使其更紧凑 */
@@ -86,19 +98,37 @@
 }
 
 .upload-icon {
-  font-size: 24px;
-  margin-bottom: 4px;
+  font-size: 32px;
 }
 
 .upload-text {
-  font-size: 12px;
+  margin: 0;
+  font-size: 13px;
   color: #606266;
+  text-align: center;
 }
 
 .upload-text em {
   color: #667eea;
   font-style: normal;
   font-weight: 600;
+}
+
+.browse-link {
+  color: #667eea;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.browse-link:hover {
+  color: #5a6fd6;
+}
+
+.upload-hint {
+  margin: 0;
+  font-size: 11px;
+  color: #999;
 }
 
 .upload-tip {
@@ -129,146 +159,11 @@
   flex: 1;
 }
 
-/* --- 工厂节点列表样式 --- */
-.services-list-container {
-  flex: 1;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  background: #fafafa;
-  overflow-y: auto; /* 列表内部滚动 */
-  min-height: 150px; /* 最小高度 */
-  padding: 8px;
-}
-
-.services-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.draggable-node {
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: grab;
-  transition: all 0.2s;
-  user-select: none;
-}
-
-.draggable-node:hover {
-  border-color: #667eea;
-  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.15);
-  transform: translateY(-1px);
-}
-
-.draggable-node:active {
-  cursor: grabbing;
-}
-
-.node-icon {
-  font-size: 14px;
-}
-
-.node-name {
-  flex: 1;
-  font-size: 13px;
-  color: #333;
-  font-weight: 500;
-}
-
-.drag-handle {
-  color: #ccc;
-  font-size: 12px;
-  letter-spacing: 1px;
-}
-
-.tooltip-content {
-  max-width: 200px;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-/* 滚动条美化 */
-.panel-content::-webkit-scrollbar,
-.services-list-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.panel-content::-webkit-scrollbar-track,
-.services-list-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.panel-content::-webkit-scrollbar-thumb,
-.services-list-container::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
-}
-
-.upload-area {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px;
-  border: 2px dashed #ddd;
-  border-radius: 6px;
-  background: #fafafa;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 12px;
-}
-
-.upload-area:hover {
-  border-color: #667eea;
-  background: #f0f4ff;
-}
-
-.upload-area.drag-active {
-  border-color: #667eea;
-  background: #f0f4ff;
-  box-shadow: 0 0 12px rgba(102, 126, 234, 0.2);
-}
-
-.upload-icon {
-  font-size: 32px;
-}
-
-.upload-text {
-  margin: 0;
-  font-size: 13px;
-  color: #666;
-  text-align: center;
-}
-
-.browse-link {
-  color: #667eea;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.browse-link:hover {
-  color: #5568d3;
-}
-
-.upload-hint {
-  margin: 0;
-  font-size: 11px;
-  color: #999;
-}
-
+/* --- 文件预览 --- */
 .file-preview {
   padding: 12px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  border: 1px solid #eee;
   border-radius: 4px;
   margin-bottom: 12px;
   display: flex;
@@ -283,7 +178,7 @@
 }
 
 .preview-label {
-  color: #666;
+  color: #999;
   font-weight: 500;
 }
 
@@ -392,7 +287,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px;
-  background: #f9f9f9;
+  background: #fafafa;
   border: 1px solid #eee;
   border-radius: 4px;
 }
@@ -420,148 +315,22 @@
   font-family: 'Monaco', monospace;
 }
 
-/* ===== 资产统计样式 ===== */
-.assets-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 8px;
-  padding: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 6px;
-  margin-bottom: 12px;
+/* ===== 滚动条美化 ===== */
+.panel-content::-webkit-scrollbar {
+  width: 5px;
 }
 
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: white;
+.panel-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.stat-label {
-  font-size: 11px;
-  opacity: 0.9;
+.panel-content::-webkit-scrollbar-thumb {
+  background: #d0d0d0;
+  border-radius: 3px;
 }
 
-.stat-value {
-  font-size: 16px;
-  font-weight: bold;
-}
-
-/* ===== 资产列表样式 ===== */
-.services-list-container {
-  flex: 1;
-  overflow-y: auto;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  padding: 8px;
-  background: #fafafa;
-  max-height: 300px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  color: #ccc;
-}
-
-.empty-icon {
-  font-size: 48px;
-  opacity: 0.5;
-  margin-bottom: 12px;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 12px;
-  color: #999;
-}
-
-.services-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.service-item {
-  animation: slideIn 0.3s ease;
-}
-
-.service-item.asset-type-zone .draggable-node {
-  border-left: 3px solid #ff9800;
-}
-
-.service-item.asset-type-machine .draggable-node {
-  border-left: 3px solid #2196f3;
-}
-
-.service-item.asset-type-waypoint .draggable-node {
-  border-left: 3px solid #4caf50;
-}
-
-.draggable-node {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  cursor: grab;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.draggable-node:hover {
-  background: #f5f5f5;
-  border-color: #667eea;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.draggable-node:active {
-  cursor: grabbing;
-  transform: scale(0.98);
-}
-
-.node-icon {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.node-name {
-  flex: 1;
-  font-size: 12px;
-  color: #333;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.drag-handle {
-  font-size: 10px;
-  color: #ccc;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.draggable-node:hover .drag-handle {
-  opacity: 1;
-}
-
-.tooltip-content {
-  font-size: 12px;
-  padding: 4px 0;
+.panel-content::-webkit-scrollbar-thumb:hover {
+  background: #b0b0b0;
 }
 
 @keyframes slideIn {

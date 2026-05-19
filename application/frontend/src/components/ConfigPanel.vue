@@ -108,67 +108,8 @@
         </div>
       </div>
 
-      <!-- ===== 工厂节点资产 ===== -->
-      <div class="section-block flex-grow">
-        <div class="section-title">
-          <i class="el-icon-s-grid"></i>
-          工厂资产
-          <el-tooltip content="包含逻辑节点与物理设备" placement="top">
-            <span class="info-icon">ⓘ</span>
-          </el-tooltip>
-        </div>
-
-        <!-- 资产统计 -->
-        <div v-if="store.currentConfigId" class="assets-stats">
-          <div class="stat-item">
-            <span class="stat-label">区域:</span>
-            <span class="stat-value">{{ assetsStats.zoneCount }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">机器:</span>
-            <span class="stat-value">{{ assetsStats.machineCount }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">路由点:</span>
-            <span class="stat-value">{{ assetsStats.waypointCount }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">总计:</span>
-            <span class="stat-value">{{ assetsStats.totalAssets }}</span>
-          </div>
-        </div>
-
-        <!-- 资产列表 -->
-        <div class="services-list-container">
-          <div v-if="assetsList.length === 0" class="empty-state">
-            <div class="empty-icon">📦</div>
-            <p>请先选择或上传配置文件</p>
-          </div>
-          <ul v-else class="services-list">
-            <li
-              v-for="(asset, index) in assetsList"
-              :key="index"
-              class="service-item"
-              :class="`asset-type-${asset.type}`"
-            >
-              <el-tooltip placement="left" :open-delay="500" effect="dark">
-                <template #content>
-                  <div class="tooltip-content">{{ asset.description }}</div>
-                </template>
-                <div
-                  class="draggable-node"
-                  draggable="true"
-                  @dragstart="onDragStart($event, asset)"
-                >
-                  <span class="node-icon">{{ asset.icon }}</span>
-                  <span class="node-name">{{ asset.name }}</span>
-                  <span class="drag-handle">⋮⋮</span>
-                </div>
-              </el-tooltip>
-            </li>
-          </ul>
-        </div>
-      </div>
+      <!-- ===== 工厂资产（独立组件） ===== -->
+      <FactoryAssetPanel @edit-mode-change="onEditModeChange" />
     </div>
   </div>
 </template>
@@ -179,9 +120,16 @@ import { ElMessage } from 'element-plus'
 import { useFactoryStore } from '@/stores/factory'
 import { validateAndNormalizeConfig } from '@/utils/configValidator'
 import { apiPost, API_ROUTES } from '@/utils/api'
+import FactoryAssetPanel from './FactoryAssetPanel.vue'
 
 // --- Store ---
 const store = useFactoryStore()
+
+// --- Emits (向上传递编辑模式状态) ---
+const emit = defineEmits(['edit-mode-change'])
+function onEditModeChange(val) {
+  emit('edit-mode-change', val)
+}
 
 // --- Props & Emits ---
 const props = defineProps({
@@ -210,19 +158,6 @@ const loadedConfigs = computed(() => {
 })
 
 const currentConfigId = computed(() => store.currentConfigId)
-
-// 动态生成工厂资产列表（根据当前选中的配置）
-const assetsList = computed(() => {
-  if (!store.currentConfigId) {
-    return []
-  }
-  return store.formatAssetsList()
-})
-
-// 资产统计信息
-const assetsStats = computed(() => {
-  return store.getAssetsStats()
-})
 
 // --- Methods ---
 function handleFileSelect(event) {
@@ -434,12 +369,6 @@ function downloadTemplate() {
  */
 function getSelectedFile() {
   return selectedFile.value
-}
-
-// --- Drag Logic ---
-const onDragStart = (event, service) => {
-  event.dataTransfer.setData('application/node-data', JSON.stringify(service))
-  event.dataTransfer.effectAllowed = 'copy'
 }
 
 // 暴露方法给父组件

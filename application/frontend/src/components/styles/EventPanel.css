@@ -1,13 +1,13 @@
 .event-panel {
     display: flex;
     flex-direction: column;
-    /* 关键：占据父容器剩余空间，并设置最小高度 */
     flex: 1;
     min-height: 200px;
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     overflow: hidden;
+    border: 1px solid #eee;
 }
 
 /* 顶部 Header */
@@ -58,7 +58,8 @@
 }
 
 .clear-btn:hover {
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.35);
+    color: white;
 }
 
 /* 列表区域 */
@@ -68,10 +69,8 @@
     padding: 10px;
     display: flex;
     flex-direction: column;
-    /* 正常的向下排列 */
     gap: 8px;
     scroll-behavior: smooth;
-    /* 平滑滚动 */
 }
 
 .no-events {
@@ -140,7 +139,6 @@
     display: flex;
     gap: 8px;
     min-width: 0;
-    /* 防止 flex 子项溢出 */
 }
 
 .event-icon {
@@ -166,7 +164,7 @@
     line-height: 1.3;
 }
 
-/* 状态颜色 */
+/* 状态颜色 - 浅色主题 */
 .event-success {
     border-left-color: #4CAF50;
     background: #f1f8f4;

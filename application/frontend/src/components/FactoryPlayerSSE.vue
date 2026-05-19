@@ -3,7 +3,7 @@
 
     <div class="main-content">
       <div v-if="!hideControlPanel" class="panel-area">
-        <ControlPanel />
+        <ControlPanel :disabled="isEditMode" />
       </div>
 
       <div class="vis-area" :class="{ 'full-width': hideControlPanel }">
@@ -15,8 +15,9 @@
             <p class="hint">若无可用配置可下载模板文件以做测试</p>
           </div>
         </div>
-        <FactoryVisualization v-else :static-config="topologyConfig" :baseGridSize="renderConfig.baseGridSize"
-          :defaultGridWidth="renderConfig.gridWidth" :defaultGridHeight="renderConfig.gridHeight">
+        <FactoryVisualization3D v-else :static-config="topologyConfig" :baseGridSize="renderConfig.baseGridSize"
+          :defaultGridWidth="renderConfig.gridWidth" :defaultGridHeight="renderConfig.gridHeight"
+          :editMode="isEditMode">
           <template #header>
             <div class="floating-toolbar">
               <div class="toolbar-left">
@@ -36,7 +37,7 @@
               </div>
             </div>
           </template>
-        </FactoryVisualization>
+        </FactoryVisualization3D>
       </div>
     </div>
   </div>
@@ -46,7 +47,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useFactoryStore } from '@/stores/factory';
 import ControlPanel from './ControlPanel.vue';
-import FactoryVisualization from './FactoryVisualization.vue';
+import FactoryVisualization3D from './FactoryVisualization3D.vue';
 
 const props = defineProps({
   hideControlPanel: {
@@ -56,13 +57,17 @@ const props = defineProps({
   onLoadData: {
     type: Function,
     default: null
+  },
+  editMode: {
+    type: Boolean,
+    default: false
   }
 });
 
 const store = useFactoryStore();
 const currentScenario = ref('');
 const configLoaded = ref(false);
-const configError = ref(null);
+const isEditMode = computed(() => props.editMode);
 
 // --- 默认空配置（等待用户上传）---
 const defaultTopologyConfig = {
@@ -153,38 +158,41 @@ onMounted(() => {
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: var(--bg-body, #0a1120);
 }
 
 .placeholder-content {
   text-align: center;
   padding: 40px;
-  background: white;
+  background: var(--bg-card, rgba(17, 24, 39, 0.85));
+  border: 1px solid var(--panel-border, rgba(0, 180, 240, 0.12));
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   max-width: 400px;
+  backdrop-filter: blur(8px);
 }
 
 .placeholder-icon {
   font-size: 64px;
   margin-bottom: 20px;
+  opacity: 0.6;
 }
 
 .placeholder-content h2 {
   margin: 0 0 12px 0;
-  color: #333;
+  color: var(--text-primary, #dce4f0);
   font-size: 20px;
 }
 
 .placeholder-content p {
   margin: 8px 0;
-  color: #666;
+  color: var(--text-secondary, #8c9ab8);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .placeholder-content p.hint {
-  color: #999;
+  color: var(--text-muted, #5a6880);
   font-size: 11px;
   margin-top: 16px;
 }

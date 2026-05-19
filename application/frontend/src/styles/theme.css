@@ -1,0 +1,47 @@
+/* ============================================
+ * 天工平台 · 暗色科技风主题变量
+ * 更新日期: 2026-05
+ * 适用范围: 面板组件 + 全局背景
+ * ============================================ */
+
+:root {
+  /* ── 背景层级 ── */
+  --bg-body: #0a1120;
+  --bg-primary: #0c1628;
+  --bg-secondary: #111c30;
+  --bg-card: rgba(17, 24, 39, 0.85);
+  --bg-card-hover: rgba(26, 35, 50, 0.92);
+
+  /* ── 文字色 ── */
+  --text-primary: #dce4f0;
+  --text-secondary: #8c9ab8;
+  --text-muted: #5a6880;
+  --text-accent: #00c8f0;
+
+  /* ── 强调色 ── */
+  --accent-cyan: #00c8f0;
+  --accent-green: #00e888;
+  --accent-orange: #ffaa00;
+  --accent-red: #ff3355;
+  --accent-purple: #7b5cf6;
+
+  /* ── 边框 ── */
+  --border-subtle: rgba(30, 80, 120, 0.4);
+  --border-accent: rgba(0, 180, 255, 0.2);
+  --border-active: rgba(0, 200, 240, 0.5);
+
+  /* ── 发光 ── */
+  --glow-cyan: 0 0 12px rgba(0, 200, 240, 0.25);
+  --glow-green: 0 0 12px rgba(0, 232, 136, 0.25);
+  --glow-red: 0 0 12px rgba(255, 51, 85, 0.3);
+
+  /* ── 面板 ── */
+  --panel-bg: rgba(12, 22, 40, 0.92);
+  --panel-border: rgba(0, 180, 240, 0.12);
+  --panel-header-bg: linear-gradient(135deg, rgba(0, 180, 240, 0.12), rgba(80, 60, 240, 0.10));
+  --panel-header-border: rgba(0, 200, 240, 0.25);
+
+  /* ── 滚动条 ── */
+  --scrollbar-thumb: rgba(40, 80, 120, 0.5);
+  --scrollbar-thumb-hover: rgba(60, 100, 160, 0.7);
+}

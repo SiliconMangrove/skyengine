@@ -6,10 +6,10 @@
 
     <div class="control-section">
       <h3>播放控制</h3>
-      <button class="play-btn" :class="{ playing: store.isPlaying }" @click="store.togglePlay">
+      <button class="play-btn" :class="{ playing: store.isPlaying }" :disabled="disabled" @click="store.togglePlay">
         {{ store.isPlaying ? '⏸ 暂停' : '▶ 播放' }}
       </button>
-      <button class="reset-btn" @click="store.reset">↻ 重置</button>
+      <button class="reset-btn" :disabled="disabled" @click="store.reset">↻ 重置</button>
     </div>
 
     <div class="control-section">
@@ -103,6 +103,10 @@
 <script setup>
 import { computed } from 'vue'
 import { useFactoryStore } from '@/stores/factory'
+
+const props = defineProps({
+  disabled: { type: Boolean, default: false },
+})
 
 // 1. 初始化 Store
 const store = useFactoryStore()
