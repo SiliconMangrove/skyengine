@@ -21,6 +21,18 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { useFactoryStore } from '@/stores/factory'
+import {
+  BG_COLOR, GROUND_COLOR, GRID_COLOR_MAIN, GRID_COLOR_SUB,
+  MACHINE_COLORS, STATUS_LIGHT,
+  AGV_ACTIVE_COLOR, AGV_IDLE_COLOR,
+  AGV_LIGHT_ACTIVE, AGV_LIGHT_IDLE,
+  ZONE_COLORS,
+  EDGE_COLOR, WAYPOINT_DOCK_COLOR, WAYPOINT_DEFAULT_COLOR,
+  HIGHLIGHT_COLOR, HIGHLIGHT_COLLISION_COLOR,
+  createBollard, createRack, createCabinet, createSafetyBarrier,
+  createPerimeterWall, getDecorationLayout,
+  createMachine, createAGV,
+} from '@/utils/assets'
 
 // ==================== Props ====================
 const props = defineProps({
@@ -75,11 +87,6 @@ const machineMeshMap = new Map()   // machineId → { group, bodyMat, lightMat }
 const agvDataList = []             // { group, chassisMat, lightMat, targetPos: Vector3 }
 const waypointPosMap = new Map()   // waypointId → { x, z } (world)
 
-// 共享几何体 (机器)
-let machineBodyGeom, machinePillarGeom, machineTopGeom, machineScreenGeom, statusLightGeom
-// 共享几何体 (AGV)
-let agvChassisGeom, agvWheelGeom, agvForkGeom, agvArrowGeom, agvLightGeom
-
 // 动画状态
 let waitTimeLeft = 0
 const STEP_WAIT_TIME = 800
@@ -90,9 +97,11 @@ const mouse = new THREE.Vector2()
 let highlightMesh = null
 let draggingAsset = null        // { type, id, group }
 let isDragging = false
-let dragStartMouseWorld = null   // 拖拽开始时鼠标的世界坐标
-let dragStartGridX = 0           // 拖拽开始时资产的网格 X
-let dragStartGridY = 0           // 拖拽开始时资产的网格 Y
+let dragStartMouseWorld = null
+let dragStartGridX = 0
+let dragStartGridY = 0
+let lastDragGridX = 0           // 拖拽过程中最新的网格 X
+let lastDragGridY = 0           // 拖拽过程中最新的网格 Y
 
 function snapToGrid(worldPos) {
   const w = topology.value.gridWidth
@@ -108,7 +117,7 @@ function snapToGrid(worldPos) {
 function createHighlightMesh() {
   const geom = new THREE.BoxGeometry(GRID_SIZE * 1.1, 0.08, GRID_SIZE * 1.1)
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x667eea,
+    color: HIGHLIGHT_COLOR,
     transparent: true,
     opacity: 0.35,
     depthWrite: false,
@@ -121,7 +130,7 @@ function createHighlightMesh() {
 
 function setHighlightColor(occupied) {
   if (!highlightMesh) return
-  highlightMesh.material.color.set(occupied ? 0xff3355 : 0x667eea)
+  highlightMesh.material.color.set(occupied ? HIGHLIGHT_COLLISION_COLOR : HIGHLIGHT_COLOR)
 }
 
 function updateHighlight(worldPos, isOccupied = false) {
@@ -174,11 +183,10 @@ function findAssetAtPoint(worldPoint) {
       return { type: 'waypoint', id: child.userData.id, group: child }
     }
   }
-  // 检查区域
+  // 检查区域（支持普通 Mesh 和 THREE.Group 装饰物）
   for (const child of zoneGroup.children) {
     const pos = child.position
     const userData = child.userData || {}
-    // 用 geometry 尺寸估算
     if (child.geometry) {
       child.geometry.computeBoundingBox()
       const box = child.geometry.boundingBox
@@ -186,6 +194,14 @@ function findAssetAtPoint(worldPoint) {
       const hh = (box.max.z - box.min.z) / 2 + 0.1
       if (Math.abs(worldPoint.x - pos.x) < hw &&
           Math.abs(worldPoint.z - pos.z) < hh) {
+        return { type: 'zone', id: userData.id, group: child }
+      }
+    } else if (child.isGroup || child.children?.length) {
+      // THREE.Group（装饰物）：用 Box3 计算包围盒
+      const box = new THREE.Box3().setFromObject(child)
+      if (box.isEmpty()) continue
+      if (worldPoint.x >= box.min.x && worldPoint.x <= box.max.x &&
+          worldPoint.z >= box.min.z && worldPoint.z <= box.max.z) {
         return { type: 'zone', id: userData.id, group: child }
       }
     }
@@ -232,6 +248,10 @@ function onCanvasPointerMove(event) {
     const snapped = gridToWorld(newGX, newGY)
     draggingAsset.group.position.set(snapped.x, 0, snapped.z)
 
+    // 记录最新网格位置（给 pointerUp 使用）
+    lastDragGridX = newGX
+    lastDragGridY = newGY
+
     // 碰撞校验
     const occupied = store.isCellOccupied(newGX, newGY, draggingAsset.id, draggingAsset.type)
     updateHighlight(point, occupied)
@@ -252,27 +272,20 @@ function onCanvasPointerUp(event) {
   if (!props.editMode) return
 
   if (isDragging && draggingAsset) {
-    // 用和 pointermove 同样的增量逻辑计算最终位置
-    const point = getGroundIntersection(event)
-    if (point) {
-      const dx = point.x - dragStartMouseWorld.x
-      const dz = point.z - dragStartMouseWorld.z
-      const gridDX = Math.round(dx / GRID_SIZE)
-      const gridDZ = Math.round(dz / GRID_SIZE)
+    // 用 lastDragGridX/Y（pointerMove 已实时记录），不依赖 pointerUp 的射线检测
+    const newGX = lastDragGridX
+    const newGY = lastDragGridY
 
-      const w = topology.value.gridWidth
-      const h = topology.value.gridHeight
-      const newGX = Math.max(0, Math.min(dragStartGridX + gridDX, w - 1))
-      const newGY = Math.max(0, Math.min(dragStartGridY + gridDZ, h - 1))
+    const success = store.updateAssetPosition(draggingAsset.type, draggingAsset.id, newGX, newGY)
 
-      const success = store.updateAssetPosition(draggingAsset.type, draggingAsset.id, newGX, newGY)
-      if (success) {
-        emit('asset-moved', { assetType: draggingAsset.type, assetId: draggingAsset.id, gridX: newGX, gridY: newGY })
-      } else {
-        // 碰撞：回弹到原位
-        nextTick(() => buildStaticElements())
-      }
+    if (success) {
+      emit('asset-moved', { assetType: draggingAsset.type, assetId: draggingAsset.id, gridX: newGX, gridY: newGY })
+    } else {
+      // 碰撞：仅回弹被拖拽资产到起始位置，不做全量重建
+      const pos = gridToWorld(dragStartGridX, dragStartGridY)
+      draggingAsset.group.position.set(pos.x, 0, pos.z)
     }
+
     isDragging = false
     draggingAsset = null
     dragStartMouseWorld = null
@@ -307,22 +320,7 @@ function removeEditModeListeners() {
   renderer.domElement.style.cursor = ''
 }
 
-// ==================== 配色常量 ====================
-const BG_COLOR = 0xf0f2f5
-const MACHINE_COLORS = {
-  WORKING:     { body: 0x4a9eff, emissive: 0x1a5fbb },
-  IDLE:        { body: 0xb0b8c8, emissive: 0x000000 },
-  BROKEN:      { body: 0xff5555, emissive: 0xcc2222 },
-  MAINTENANCE: { body: 0xffaa33, emissive: 0xcc8800 },
-}
-const STATUS_LIGHT = { WORKING: 0x00e87b, IDLE: 0x8899aa, BROKEN: 0xff2d55, MAINTENANCE: 0xffb300 }
-const MACHINE_PILLAR = 0x8899aa
-const MACHINE_TOP = 0x556677
-const MACHINE_SCREEN = 0x223344
-const AGV_ACTIVE_COLOR = 0x3a6ea5
-const AGV_IDLE_COLOR = 0xaabbcc
-const AGV_FORK = 0x667788
-const AGV_WHEEL = 0x333333
+// ==================== 配色常量（从 assets.js 导入） ====================
 
 // ==================== 场景初始化 ====================
 function initScene() {
@@ -397,23 +395,6 @@ function initScene() {
   clock = new THREE.Clock()
 }
 
-// ==================== 共享几何体初始化 ====================
-function initGeometries() {
-  const U = GRID_SIZE
-  // 机器
-  machineBodyGeom = new THREE.BoxGeometry(U * 1.2, U * 0.5, U * 0.9)
-  machinePillarGeom = new THREE.CylinderGeometry(U * 0.035, U * 0.035, U * 0.5, 6)
-  machineTopGeom = new THREE.BoxGeometry(U * 0.55, U * 0.07, U * 0.35)
-  machineScreenGeom = new THREE.BoxGeometry(U * 0.3, U * 0.15, U * 0.02)
-  statusLightGeom = new THREE.SphereGeometry(U * 0.07, 8, 8)
-  // AGV
-  agvChassisGeom = new THREE.BoxGeometry(U * 0.55, U * 0.06, U * 0.38)
-  agvWheelGeom = new THREE.CylinderGeometry(U * 0.055, U * 0.055, U * 0.05, 8)
-  agvForkGeom = new THREE.BoxGeometry(U * 0.04, U * 0.025, U * 0.18)
-  agvArrowGeom = new THREE.ConeGeometry(U * 0.04, U * 0.08, 4)
-  agvLightGeom = new THREE.SphereGeometry(U * 0.04, 6, 6)
-}
-
 // ==================== 构建静态元素 ====================
 function buildGroundAndGrid() {
   if (groundPlane) { scene.remove(groundPlane); groundPlane.geometry?.dispose(); groundPlane.material?.dispose() }
@@ -424,78 +405,31 @@ function buildGroundAndGrid() {
 
   groundPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(w * GRID_SIZE, h * GRID_SIZE),
-    new THREE.MeshStandardMaterial({ color: 0xe8eaed, roughness: 0.95, metalness: 0.0 }),
+    new THREE.MeshStandardMaterial({ color: GROUND_COLOR, roughness: 0.95, metalness: 0.0 }),
   )
   groundPlane.rotation.x = -Math.PI / 2
   groundPlane.receiveShadow = true
   scene.add(groundPlane)
 
-  gridHelper = new THREE.GridHelper(Math.max(w, h) * GRID_SIZE, Math.max(w, h), 0xc8ccd4, 0xdce0e6)
+  gridHelper = new THREE.GridHelper(Math.max(w, h) * GRID_SIZE, Math.max(w, h), GRID_COLOR_MAIN, GRID_COLOR_SUB)
   gridHelper.position.y = 0.005
   scene.add(gridHelper)
 }
 
-// ==================== 机器构建（精巧复合体） ====================
-function buildMachineGroup(m) {
-  const U = GRID_SIZE
-  const group = new THREE.Group()
-  const status = m.status || 'IDLE'
-  const mc = MACHINE_COLORS[status] || MACHINE_COLORS.IDLE
-
-  // 1. 主体
-  const bodyMat = new THREE.MeshStandardMaterial({ color: mc.body, emissive: mc.emissive, roughness: 0.35, metalness: 0.5 })
-  const body = new THREE.Mesh(machineBodyGeom, bodyMat)
-  body.position.y = U * 0.28
-  body.castShadow = true
-  body.receiveShadow = true
-  group.add(body)
-
-  // 2. 四根立柱
-  const pillarMat = new THREE.MeshStandardMaterial({ color: MACHINE_PILLAR, roughness: 0.4, metalness: 0.6 })
-  const corners = [[-U*0.5, U*0.28, -U*0.35], [U*0.5, U*0.28, -U*0.35], [-U*0.5, U*0.28, U*0.35], [U*0.5, U*0.28, U*0.35]]
-  corners.forEach(([x, y, z]) => {
-    const p = new THREE.Mesh(machinePillarGeom, pillarMat)
-    p.position.set(x, y, z)
-    p.castShadow = true
-    group.add(p)
-  })
-
-  // 3. 顶部控制面板
-  const topMat = new THREE.MeshStandardMaterial({ color: MACHINE_TOP, roughness: 0.25, metalness: 0.7 })
-  const top = new THREE.Mesh(machineTopGeom, topMat)
-  top.position.set(0, U * 0.57, -U * 0.1)
-  top.castShadow = true
-  group.add(top)
-
-  // 4. 前面板（小屏幕）
-  const screenMat = new THREE.MeshStandardMaterial({ color: MACHINE_SCREEN, emissive: 0x112244, roughness: 0.1, metalness: 0.3 })
-  const screen = new THREE.Mesh(machineScreenGeom, screenMat)
-  screen.position.set(0, U * 0.32, U * 0.46)
-  group.add(screen)
-
-  // 5. 状态指示灯
-  const lightMat = new THREE.MeshBasicMaterial({ color: STATUS_LIGHT[status] || STATUS_LIGHT.IDLE })
-  const light = new THREE.Mesh(statusLightGeom, lightMat)
-  light.position.set(0, U * 0.62, -U * 0.1)
-  group.add(light)
-
-  group.userData = { id: m.id, name: m.name, status, load: 0 }
-  return { group, bodyMat, lightMat }
-}
-
+// ==================== 机器构建 ====================
 function buildMachines() {
   machineMeshMap.forEach(({ group, bodyMat, lightMat }) => {
+    group.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
     bodyMat.dispose(); lightMat.dispose()
   })
   machineMeshMap.clear()
   while (machineGroup.children.length) machineGroup.remove(machineGroup.children[0])
 
-  if (!machineBodyGeom) initGeometries()
-
+  const U = GRID_SIZE
   const machines = topology.value.machines
   Object.values(machines).forEach((m) => {
     const pos = gridToWorld(m.location[0], m.location[1])
-    const { group, bodyMat, lightMat } = buildMachineGroup(m)
+    const { group, bodyMat, lightMat } = createMachine(U, m)
     group.position.set(pos.x, 0, pos.z)
     machineGroup.add(group)
     machineMeshMap.set(m.id, { group, bodyMat, lightMat })
@@ -506,30 +440,46 @@ function buildMachines() {
 function buildZones() {
   while (zoneGroup.children.length) {
     const c = zoneGroup.children[0]
-    c.geometry?.dispose(); c.material?.dispose()
+    c.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
     zoneGroup.remove(c)
   }
 
   const zones = topology.value.zones
+  const U = GRID_SIZE
   zones.forEach((z) => {
     const area = z.area
-    const cx = (area.x - topology.value.gridWidth / 2 + area.w / 2) * GRID_SIZE
-    const cz = (area.y - topology.value.gridHeight / 2 + area.h / 2) * GRID_SIZE
+    const cx = (area.x - topology.value.gridWidth / 2 + area.w / 2) * U
+    const cz = (area.y - topology.value.gridHeight / 2 + area.h / 2) * U
 
-    const geom = new THREE.BoxGeometry(area.w * GRID_SIZE, 0.06, area.h * GRID_SIZE)
-    const typeColors = {
-      restricted: 0xff8800, workbench: 0x0088cc,
-      obstacle: 0x663333, workarea: 0x00aa66,
+    let obj
+    if (z.decor) {
+      // 装饰资产 → 渲染对应 3D 模型
+      if (z.decor === 'bollard') obj = createBollard(U)
+      else if (z.decor === 'rack') obj = createRack(U)
+      else if (z.decor === 'cabinet') obj = createCabinet(U)
+      else if (z.decor === 'barrier') obj = createSafetyBarrier(U)
+      else obj = null
+
+      if (obj) {
+        obj.position.set(cx, 0, cz)
+        obj.traverse(ch => { ch.userData = { id: z.id, name: z.name, type: z.type, decor: z.decor } })
+        zoneGroup.add(obj)
+      }
     }
-    const mat = new THREE.MeshStandardMaterial({
-      color: typeColors[z.type] || 0x5577aa,
-      transparent: true, opacity: 0.15, roughness: 0.9,
-    })
-    const mesh = new THREE.Mesh(geom, mat)
-    mesh.position.set(cx, 0.03, cz)
-    mesh.receiveShadow = true
-    mesh.userData = { id: z.id, name: z.name, type: z.type }
-    zoneGroup.add(mesh)
+
+    // 普通区域：渲染半透明底板
+    if (!z.decor) {
+      const geom = new THREE.BoxGeometry(area.w * U, 0.06, area.h * U)
+      const mat = new THREE.MeshStandardMaterial({
+        color: ZONE_COLORS[z.type] || ZONE_COLORS.default,
+        transparent: true, opacity: 0.15, roughness: 0.9,
+      })
+      const mesh = new THREE.Mesh(geom, mat)
+      mesh.position.set(cx, 0.03, cz)
+      mesh.receiveShadow = true
+      mesh.userData = { id: z.id, name: z.name, type: z.type }
+      zoneGroup.add(mesh)
+    }
   })
 }
 
@@ -549,10 +499,10 @@ function buildWaypoints() {
     let geom, mat
     if (wp.type === 'dock') {
       geom = new THREE.CylinderGeometry(GRID_SIZE * 0.3, GRID_SIZE * 0.3, GRID_SIZE * 0.06, 16)
-      mat = new THREE.MeshStandardMaterial({ color: 0x5588bb, roughness: 0.3, metalness: 0.6 })
+      mat = new THREE.MeshStandardMaterial({ color: WAYPOINT_DOCK_COLOR, roughness: 0.3, metalness: 0.6 })
     } else {
       geom = new THREE.SphereGeometry(GRID_SIZE * 0.12, 8, 8)
-      mat = new THREE.MeshStandardMaterial({ color: 0x44aa77, roughness: 0.4, metalness: 0.4 })
+      mat = new THREE.MeshStandardMaterial({ color: WAYPOINT_DEFAULT_COLOR, roughness: 0.4, metalness: 0.4 })
     }
     const mesh = new THREE.Mesh(geom, mat)
     mesh.position.set(pos.x, GRID_SIZE * 0.04, pos.z)
@@ -580,7 +530,7 @@ function buildEdges() {
       new THREE.Vector3(from.x, 0.02, from.z),
       new THREE.Vector3(to.x, 0.02, to.z),
     ])
-    const mat = new THREE.LineDashedMaterial({ color: 0x88aacc, dashSize: 0.8, gapSize: 1.0 })
+    const mat = new THREE.LineDashedMaterial({ color: EDGE_COLOR, dashSize: 0.8, gapSize: 1.0 })
     const line = new THREE.Line(geom, mat)
     line.computeLineDistances()
     edgeGroup.add(line)
@@ -589,7 +539,6 @@ function buildEdges() {
 
 // ==================== 科技感围墙 ====================
 function buildPerimeterWall() {
-  // 清理旧墙 (放在 zoneGroup 之前的独立逻辑，复用 decorGroup 不合适，直接挂 scene)
   const existingWall = scene.getObjectByName('perimeter-wall')
   if (existingWall) {
     existingWall.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
@@ -598,127 +547,57 @@ function buildPerimeterWall() {
 
   const w = topology.value.gridWidth
   const h = topology.value.gridHeight
-  const U = GRID_SIZE
-  const halfW = (w * U) / 2
-  const halfH = (h * U) / 2
-  const wallH = U * 0.55
-  const offset = U * 0.6  // 墙在网格外侧偏移
-
-  const wallGroup = new THREE.Group()
-  wallGroup.name = 'perimeter-wall'
-
-  // --- 材质 ---
-  const panelMat = new THREE.MeshStandardMaterial({
-    color: 0xdde4ee, transparent: true, opacity: 0.35,
-    roughness: 0.1, metalness: 0.8, side: THREE.DoubleSide,
-  })
-  const frameMat = new THREE.MeshStandardMaterial({
-    color: 0x6688aa, roughness: 0.25, metalness: 0.8,
-  })
-  const glowMat = new THREE.MeshStandardMaterial({
-    color: 0x3399cc, emissive: 0x1166aa, emissiveIntensity: 0.6,
-    roughness: 0.1, metalness: 0.9,
-  })
-  const cornerMat = new THREE.MeshStandardMaterial({
-    color: 0x5577aa, emissive: 0x113355, roughness: 0.2, metalness: 0.7,
-  })
-  const baseStripMat = new THREE.MeshStandardMaterial({
-    color: 0x4499cc, emissive: 0x1166aa, emissiveIntensity: 0.4,
-    roughness: 0.15, metalness: 0.85,
-  })
-  const topStripMat = new THREE.MeshStandardMaterial({
-    color: 0x55aadd, emissive: 0x2288bb, emissiveIntensity: 0.5,
-    roughness: 0.1, metalness: 0.9,
-  })
-
-  // --- 每面墙的生成 ---
-  function createWallSegment(length, position, rotationY) {
-    const seg = new THREE.Group()
-
-    // 1. 半透明面板
-    const panelGeom = new THREE.PlaneGeometry(length, wallH)
-    const panel = new THREE.Mesh(panelGeom, panelMat)
-    panel.position.y = wallH / 2 + U * 0.02
-    seg.add(panel)
-
-    // 2. 边框立柱 — 每隔 2 个单位一根
-    const postGeom = new THREE.BoxGeometry(U * 0.06, wallH + U * 0.04, U * 0.06)
-    const postCount = Math.max(2, Math.floor(length / (U * 2)) + 1)
-    for (let i = 0; i < postCount; i++) {
-      const t = postCount === 1 ? 0 : (i / (postCount - 1) - 0.5) * length
-      const post = new THREE.Mesh(postGeom, frameMat)
-      post.position.set(t, wallH / 2, 0)
-      post.castShadow = true
-      seg.add(post)
-    }
-
-    // 3. 底部发光条
-    const baseGeom = new THREE.BoxGeometry(length, U * 0.04, U * 0.03)
-    const base = new THREE.Mesh(baseGeom, baseStripMat)
-    base.position.y = U * 0.02
-    seg.add(base)
-
-    // 4. 顶部发光条
-    const topGeom = new THREE.BoxGeometry(length, U * 0.03, U * 0.03)
-    const top = new THREE.Mesh(topGeom, topStripMat)
-    top.position.y = wallH + U * 0.01
-    seg.add(top)
-
-    // 5. 数据节点 — 每段中间小方块（模拟数据接口）
-    const nodeGeom = new THREE.BoxGeometry(U * 0.12, U * 0.08, U * 0.05)
-    const nodeCount = Math.max(1, Math.floor(length / (U * 4)))
-    for (let i = 0; i < nodeCount; i++) {
-      const t = nodeCount === 1 ? 0 : ((i + 0.5) / nodeCount - 0.5) * length
-      const node = new THREE.Mesh(nodeGeom, glowMat)
-      node.position.set(t, wallH * 0.4, U * 0.01)
-      seg.add(node)
-    }
-
-    seg.position.copy(position)
-    seg.rotation.y = rotationY
-    wallGroup.add(seg)
-  }
-
-  // --- 四面墙 ---
-  // 前 (z = +halfH + offset)
-  createWallSegment(w * U, new THREE.Vector3(0, 0, halfH + offset), 0)
-  // 后 (z = -halfH - offset)
-  createWallSegment(w * U, new THREE.Vector3(0, 0, -halfH - offset), 0)
-  // 左 (x = -halfW - offset)
-  createWallSegment(h * U, new THREE.Vector3(-halfW - offset, 0, 0), Math.PI / 2)
-  // 右 (x = +halfW + offset)
-  createWallSegment(h * U, new THREE.Vector3(halfW + offset, 0, 0), Math.PI / 2)
-
-  // --- 四角立柱 ---
-  const cornerGeom = new THREE.CylinderGeometry(U * 0.1, U * 0.12, wallH + U * 0.2, 8)
-  const cornerTopGeom = new THREE.CylinderGeometry(U * 0.13, U * 0.1, U * 0.06, 8)
-  const cornerGlowGeom = new THREE.SphereGeometry(U * 0.06, 8, 8)
-  const cornerGlowMat = new THREE.MeshBasicMaterial({ color: 0x44bbff })
-
-  const cornerPositions = [
-    [-halfW - offset, -halfH - offset],
-    [ halfW + offset, -halfH - offset],
-    [-halfW - offset,  halfH + offset],
-    [ halfW + offset,  halfH + offset],
-  ]
-  cornerPositions.forEach(([x, z]) => {
-    const grp = new THREE.Group()
-    const pillar = new THREE.Mesh(cornerGeom, cornerMat)
-    pillar.position.y = (wallH + U * 0.2) / 2
-    pillar.castShadow = true
-    grp.add(pillar)
-    const cap = new THREE.Mesh(cornerTopGeom, frameMat)
-    cap.position.y = wallH + U * 0.2
-    grp.add(cap)
-    const glow = new THREE.Mesh(cornerGlowGeom, cornerGlowMat)
-    glow.position.y = wallH + U * 0.28
-    grp.add(glow)
-    grp.position.set(x, 0, z)
-    wallGroup.add(grp)
-  })
-
+  const wallGroup = createPerimeterWall(GRID_SIZE, w, h)
   scene.add(wallGroup)
 }
+
+
+// ==================== 装饰物构建 ====================
+// function buildDecorations() {
+//   while (decorGroup.children.length) {
+//     const c = decorGroup.children[0]
+//     c.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
+//     decorGroup.remove(c)
+//   }
+
+//   const w = topology.value.gridWidth
+//   const h = topology.value.gridHeight
+//   const U = GRID_SIZE
+//   const layout = getDecorationLayout(w, h)
+
+//   // 1. 安全警示柱
+//   layout.bollards.forEach(([gx, gy]) => {
+//     const pos = gridToWorld(gx, gy)
+//     const grp = createBollard(U)
+//     grp.position.set(pos.x, 0, pos.z)
+//     decorGroup.add(grp)
+//   })
+
+//   // 2. 储物架
+//   layout.racks.forEach(([gx, gy]) => {
+//     const pos = gridToWorld(gx, gy)
+//     const grp = createRack(U)
+//     grp.position.set(pos.x, 0, pos.z)
+//     decorGroup.add(grp)
+//   })
+
+//   // 3. 配电箱
+//   layout.cabinets.forEach(([gx, gy]) => {
+//     const pos = gridToWorld(gx, gy)
+//     const grp = createCabinet(U)
+//     grp.position.set(pos.x, 0, pos.z)
+//     decorGroup.add(grp)
+//   })
+
+//   // 4. 安全隔离栏
+//   layout.barriers.forEach(([gx, gyOffset]) => {
+//     const fenceX = gridToWorld(gx, 0).x
+//     const fenceZ = gridToWorld(0, 0).z + gyOffset * U
+//     const grp = createSafetyBarrier(U)
+//     grp.position.set(fenceX, 0, fenceZ)
+//     decorGroup.add(grp)
+//   })
+// }
 
 function buildStaticElements() {
   buildGroundAndGrid()
@@ -726,248 +605,23 @@ function buildStaticElements() {
   buildZones()
   buildEdges()
   buildWaypoints()
-  buildDecorations()
+  // buildDecorations()
   buildMachines()
 }
 
-// ==================== 装饰物构建 ====================
-function buildDecorations() {
-  while (decorGroup.children.length) {
-    const c = decorGroup.children[0]
-    c.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
-    decorGroup.remove(c)
-  }
 
-  const w = topology.value.gridWidth
-  const h = topology.value.gridHeight
-  const U = GRID_SIZE
-  const halfW = w / 2
-  const halfH = h / 2
-
-  // --- 共享材质 ---
-  const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf5c542, roughness: 0.5, metalness: 0.3 })
-  const metalGrayMat = new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.4, metalness: 0.6 })
-  const darkGrayMat = new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.6, metalness: 0.3 })
-  const cabinetMat = new THREE.MeshStandardMaterial({ color: 0x778899, roughness: 0.35, metalness: 0.5 })
-  const rackMat = new THREE.MeshStandardMaterial({ color: 0x99aabb, roughness: 0.5, metalness: 0.4 })
-  const shelfMat = new THREE.MeshStandardMaterial({ color: 0xdde4ee, roughness: 0.6, metalness: 0.1 })
-  const greenBoxMat = new THREE.MeshStandardMaterial({ color: 0x55aa77, roughness: 0.5, metalness: 0.1 })
-  const blueBoxMat = new THREE.MeshStandardMaterial({ color: 0x5577bb, roughness: 0.5, metalness: 0.1 })
-
-  // 1. 安全警示柱 — 沿工厂边缘等距放置
-  const bollardGeom = new THREE.CylinderGeometry(U * 0.06, U * 0.06, U * 0.5, 8)
-  const bollardCapGeom = new THREE.CylinderGeometry(U * 0.08, U * 0.08, U * 0.04, 8)
-  const stripeGeom = new THREE.BoxGeometry(U * 0.04, U * 0.08, U * 0.14)
-  const blackMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 })
-
-  const bollardPositions = []
-  // 顶边和底边
-  for (let gx = 1; gx < w; gx += 3) {
-    bollardPositions.push([gx, 0])
-    bollardPositions.push([gx, h - 1])
-  }
-  // 左边和右边
-  for (let gy = 1; gy < h; gy += 3) {
-    bollardPositions.push([0, gy])
-    bollardPositions.push([w - 1, gy])
-  }
-
-  bollardPositions.forEach(([gx, gy]) => {
-    const pos = gridToWorld(gx, gy)
-    const grp = new THREE.Group()
-    // 柱体
-    const post = new THREE.Mesh(bollardGeom, yellowMat)
-    post.position.y = U * 0.25
-    post.castShadow = true
-    grp.add(post)
-    // 顶部
-    const cap = new THREE.Mesh(bollardCapGeom, darkGrayMat)
-    cap.position.y = U * 0.52
-    grp.add(cap)
-    // 黑色条纹
-    const s1 = new THREE.Mesh(stripeGeom, blackMat)
-    s1.position.set(0, U * 0.15, U * 0.07)
-    grp.add(s1)
-    const s2 = new THREE.Mesh(stripeGeom, blackMat)
-    s2.position.set(0, U * 0.35, U * 0.07)
-    grp.add(s2)
-
-    grp.position.set(pos.x, 0, pos.z)
-    decorGroup.add(grp)
-  })
-
-  // 2. 储物架 — 四角放置
-  const rackPositions = [
-    [1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2],
-  ]
-  const rackGeom = new THREE.BoxGeometry(U * 0.8, U * 1.2, U * 0.4)
-  const shelfGeom = new THREE.BoxGeometry(U * 0.75, U * 0.03, U * 0.36)
-
-  rackPositions.forEach(([gx, gy]) => {
-    const pos = gridToWorld(gx, gy)
-    const grp = new THREE.Group()
-
-    // 框架
-    const frame = new THREE.Mesh(rackGeom, rackMat)
-    frame.position.y = U * 0.6
-    frame.castShadow = true
-    grp.add(frame)
-
-    // 三层隔板 + 货箱
-    for (let layer = 0; layer < 3; layer++) {
-      const shelfY = U * (0.2 + layer * 0.35)
-      const shelf = new THREE.Mesh(shelfGeom, shelfMat)
-      shelf.position.y = shelfY
-      grp.add(shelf)
-
-      // 每层放 1-2 个小货箱
-      const boxGeom = new THREE.BoxGeometry(U * 0.25, U * 0.15, U * 0.25)
-      const boxMat = layer % 2 === 0 ? greenBoxMat : blueBoxMat
-      const box = new THREE.Mesh(boxGeom, boxMat)
-      box.position.set(U * (layer % 2 === 0 ? -0.15 : 0.15), shelfY + U * 0.09, 0)
-      box.castShadow = true
-      grp.add(box)
-    }
-
-    grp.position.set(pos.x, 0, pos.z)
-    decorGroup.add(grp)
-  })
-
-  // 3. 配电箱 — 长边中间位置
-  const cabinetGeom = new THREE.BoxGeometry(U * 0.35, U * 0.7, U * 0.25)
-  const cabinetDoorGeom = new THREE.BoxGeometry(U * 0.01, U * 0.5, U * 0.18)
-  const lightDotGeom = new THREE.CircleGeometry(U * 0.025, 8)
-  const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
-  const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 })
-
-  const cabinetPositions = [
-    [Math.floor(w / 2), 0],          // 底边中间
-    [Math.floor(w / 2), h - 1],      // 顶边中间
-    [0, Math.floor(h / 2)],           // 左边中间
-    [w - 1, Math.floor(h / 2)],       // 右边中间
-  ]
-
-  cabinetPositions.forEach(([gx, gy]) => {
-    const pos = gridToWorld(gx, gy)
-    const grp = new THREE.Group()
-
-    // 箱体
-    const cab = new THREE.Mesh(cabinetGeom, cabinetMat)
-    cab.position.y = U * 0.35
-    cab.castShadow = true
-    grp.add(cab)
-
-    // 门
-    const door = new THREE.Mesh(cabinetDoorGeom, darkGrayMat)
-    door.position.set(U * 0.18, U * 0.35, 0)
-    grp.add(door)
-
-    // 指示灯
-    const redLight = new THREE.Mesh(lightDotGeom, redLightMat)
-    redLight.position.set(U * 0.18, U * 0.55, U * 0.06)
-    redLight.rotation.y = Math.PI / 2
-    grp.add(redLight)
-    const greenLight = new THREE.Mesh(lightDotGeom, greenLightMat)
-    greenLight.position.set(U * 0.18, U * 0.55, -U * 0.06)
-    greenLight.rotation.y = Math.PI / 2
-    grp.add(greenLight)
-
-    grp.position.set(pos.x, 0, pos.z)
-    decorGroup.add(grp)
-  })
-
-  // 4. 安全隔离栏 — 两段长围栏
-  const railPostGeom = new THREE.CylinderGeometry(U * 0.03, U * 0.03, U * 0.6, 6)
-  const railBarGeom = new THREE.BoxGeometry(U * 3, U * 0.04, U * 0.04)
-
-  // 沿底部 y=0 位置放一段围栏
-  if (w > 6) {
-    const fenceZ = gridToWorld(0, 0).z - U * 1.5
-    for (let i = 0; i < 2; i++) {
-      const fenceX = gridToWorld(Math.floor(w / 4) + i * Math.floor(w / 2), 0).x
-      const grp = new THREE.Group()
-      // 两根立柱
-      const p1 = new THREE.Mesh(railPostGeom, metalGrayMat)
-      p1.position.set(-U * 1.5, U * 0.3, 0)
-      p1.castShadow = true
-      grp.add(p1)
-      const p2 = new THREE.Mesh(railPostGeom, metalGrayMat)
-      p2.position.set(U * 1.5, U * 0.3, 0)
-      p2.castShadow = true
-      grp.add(p2)
-      // 两道横杆
-      const bar1 = new THREE.Mesh(railBarGeom, yellowMat)
-      bar1.position.y = U * 0.45
-      grp.add(bar1)
-      const bar2 = new THREE.Mesh(railBarGeom, yellowMat)
-      bar2.position.y = U * 0.2
-      grp.add(bar2)
-      grp.position.set(fenceX, 0, fenceZ)
-      decorGroup.add(grp)
-    }
-  }
-}
-
-// ==================== AGV 构建（精巧复合体） ====================
-function buildAGVGroup(index) {
-  const U = GRID_SIZE
-  const group = new THREE.Group()
-
-  // 1. 底盘
-  const chassisMat = new THREE.MeshStandardMaterial({
-    color: AGV_ACTIVE_COLOR, roughness: 0.25, metalness: 0.6,
-  })
-  const chassis = new THREE.Mesh(agvChassisGeom, chassisMat)
-  chassis.position.y = U * 0.07
-  chassis.castShadow = true
-  chassis.receiveShadow = true
-  group.add(chassis)
-
-  // 2. 四个轮子
-  const wheelMat = new THREE.MeshStandardMaterial({ color: AGV_WHEEL, roughness: 0.8, metalness: 0.1 })
-  const wheelPos = [[-U*0.22, U*0.035, -U*0.18], [U*0.22, U*0.035, -U*0.18], [-U*0.22, U*0.035, U*0.18], [U*0.22, U*0.035, U*0.18]]
-  wheelPos.forEach(([x, y, z]) => {
-    const wheel = new THREE.Mesh(agvWheelGeom, wheelMat)
-    wheel.position.set(x, y, z)
-    wheel.rotation.x = Math.PI / 2
-    group.add(wheel)
-  })
-
-  // 3. 货叉（两根平行臂）
-  const forkMat = new THREE.MeshStandardMaterial({ color: AGV_FORK, roughness: 0.4, metalness: 0.6 })
-  const fork1 = new THREE.Mesh(agvForkGeom, forkMat)
-  fork1.position.set(-U * 0.1, U * 0.1, U * 0.28)
-  group.add(fork1)
-  const fork2 = new THREE.Mesh(agvForkGeom, forkMat)
-  fork2.position.set(U * 0.1, U * 0.1, U * 0.28)
-  group.add(fork2)
-
-  // 4. 方向指示（小箭头）
-  const arrowMat = new THREE.MeshBasicMaterial({ color: 0x0099dd })
-  const arrow = new THREE.Mesh(agvArrowGeom, arrowMat)
-  arrow.position.set(0, U * 0.12, U * 0.22)
-  arrow.rotation.x = -Math.PI / 2
-  group.add(arrow)
-
-  // 5. 状态指示灯
-  const lightMat = new THREE.MeshBasicMaterial({ color: 0x00e87b })
-  const light = new THREE.Mesh(agvLightGeom, lightMat)
-  light.position.set(0, U * 0.12, 0)
-  group.add(light)
-
-  group.userData = { id: `AGV-${index + 1}` }
-  return { group, chassisMat, lightMat }
-}
-
+// ==================== AGV 构建 ====================
 function rebuildAGVs(count) {
-  agvDataList.forEach(d => { d.chassisMat?.dispose(); d.lightMat?.dispose() })
+  agvDataList.forEach(d => {
+    d.group?.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
+    d.chassisMat?.dispose(); d.lightMat?.dispose()
+  })
   agvDataList.length = 0
   while (agvGroup.children.length) agvGroup.remove(agvGroup.children[0])
 
-  if (!agvChassisGeom) initGeometries()
-
+  const U = GRID_SIZE
   for (let i = 0; i < count; i++) {
-    const { group, chassisMat, lightMat } = buildAGVGroup(i)
+    const { group, chassisMat, lightMat } = createAGV(U, i)
     group.position.set(0, 0, 0)
     agvGroup.add(group)
     agvDataList.push({ group, chassisMat, lightMat, targetPos: new THREE.Vector3() })
@@ -1012,7 +666,7 @@ function updateFromStore() {
     const active = isActive[i] !== false
     agvData.chassisMat.color.set(active ? AGV_ACTIVE_COLOR : AGV_IDLE_COLOR)
     agvData.chassisMat.needsUpdate = true
-    agvData.lightMat.color.set(active ? 0x00e87b : 0x8899aa)
+    agvData.lightMat.color.set(active ? AGV_LIGHT_ACTIVE : AGV_LIGHT_IDLE)
   })
 
   // 机器状态更新
@@ -1120,7 +774,6 @@ onMounted(async () => {
   if (!containerRef.value) return
 
   initScene()
-  initGeometries()
   buildStaticElements()
   rebuildAGVs(0)
   animate()
@@ -1140,11 +793,6 @@ onBeforeUnmount(() => {
   removeEditModeListeners()
   controls?.dispose()
 
-  // 清理共享几何体
-  ;[machineBodyGeom, machinePillarGeom, machineTopGeom, machineScreenGeom, statusLightGeom,
-    agvChassisGeom, agvWheelGeom, agvForkGeom, agvArrowGeom, agvLightGeom
-  ].forEach(g => g?.dispose())
-
   // 遍历并清理所有 mesh
   const disposeMesh = (obj) => {
     obj.traverse?.(child => {
@@ -1162,19 +810,50 @@ onBeforeUnmount(() => {
 })
 
 // ==================== 监听拓扑变化 ====================
-watch(() => props.staticConfig, () => {
-  machineMeshMap.forEach(({ bodyMat, lightMat }) => {
-    bodyMat?.dispose(); lightMat?.dispose()
-  })
-  machineMeshMap.clear()
-  while (machineGroup?.children.length) machineGroup.remove(machineGroup.children[0])
-  while (agvGroup?.children.length) agvGroup.remove(agvGroup.children[0])
-  agvDataList.length = 0
+watch(() => props.staticConfig, (newVal, oldVal) => {
+  // 配置引用变化（加载新配置）→ 全量重建
+  if (newVal !== oldVal) {
+    machineMeshMap.forEach(({ bodyMat, lightMat }) => {
+      bodyMat?.dispose(); lightMat?.dispose()
+    })
+    machineMeshMap.clear()
+    while (machineGroup?.children.length) machineGroup.remove(machineGroup.children[0])
+    while (agvGroup?.children.length) agvGroup.remove(agvGroup.children[0])
+    agvDataList.length = 0
 
-  nextTick(() => {
+    nextTick(() => {
+      buildStaticElements()
+      rebuildAGVs(0)
+    })
+    return
+  }
+
+  // 同一引用的深度变更（增删资产）→ 根据 hint 精准重建
+  const hint = store.rebuildHint
+
+  // 消费完 hint 后延迟清除，防止残留影响后续操作
+  if (hint) {
+    nextTick(() => { store.rebuildHint = null })
+  }
+
+  if (hint === 'zone') {
+    buildZones()
+  } else if (hint === 'machine') {
+    machineMeshMap.forEach(({ bodyMat, lightMat }) => {
+      bodyMat?.dispose(); lightMat?.dispose()
+    })
+    machineMeshMap.clear()
+    while (machineGroup?.children.length) machineGroup.remove(machineGroup.children[0])
+    buildMachines()
+  } else if (hint === 'waypoint') {
+    buildWaypoints()
+    buildEdges()
+  } else if (hint === 'agv') {
+    // AGV 数据不在 topology 中，由 updateFromStore 自动同步数量
+  } else if (!hint) {
+    // 无 hint（纯数据修正等场景）→ 仅同步重建静态元素
     buildStaticElements()
-    rebuildAGVs(0)
-  })
+  }
 }, { deep: true })
 
 // ==================== 监听编辑模式切换 ====================

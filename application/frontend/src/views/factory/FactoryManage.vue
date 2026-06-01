@@ -99,8 +99,9 @@ let eventSource = null;
 let connectionManager = null;
 
 onMounted(() => {
-  // 工厂初始化生命周期：
+  // 工厂初始化生命周期：清除上次残留状态
   console.log("✅ FactoryManage 已挂载");
+  store.reset();
 
   // 初始化多连接管理器
   const factoryId = store.selectedFactoryId;
@@ -193,6 +194,7 @@ onUnmounted(() => {
   if (stopTest) stopTest();
   if (eventSource) sseManager.disconnect(eventSource);
   if (connectionManager) connectionManager.disconnect();
+  store.clearAll();
 });
 </script>
 <style scoped>

@@ -67,9 +67,9 @@
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent } from "vue";
+import { ref, computed, defineAsyncComponent, onBeforeUnmount } from "vue";
 import { ElMessage } from "element-plus";
-import { useRouter } from "vue-router";
+import { useRouter, onBeforeRouteLeave } from "vue-router";
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import { useFactoryStore } from "@/stores/factory";
 import { apiPost, API_ROUTES } from "@/utils/api";
@@ -85,6 +85,18 @@ const factories = computed(() => factoryStore.getFactories());
 const currentFactory = computed(
   () => factories.value.find((f) => f.id === currentFactoryId.value) || {},
 );
+
+// 统一清理函数：断联后端 + 清理 store
+async function cleanupFactory() {
+  try {
+    await apiPost(API_ROUTES.FACTORY_CONTROL_DISCONNECT);
+  } catch (e) {
+    console.warn("[FactoryView] disconnect 失败:", e);
+  }
+  factoryStore.clearAll();
+  isInFactory.value = false;
+  currentFactoryId.value = null;
+}
 
 // 进入工厂
 const enterFactory = async (factoryId) => {
@@ -127,26 +139,29 @@ const enterFactory = async (factoryId) => {
   }
 };
 
-// 返回选择列表 — 清理状态 + 断联后端
-const backToSelector = async () => {
-  // 1. 清理前端 store (动画 + config + localStorage)
-  factoryStore.clearAll();
-
-  // 2. 断联后端，清理 proxy
-  try {
-    await apiPost(API_ROUTES.FACTORY_CONTROL_DISCONNECT);
-  } catch (e) {
-    console.warn("[FactoryView] disconnect 失败:", e);
-  }
-
-  isInFactory.value = false;
-  currentFactoryId.value = null;
+// 返回选择列表 — 统一清理
+const backToSelector = () => {
+  cleanupFactory();
 };
 
-// 返回主页 (Router)
-const backToHome = () => {
+// 返回主页 (Router) — 先清理再跳转
+const backToHome = async () => {
+  await cleanupFactory();
   router.push("/");
 };
+
+// 浏览器后退 / 路由跳转时清理
+onBeforeRouteLeave(async () => {
+  await cleanupFactory();
+});
+
+// 组件卸载兜底
+onBeforeUnmount(() => {
+  // sync 版本，防止 async 未完成
+  factoryStore.clearAll();
+  isInFactory.value = false;
+  currentFactoryId.value = null;
+});
 
 const currentFactoryComponent = computed(() => {
   if (!currentFactory.value) return null;

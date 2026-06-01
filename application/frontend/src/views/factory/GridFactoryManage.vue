@@ -22,13 +22,23 @@
             </span>
           </div>
           <div class="toolbar-right">
-            <select v-model="selectedEnvironment" class="plan-select" :disabled="isRunningTest">
-              <option value="simulation">仿真环境</option>
-              <option value="real">真实现场环境</option>
+            <!-- 三旋钮: FJSP / MAPF / Assigner -->
+            <select v-model="selectedFjsp" class="plan-select" :disabled="isRunningTest">
+              <option v-for="opt in fjspOptions" :key="opt.value" :value="opt.value"
+                :disabled="opt.disabled">
+                {{ opt.label }}
+              </option>
             </select>
-            <select v-model="selectedAlgorithm" class="plan-select" :disabled="isRunningTest">
-              <option v-for="algo in algorithmOptions" :key="algo.value" :value="algo.value">
-                {{ algo.label }}
+            <select v-model="selectedMapf" class="plan-select" :disabled="isRunningTest">
+              <option v-for="opt in mapfOptions" :key="opt.value" :value="opt.value"
+                :disabled="opt.disabled">
+                {{ opt.label }}
+              </option>
+            </select>
+            <select v-model="selectedAssigner" class="plan-select" :disabled="isRunningTest">
+              <option v-for="opt in assignerOptions" :key="opt.value" :value="opt.value"
+                :disabled="opt.disabled">
+                {{ opt.label }}
               </option>
             </select>
             <button @click="handleExecutePlan" class="glass-btn primary" :disabled="isRunningTest" title="上传选中的方案">
@@ -76,19 +86,38 @@ const monitorStore = useMonitorStore();
 // 清理函数引用
 let stopTest = null;
 
-// 算法配置列表：后续可以从后端 API 获取
-const algorithmOptions = ref([
-  { label: '默认生产运输', value: 'default' },
-  { label: '贪心算法优化', value: 'greedy' },
-  { label: '强化学习 (PPO)', value: 'rl_ppo' },
-  { label: '多代理协同 (MAPF)', value: 'mapf_v2' }
+// ==================== 三旋钮算法配置 ====================
+
+const fjspOptions = ref([
+  { label: 'PSO 粒子群', value: 'pso', disabled: true },
+  { label: 'DE 差分进化', value: 'de', disabled: true },
+  { label: 'DRL 深度强化学习', value: 'drl', disabled: true },
+  { label: 'BEST 最优搜索', value: 'best', disabled: false },
 ]);
 
+const mapfOptions = ref([
+  { label: 'A* 路由', value: 'astar', disabled: false },
+  { label: 'GPT 路由', value: 'mapf_gpt', disabled: true },
+]);
+
+const assignerOptions = ref([
+  { label: 'FIFO 先来先服务', value: 'fifo', disabled: true },
+  { label: '贪心分配', value: 'greedy', disabled: true },
+  { label: '匈牙利算法', value: 'hungarian', disabled: true },
+  { label: '最小拥堵', value: 'least_congestion', disabled: true },
+  { label: '负载均衡', value: 'load_balance', disabled: true },
+  { label: '最近分配', value: 'nearest', disabled: true },
+  { label: '随机分配', value: 'random', disabled: true },
+  { label: 'SJT 最短作业', value: 'sjt', disabled: true },
+  { label: '紧迫度优先', value: 'urgency', disabled: true },
+]);
+
+const selectedFjsp = ref('best');
+const selectedMapf = ref('astar');
+const selectedAssigner = ref('fifo');
 
 const isRunningTest = ref(false);
 const isEditMode = ref(false);
-const selectedEnvironment = ref("simulation");
-const selectedAlgorithm = ref("default");
 const connectionStatus = ref({
   control: "未连接",
   state: "未连接",
@@ -100,23 +129,30 @@ let eventSource = null;
 let connectionManager = null;
 
 onMounted(async () => {
-  // 工厂初始化生命周期：
+  // 工厂初始化生命周期：清除上次残留状态
   console.log("✅ GridFactory 已挂载");
+  store.reset();
 
-  // 获取后端算法配置列表
+  // 获取后端算法配置（含可用性）
   try {
     const data = await apiPost(API_ROUTES.ALGO, {});
-    if (Array.isArray(data)) {
-      algorithmOptions.value = data;
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      if (data.fjsp?.options) fjspOptions.value = data.fjsp.options;
+      if (data.mapf?.options) mapfOptions.value = data.mapf.options;
+      if (data.assigner?.options) assignerOptions.value = data.assigner.options;
     }
   } catch (error) {
     console.warn("[GridFactory] 获取算法列表失败，使用默认值:", error);
   }
 
-  // 如果想默认选中第一个
-  if (algorithmOptions.value.length > 0) {
-    selectedAlgorithm.value = algorithmOptions.value[0].value;
-  }
+  // 默认选中第一个未禁用的选项
+  const firstEnabled = (arr) => arr.find(o => !o.disabled);
+  const fjsp = firstEnabled(fjspOptions.value);
+  const mapf = firstEnabled(mapfOptions.value);
+  const assigner = firstEnabled(assignerOptions.value);
+  if (fjsp) selectedFjsp.value = fjsp.value;
+  if (mapf) selectedMapf.value = mapf.value;
+  if (assigner) selectedAssigner.value = assigner.value;
 });
 
 
@@ -127,31 +163,20 @@ onMounted(async () => {
 const handleExecutePlan = async () => {
   if (isRunningTest.value) return;
 
-  const environment = selectedEnvironment.value;
-  const algorithm = selectedAlgorithm.value;
+  const algorithm = `${selectedFjsp.value}+${selectedMapf.value}+${selectedAssigner.value}`;
+  console.log(`[GridFactory] 执行方案: ${algorithm}`);
 
-  console.log(`执行方案: 环境=${environment}, 算法=${algorithm}`);
-
-  // 如果选择真实环境，检查场景连接
-  if (environment === "real") {
-    // todo: 这里应该检查，确保已连接到真实场景
-    ElMessage.error("❌ 未连接到真实场景，无法执行实时调度");
-    return;
-  } else {
-    // 仿真环境：通过 SSE 与后端交互
-    isRunningTest.value = true;
-    try {
-      // 保存返回的清理函数
-      stopTest = await backendSystemTest(store, monitorStore, { algorithm }, () => {
-        isRunningTest.value = false;
-        stopTest = null;  // 清理完成后置空
-        ElMessage.success("✅ 仿真执行完成");
-      });
-    } catch (error) {
+  isRunningTest.value = true;
+  try {
+    stopTest = await backendSystemTest(store, monitorStore, { algorithm }, () => {
       isRunningTest.value = false;
       stopTest = null;
-      ElMessage.error(`仿真执行失败: ${error.message}`);
-    }
+      ElMessage.success("✅ 仿真执行完成");
+    });
+  } catch (error) {
+    isRunningTest.value = false;
+    stopTest = null;
+    ElMessage.error(`仿真执行失败: ${error.message}`);
   }
 };
 
@@ -159,7 +184,7 @@ const handleExecutePlan = async () => {
  * 测试 API 1: 设定调度策略
  */
 const testSetAlgorithm = async () => {
-  const algorithm = selectedAlgorithm.value;
+  const algorithm = `${selectedFjsp.value}+${selectedMapf.value}+${selectedAssigner.value}`;
   console.log('[Test] Step 1: 设定调度策略...', { algorithm });
   try {
     const result = await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, { algorithm }, { timeout: 15000 });
@@ -203,11 +228,12 @@ const testPlay = async () => {
 
 onUnmounted(() => {
   // 清理连接和测试
-  console.log("🛑 FactoryManage 卸载，清理连接和测试");
+  console.log("🛑 GridFactoryManage 卸载，清理连接和测试");
   if (stopTest) {
     stopTest();
     stopTest = null;
   }
+  store.clearAll();
 });
 </script>
 <style scoped>

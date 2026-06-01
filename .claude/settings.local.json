@@ -13,7 +13,11 @@
       "Bash(git commit:*)",
       "Bash(git rebase:*)",
       "Bash(git stash:*)",
-      "Bash(find /e/Project/GroupWork/skyengine/application/frontend -type f \\\\\\(-name *.js -o -name *.vue -o -name *.ts \\\\\\))"
+      "Bash(find /e/Project/GroupWork/skyengine/application/frontend -type f \\\\\\(-name *.js -o -name *.vue -o -name *.ts \\\\\\))",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)",
+      "mcp__web-search-prime__web_search_prime",
+      "mcp__web-reader__webReader"
     ]
   }
 }

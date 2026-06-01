@@ -63,6 +63,14 @@
                 :value="t.id"
               />
             </el-option-group>
+            <el-option-group label="装饰类">
+              <el-option
+                v-for="t in decorTemplates"
+                :key="t.id"
+                :label="t.icon + ' ' + t.name"
+                :value="t.id"
+              />
+            </el-option-group>
           </el-select>
 
           <!-- 预览槽 -->
@@ -205,6 +213,12 @@ const agvTemplates = computed(() =>
 const waypointTemplates = computed(() =>
   Object.entries(ASSET_TEMPLATES)
     .filter(([, t]) => t.type === 'waypoint')
+    .map(([id, t]) => ({ id, ...t }))
+)
+
+const decorTemplates = computed(() =>
+  Object.entries(ASSET_TEMPLATES)
+    .filter(([, t]) => t.template?.decor)
     .map(([id, t]) => ({ id, ...t }))
 )
 

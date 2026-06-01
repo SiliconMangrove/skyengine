@@ -1,9 +1,18 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, nextTick } from "vue";
+import { ZONE_COLORS } from "@/utils/assets";
 
 // ─────────────────────────────────────────────
 // 常量
 // ─────────────────────────────────────────────
+
+/** 将 Three.js 十六进制颜色转为 CSS rgba 字符串 */
+function hexToRgba(hex, alpha = 0.15) {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 const STORAGE_KEYS = {
   SELECTED_FACTORY: "selectedFactoryId",
   CURRENT_CONFIG_ID: "currentConfigId",
@@ -25,25 +34,25 @@ export const ASSET_TEMPLATES = Object.freeze({
     type: 'zone',
     icon: '🔒',
     name: '禁区',
-    template: { type: 'restricted', area: { x: 0, y: 0, w: 2, h: 2 }, color: 'rgba(255,235,59,0.15)' },
+    template: { type: 'restricted', area: { x: 0, y: 0, w: 2, h: 2 }, color: hexToRgba(ZONE_COLORS.restricted) },
   },
   zone_workbench: {
     type: 'zone',
     icon: '🔧',
     name: '工位',
-    template: { type: 'workbench', area: { x: 0, y: 0, w: 1, h: 1 }, color: 'rgba(0,136,204,0.15)' },
+    template: { type: 'workbench', area: { x: 0, y: 0, w: 1, h: 1 }, color: hexToRgba(ZONE_COLORS.workbench) },
   },
   zone_obstacle: {
     type: 'zone',
     icon: '🚫',
     name: '障碍物',
-    template: { type: 'obstacle', area: { x: 0, y: 0, w: 1, h: 1 }, color: 'rgba(102,51,51,0.15)' },
+    template: { type: 'obstacle', area: { x: 0, y: 0, w: 1, h: 1 }, color: hexToRgba(ZONE_COLORS.obstacle) },
   },
   zone_workarea: {
     type: 'zone',
     icon: '📦',
     name: '工作区',
-    template: { type: 'workarea', area: { x: 0, y: 0, w: 3, h: 2 }, color: 'rgba(0,170,102,0.15)' },
+    template: { type: 'workarea', area: { x: 0, y: 0, w: 3, h: 2 }, color: hexToRgba(ZONE_COLORS.workarea) },
   },
   machine: {
     type: 'machine',
@@ -68,6 +77,31 @@ export const ASSET_TEMPLATES = Object.freeze({
     icon: '🤖',
     name: 'AGV',
     template: { velocity: 1.0, capacity: 100, status: 'IDLE' },
+  },
+  // ── 装饰资产（统一编码为 obstacle 区域） ──
+  decor_bollard: {
+    type: 'zone',
+    icon: '🔶',
+    name: '警示柱',
+    template: { type: 'obstacle', decor: 'bollard', area: { x: 0, y: 0, w: 1, h: 1 }, color: hexToRgba(ZONE_COLORS.obstacle) },
+  },
+  decor_rack: {
+    type: 'zone',
+    icon: '🗄️',
+    name: '储物架',
+    template: { type: 'obstacle', decor: 'rack', area: { x: 0, y: 0, w: 1, h: 1 }, color: hexToRgba(ZONE_COLORS.obstacle) },
+  },
+  decor_cabinet: {
+    type: 'zone',
+    icon: '🔌',
+    name: '配电箱',
+    template: { type: 'obstacle', decor: 'cabinet', area: { x: 0, y: 0, w: 1, h: 1 }, color: hexToRgba(ZONE_COLORS.obstacle) },
+  },
+  decor_barrier: {
+    type: 'zone',
+    icon: '🚧',
+    name: '安全隔离栏',
+    template: { type: 'obstacle', decor: 'barrier', area: { x: 0, y: 0, w: 3, h: 1 }, color: hexToRgba(ZONE_COLORS.obstacle) },
   },
 });
 
@@ -226,6 +260,9 @@ export const useFactoryStore = defineStore("factory", () => {
     readStorage(STORAGE_KEYS.CURRENT_CONFIG_ID, null),
   );
 
+  /** 3D 重建提示：记录最近一次编辑操作的资产类型，供 watch 精准局部重建 */
+  const rebuildHint = ref(null);   // 'zone' | 'machine' | 'waypoint' | 'agv' | null
+
   const currentConfig = computed(() => {
     if (!currentConfigId.value) return null;
     return factoryConfigs.value[currentConfigId.value] ?? null;
@@ -369,12 +406,26 @@ export const useFactoryStore = defineStore("factory", () => {
     const agvs = getAGVs();
     const list = [];
 
+    const ZONE_ICON_MAP = {
+      restricted: '🔒',
+      workbench: '🔧',
+      obstacle: '🚫',
+      workarea: '📦',
+    };
+    const DECOR_ICON_MAP = {
+      bollard: '🔶',
+      rack: '🗄️',
+      cabinet: '🔌',
+      barrier: '🚧',
+    };
+
     zones.forEach((zone) => {
+      const isDecor = !!zone.decor;
       list.push({
         type: "zone",
-        icon: "🔒",
+        icon: isDecor ? (DECOR_ICON_MAP[zone.decor] ?? '🚫') : (ZONE_ICON_MAP[zone.type] ?? '🔒'),
         name: zone.name ?? `Zone ${zone.id}`,
-        description: `区域类型: ${zone.type ?? "unknown"}`,
+        description: isDecor ? `装饰物: ${zone.decor}` : `区域类型: ${zone.type ?? "unknown"}`,
         data: zone,
       });
     });
@@ -500,6 +551,9 @@ export const useFactoryStore = defineStore("factory", () => {
     const cfg = currentConfig.value;
     if (!cfg) throw new Error('请先加载或创建配置');
 
+    // 设置重建提示，让 3D 组件只重建受影响的组
+    rebuildHint.value = tpl.type;
+
     const topo = cfg.topology;
     const gw = topo.gridWidth || 20;
     const gh = topo.gridHeight || 14;
@@ -537,6 +591,8 @@ export const useFactoryStore = defineStore("factory", () => {
     }
 
     _persistConfigs();
+    // rebuildHint 由 3D 组件的 deep watcher 负责清除，
+    // 避免 nextTick 时序竞争导致 watcher 读到 null 而触发全量重建。
     return defaultName;
   }
 
@@ -608,6 +664,8 @@ export const useFactoryStore = defineStore("factory", () => {
     if (!cfg) return;
     const topo = cfg.topology;
 
+    rebuildHint.value = assetType;
+
     if (assetType === 'machine' && topo.machines) {
       delete topo.machines[assetId];
     } else if (assetType === 'waypoint' && topo.waypoints) {
@@ -618,6 +676,7 @@ export const useFactoryStore = defineStore("factory", () => {
       cfg.agvs = cfg.agvs.filter(a => String(a.id) !== String(assetId));
     }
     _persistConfigs();
+    // rebuildHint 由 3D 组件的 deep watcher 负责清除。
   }
 
   /**
@@ -802,6 +861,7 @@ export const useFactoryStore = defineStore("factory", () => {
     currentConfig,
     currentTopologyConfig,
     currentRenderConfig,
+    rebuildHint,
     loadConfigFromFile,
     setCurrentConfig,
     getLoadedConfigs,

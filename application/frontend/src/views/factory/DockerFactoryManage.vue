@@ -142,6 +142,7 @@ const connectionStatus = ref({
 
 onMounted(async () => {
   console.log("✅ DockerFactoryManage 已挂载");
+  store.reset();
 
   // 获取后端算法配置（含镜像可用性）
   try {
@@ -236,10 +237,12 @@ const testPlay = async () => {
 };
 
 onUnmounted(() => {
+  console.log("🛑 DockerFactoryManage 卸载");
   if (stopTest) {
     stopTest();
     stopTest = null;
   }
+  store.clearAll();
 });
 </script>
 

@@ -227,7 +227,16 @@ const EVENTS_LOG = [
 /**
  * 驱动器：负责按时间节拍将数据推送到 Store 中
  */
-export function runFullSystemTest(factoryStore, monitorStore, onFinish) {
+export function runFullSystemTest(factoryStore, monitorStore, speedOrOnFinish, onFinish) {
+    // 兼容旧调用: (store, monitor, onFinish) 和新调用: (store, monitor, speed, onFinish)
+    let speed = 1500;
+    let callback = onFinish;
+    if (typeof speedOrOnFinish === 'function') {
+        callback = speedOrOnFinish;
+    } else if (typeof speedOrOnFinish === 'number') {
+        speed = speedOrOnFinish;
+    }
+
     let frameIndex = 0;
     const TOTAL_STEPS = 55; // 0-54 共 55 步
 
@@ -242,7 +251,7 @@ export function runFullSystemTest(factoryStore, monitorStore, onFinish) {
         if (frameIndex >= TOTAL_STEPS) {
             clearInterval(timer);
             factoryStore.isPlaying = false;
-            if (onFinish) onFinish();
+            if (callback) callback();
             return;
         }
 
@@ -311,7 +320,7 @@ export function runFullSystemTest(factoryStore, monitorStore, onFinish) {
         }
 
         frameIndex++;
-    }, 1500); // 模拟每 1.5 秒产生一个新时间步
+    }, speed); // 模拟每 speed 毫秒产生一个新时间步
 
     // 返回停止句柄
     return () => clearInterval(timer);
