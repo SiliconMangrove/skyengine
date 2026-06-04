@@ -17,7 +17,7 @@
         </div>
         <FactoryVisualization3D v-else :static-config="topologyConfig" :baseGridSize="renderConfig.baseGridSize"
           :defaultGridWidth="renderConfig.gridWidth" :defaultGridHeight="renderConfig.gridHeight"
-          :editMode="isEditMode">
+          :editMode="isEditMode" :backgroundTheme="backgroundTheme" :backgroundSize="backgroundSize">
           <template #header>
             <div class="floating-toolbar">
               <div class="toolbar-left">
@@ -61,6 +61,14 @@ const props = defineProps({
   editMode: {
     type: Boolean,
     default: false
+  },
+  backgroundTheme: {
+    type: String,
+    default: 'clean'
+  },
+  backgroundSize: {
+    type: Number,
+    default: 2
   }
 });
 

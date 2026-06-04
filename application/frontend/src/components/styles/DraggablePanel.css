@@ -1,0 +1,193 @@
+/* ============================================================
+   DraggablePanel — 高科技透明玻璃风格
+   ============================================================ */
+
+.draggable-panel {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+
+  /* 玻璃底板 */
+  background: rgba(10, 14, 28, 0.72);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.35),
+    0 0 1px rgba(100, 180, 255, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  user-select: none;
+}
+
+/* hover 微光 */
+.draggable-panel:hover {
+  border-color: rgba(100, 180, 255, 0.28);
+  box-shadow:
+    0 4px 28px rgba(0, 0, 0, 0.4),
+    0 0 8px rgba(100, 180, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 拖拽中 */
+.draggable-panel.dragging {
+  border-color: rgba(100, 180, 255, 0.4);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.5),
+    0 0 16px rgba(100, 180, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: none;
+}
+
+/* 折叠态 */
+.draggable-panel.collapsed {
+  min-width: auto !important;
+}
+
+/* ============================================================
+   标题栏
+   ============================================================ */
+
+.dp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 10px;
+  background: linear-gradient(180deg, rgba(100, 180, 255, 0.08) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(100, 180, 255, 0.1);
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.dp-header:active {
+  cursor: grabbing;
+}
+
+.dp-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.dp-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.dp-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: rgba(200, 220, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 标题栏按钮组 */
+.dp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.dp-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(160, 190, 230, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.dp-action-btn:hover {
+  background: rgba(100, 180, 255, 0.12);
+  color: rgba(200, 220, 255, 0.95);
+}
+
+.dp-close-btn {
+  font-size: 18px;
+}
+
+/* 折叠箭头 */
+.dp-chevron {
+  display: inline-block;
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.dp-chevron.rotated {
+  transform: rotate(-90deg);
+}
+
+/* ============================================================
+   内容区
+   ============================================================ */
+
+.dp-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: rgba(200, 220, 255, 0.85);
+  font-size: 12px;
+}
+
+/* 滚动条 */
+.dp-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dp-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dp-body::-webkit-scrollbar-thumb {
+  background: rgba(100, 180, 255, 0.2);
+  border-radius: 2px;
+}
+
+.dp-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 180, 255, 0.35);
+}
+
+/* 折叠态提示 */
+.dp-collapsed-hint {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: rgba(160, 190, 230, 0.5);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================
+   过渡动画
+   ============================================================ */
+
+.draggable-panel {
+  animation: dp-fade-in 0.25s ease-out;
+}
+
+@keyframes dp-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+  }
+}

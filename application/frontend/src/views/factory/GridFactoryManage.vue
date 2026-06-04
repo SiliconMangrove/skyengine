@@ -1,75 +1,108 @@
 <template>
   <div class="factory-manage-container">
-    <div class="left-panel">
-      <ControlPanel :disabled="isEditMode" />
+    <!-- 工厂可视化 (全屏) -->
+    <div class="middle-panel">
+      <FactoryPlayerSSE :hide-control-panel="true" :edit-mode="isEditMode" :background-theme="backgroundTheme" :background-size="backgroundSize" />
     </div>
 
-    <div class="middle-panel">
-      <FactoryPlayerSSE :hide-control-panel="true" :edit-mode="isEditMode" />
+    <!-- 唯一浮动面板: Tab 切换 -->
+    <DraggablePanel
+      v-if="showPanel"
+      :title="currentTab.label"
+      :icon="currentTab.icon"
+      :width="300"
+      :initial-pos="{ x: 12, y: 12 }"
+      :max-height="0"
+      @close="showPanel = false"
+    >
+      <!-- Tab 栏 -->
+      <div class="dp-tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          class="dp-tab-btn"
+          :class="{ active: activeTab === tab.key }"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.icon }} {{ tab.label }}
+        </button>
+      </div>
 
-      <div class="floating-toolbar-wrapper">
-        <div class="floating-toolbar">
-          <div class="toolbar-left">
-            <span class="toolbar-title">🏭 仿真工作台</span>
-            <span class="divider">|</span>
-            <span class="toolbar-label">状态: {{ isRunningTest ? "运行中..." : "就绪" }}</span>
-            <span class="divider">|</span>
-            <span class="toolbar-label connection-status" :class="connectionStatus.scenario === '已连接'
-              ? 'connected'
-              : 'disconnected'
-              ">
-              现场场景: {{ connectionStatus.scenario }}
-            </span>
-          </div>
-          <div class="toolbar-right">
-            <!-- 三旋钮: FJSP / MAPF / Assigner -->
-            <select v-model="selectedFjsp" class="plan-select" :disabled="isRunningTest">
-              <option v-for="opt in fjspOptions" :key="opt.value" :value="opt.value"
-                :disabled="opt.disabled">
-                {{ opt.label }}
-              </option>
-            </select>
-            <select v-model="selectedMapf" class="plan-select" :disabled="isRunningTest">
-              <option v-for="opt in mapfOptions" :key="opt.value" :value="opt.value"
-                :disabled="opt.disabled">
-                {{ opt.label }}
-              </option>
-            </select>
-            <select v-model="selectedAssigner" class="plan-select" :disabled="isRunningTest">
-              <option v-for="opt in assignerOptions" :key="opt.value" :value="opt.value"
-                :disabled="opt.disabled">
-                {{ opt.label }}
-              </option>
-            </select>
-            <button @click="handleExecutePlan" class="glass-btn primary" :disabled="isRunningTest" title="上传选中的方案">
-              🚀 上传选中方案
-            </button>
-          </div>
+      <!-- 仿真 Tab: 算法选择 + 启动 -->
+      <div v-if="activeTab === 'simulation'" class="simulation-tab">
+        <div class="sim-field">
+          <label>FJSP 排程</label>
+          <select v-model="selectedFjsp" class="plan-select" :disabled="isRunningTest">
+            <option v-for="opt in fjspOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+        <div class="sim-field">
+          <label>MAPF 路由</label>
+          <select v-model="selectedMapf" class="plan-select" :disabled="isRunningTest">
+            <option v-for="opt in mapfOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+        <div class="sim-field">
+          <label>任务分配</label>
+          <select v-model="selectedAssigner" class="plan-select" :disabled="isRunningTest">
+            <option v-for="opt in assignerOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+        <button @click="handleExecutePlan" class="launch-btn" :disabled="isRunningTest">
+          🚀 启动仿真
+        </button>
+
+        <div class="sim-field" style="margin-top: 4px">
+          <label>场景风格</label>
+          <select v-model="backgroundTheme" class="plan-select">
+            <option value="clean">简洁</option>
+            <option value="factory">工厂车间</option>
+          </select>
         </div>
 
-        <!-- API 测试按钮组 -->
-        <div class="api-test-toolbar">
-          <span class="test-label">API 测试:</span>
-          <button @click="testSetAlgorithm" class="test-btn" :disabled="isRunningTest" title="测试设定调度策略">
-            1️⃣ 设定策略
-          </button>
-          <button @click="testReset" class="test-btn" :disabled="isRunningTest" title="测试重置工厂">
-            2️⃣ 重置工厂
-          </button>
-          <button @click="testPlay" class="test-btn" :disabled="isRunningTest" title="测试启动执行">
-            3️⃣ 启动执行
-          </button>
+        <div v-if="backgroundTheme === 'factory'" class="sim-field">
+          <label>厂房尺寸</label>
+          <select v-model.number="backgroundSize" class="plan-select">
+            <option :value="1">紧凑</option>
+            <option :value="2">标准</option>
+            <option :value="3">宽敞</option>
+            <option :value="4">大厅</option>
+          </select>
         </div>
       </div>
-    </div>
 
-    <RightSidePanel ref="rightSidePanelRef" config-panel-title="⚙️ 仿真配置" :show-chart="true"
-      event-panel-title="📋 系统日志" @edit-mode-change="isEditMode = $event" />
+      <!-- 控制 Tab -->
+      <ControlPanel v-if="activeTab === 'control'" :disabled="isEditMode" />
+
+      <!-- 配置 Tab -->
+      <ConfigPanel
+        v-if="activeTab === 'config'"
+        ref="configPanelRef"
+        @edit-mode-change="isEditMode = $event"
+      />
+
+      <!-- 指标 Tab -->
+      <MetricsPanel v-if="activeTab === 'metrics'" :show-chart="true" />
+
+      <!-- 日志 Tab -->
+      <EventPanel v-if="activeTab === 'events'" title="系统日志" />
+    </DraggablePanel>
+
+    <!-- 边缘切换按钮 -->
+    <button v-if="!showPanel" class="panel-toggle left" @click="showPanel = true">
+      ▶ 面板
+    </button>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
@@ -78,65 +111,75 @@ import { apiPost, API_ROUTES } from "@/utils/api";
 
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import ControlPanel from "@/components/ControlPanel.vue";
-import RightSidePanel from "@/components/RightSidePanel.vue";
+import ConfigPanel from "@/components/ConfigPanel.vue";
+import MetricsPanel from "@/components/MetricsPanel.vue";
+import EventPanel from "@/components/EventPanel.vue";
+import DraggablePanel from "@/components/DraggablePanel.vue";
 
 const store = useFactoryStore();
 const monitorStore = useMonitorStore();
 
-// 清理函数引用
-let stopTest = null;
+// ==================== 面板状态 ====================
+
+const showPanel = ref(true);
+const activeTab = ref("simulation");
+
+const tabs = [
+  { key: "simulation", label: "仿真", icon: "🚀" },
+  { key: "control", label: "控制", icon: "⚙️" },
+  { key: "config", label: "配置", icon: "🔧" },
+  { key: "metrics", label: "指标", icon: "📊" },
+  { key: "events", label: "日志", icon: "📋" },
+];
+
+const currentTab = computed(() => tabs.find((t) => t.key === activeTab.value) || tabs[0]);
+
+const isEditMode = ref(false);
+const isRunningTest = ref(false);
+const backgroundTheme = ref("clean");
+const backgroundSize = ref(2);
 
 // ==================== 三旋钮算法配置 ====================
 
 const fjspOptions = ref([
-  { label: 'PSO 粒子群', value: 'pso', disabled: true },
-  { label: 'DE 差分进化', value: 'de', disabled: true },
-  { label: 'DRL 深度强化学习', value: 'drl', disabled: true },
-  { label: 'BEST 最优搜索', value: 'best', disabled: false },
+  { label: "PSO 粒子群", value: "pso", disabled: true },
+  { label: "DE 差分进化", value: "de", disabled: true },
+  { label: "DRL 深度强化学习", value: "drl", disabled: true },
+  { label: "BEST 最优搜索", value: "best", disabled: false },
 ]);
 
 const mapfOptions = ref([
-  { label: 'A* 路由', value: 'astar', disabled: false },
-  { label: 'GPT 路由', value: 'mapf_gpt', disabled: true },
+  { label: "A* 路由", value: "astar", disabled: false },
+  { label: "GPT 路由", value: "mapf_gpt", disabled: true },
 ]);
 
 const assignerOptions = ref([
-  { label: 'FIFO 先来先服务', value: 'fifo', disabled: true },
-  { label: '贪心分配', value: 'greedy', disabled: true },
-  { label: '匈牙利算法', value: 'hungarian', disabled: true },
-  { label: '最小拥堵', value: 'least_congestion', disabled: true },
-  { label: '负载均衡', value: 'load_balance', disabled: true },
-  { label: '最近分配', value: 'nearest', disabled: true },
-  { label: '随机分配', value: 'random', disabled: true },
-  { label: 'SJT 最短作业', value: 'sjt', disabled: true },
-  { label: '紧迫度优先', value: 'urgency', disabled: true },
+  { label: "FIFO 先来先服务", value: "fifo", disabled: true },
+  { label: "贪心分配", value: "greedy", disabled: true },
+  { label: "匈牙利算法", value: "hungarian", disabled: true },
+  { label: "最小拥堵", value: "least_congestion", disabled: true },
+  { label: "负载均衡", value: "load_balance", disabled: true },
+  { label: "最近分配", value: "nearest", disabled: true },
+  { label: "随机分配", value: "random", disabled: true },
+  { label: "SJT 最短作业", value: "sjt", disabled: true },
+  { label: "紧迫度优先", value: "urgency", disabled: true },
 ]);
 
-const selectedFjsp = ref('best');
-const selectedMapf = ref('astar');
-const selectedAssigner = ref('fifo');
+const selectedFjsp = ref("best");
+const selectedMapf = ref("astar");
+const selectedAssigner = ref("fifo");
 
-const isRunningTest = ref(false);
-const isEditMode = ref(false);
-const connectionStatus = ref({
-  control: "未连接",
-  state: "未连接",
-  metrics: "未连接",
-  scenario: "未连接",
-});
+// ==================== 生命周期 ====================
 
-let eventSource = null;
-let connectionManager = null;
+let stopTest = null;
 
 onMounted(async () => {
-  // 工厂初始化生命周期：清除上次残留状态
-  console.log("✅ GridFactory 已挂载");
+  console.log("[GridFactory] 已挂载");
   store.reset();
 
-  // 获取后端算法配置（含可用性）
   try {
     const data = await apiPost(API_ROUTES.ALGO, {});
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
+    if (data && typeof data === "object" && !Array.isArray(data)) {
       if (data.fjsp?.options) fjspOptions.value = data.fjsp.options;
       if (data.mapf?.options) mapfOptions.value = data.mapf.options;
       if (data.assigner?.options) assignerOptions.value = data.assigner.options;
@@ -145,8 +188,7 @@ onMounted(async () => {
     console.warn("[GridFactory] 获取算法列表失败，使用默认值:", error);
   }
 
-  // 默认选中第一个未禁用的选项
-  const firstEnabled = (arr) => arr.find(o => !o.disabled);
+  const firstEnabled = (arr) => arr.find((o) => !o.disabled);
   const fjsp = firstEnabled(fjspOptions.value);
   const mapf = firstEnabled(mapfOptions.value);
   const assigner = firstEnabled(assignerOptions.value);
@@ -155,11 +197,11 @@ onMounted(async () => {
   if (assigner) selectedAssigner.value = assigner.value;
 });
 
+// ==================== 执行方案 ====================
 
+const SIMULATION_TIMEOUT_MS = 30_000;
+let simulationTimeout = null;
 
-/**
- * 执行方案
- */
 const handleExecutePlan = async () => {
   if (isRunningTest.value) return;
 
@@ -167,68 +209,34 @@ const handleExecutePlan = async () => {
   console.log(`[GridFactory] 执行方案: ${algorithm}`);
 
   isRunningTest.value = true;
+
+  simulationTimeout = setTimeout(() => {
+    if (isRunningTest.value) {
+      ElMessage.warning("仿真启动超时，请检查后端服务是否正常运行");
+    }
+  }, SIMULATION_TIMEOUT_MS);
+
   try {
     stopTest = await backendSystemTest(store, monitorStore, { algorithm }, () => {
+      clearTimeout(simulationTimeout);
+      simulationTimeout = null;
       isRunningTest.value = false;
       stopTest = null;
-      ElMessage.success("✅ 仿真执行完成");
+      ElMessage.success("仿真执行完成");
     });
   } catch (error) {
+    clearTimeout(simulationTimeout);
+    simulationTimeout = null;
     isRunningTest.value = false;
     stopTest = null;
     ElMessage.error(`仿真执行失败: ${error.message}`);
   }
 };
 
-/**
- * 测试 API 1: 设定调度策略
- */
-const testSetAlgorithm = async () => {
-  const algorithm = `${selectedFjsp.value}+${selectedMapf.value}+${selectedAssigner.value}`;
-  console.log('[Test] Step 1: 设定调度策略...', { algorithm });
-  try {
-    const result = await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, { algorithm }, { timeout: 15000 });
-    console.log('[Test] Step 1 完成:', result);
-    ElMessage.success(`✅ 设定策略成功: ${algorithm}`);
-  } catch (error) {
-    console.error('[Test] Step 1 失败:', error);
-    ElMessage.error(`❌ 设定策略失败: ${error.message}`);
-  }
-};
-
-/**
- * 测试 API 2: 重置工厂
- */
-const testReset = async () => {
-  console.log('[Test] Step 2: 发送重置命令...');
-  try {
-    const result = await apiPost(API_ROUTES.FACTORY_CONTROL_RESET, null, { timeout: 15000 });
-    console.log('[Test] Step 2 完成:', result);
-    ElMessage.success('✅ 重置工厂成功');
-  } catch (error) {
-    console.error('[Test] Step 2 失败:', error);
-    ElMessage.error(`❌ 重置工厂失败: ${error.message}`);
-  }
-};
-
-/**
- * 测试 API 3: 启动执行
- */
-const testPlay = async () => {
-  console.log('[Test] Step 3: 发送启动命令...');
-  try {
-    const result = await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 15000 });
-    console.log('[Test] Step 3 完成:', result);
-    ElMessage.success('✅ 启动执行成功');
-  } catch (error) {
-    console.error('[Test] Step 3 失败:', error);
-    ElMessage.error(`❌ 启动执行失败: ${error.message}`);
-  }
-};
-
 onUnmounted(() => {
-  // 清理连接和测试
-  console.log("🛑 GridFactoryManage 卸载，清理连接和测试");
+  console.log("[GridFactory] 卸载，清理连接和测试");
+  clearTimeout(simulationTimeout);
+  simulationTimeout = null;
   if (stopTest) {
     stopTest();
     stopTest = null;
@@ -236,47 +244,109 @@ onUnmounted(() => {
   store.clearAll();
 });
 </script>
+
 <style scoped>
 @import "../styles/FactoryManage.css";
 
-.api-test-toolbar {
+/* ==================== Tab 栏 ==================== */
+
+.dp-tabs {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(30, 30, 40, 0.85);
-  border-radius: 8px;
-  margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  pointer-events: auto;
-  /* 恢复点击事件，因为父元素 wrapper 设置了 pointer-events: none */
+  border-bottom: 1px solid rgba(100, 180, 255, 0.1);
+  padding: 0 4px;
+  flex-shrink: 0;
 }
 
-.test-label {
-  color: #a0a0a0;
-  font-size: 12px;
-  margin-right: 4px;
-}
-
-.test-btn {
-  padding: 6px 12px;
-  font-size: 12px;
-  border: 1px solid rgba(100, 180, 255, 0.3);
-  border-radius: 6px;
-  background: rgba(60, 120, 200, 0.2);
-  color: #b0d0ff;
+.dp-tab-btn {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  background: transparent;
+  color: rgba(160, 190, 230, 0.5);
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 
-.test-btn:hover:not(:disabled) {
-  background: rgba(60, 120, 200, 0.4);
-  border-color: rgba(100, 180, 255, 0.6);
-  color: #ffffff;
+.dp-tab-btn:hover {
+  color: rgba(200, 220, 255, 0.8);
 }
 
-.test-btn:disabled {
+.dp-tab-btn.active {
+  color: rgba(200, 220, 255, 0.95);
+  border-bottom-color: rgba(100, 180, 255, 0.6);
+}
+
+/* ==================== 仿真 Tab 内容 ==================== */
+
+.simulation-tab {
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sim-field label {
+  font-size: 11px;
+  color: rgba(160, 190, 230, 0.6);
+  font-weight: 500;
+}
+
+.plan-select {
+  padding: 7px 10px;
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  background: rgba(20, 25, 45, 0.6);
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(200, 220, 255, 0.9);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.plan-select option {
+  background: #141929;
+  color: rgba(200, 220, 255, 0.9);
+}
+
+.plan-select:hover:not(:disabled) {
+  border-color: rgba(100, 180, 255, 0.35);
+}
+
+.plan-select:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.launch-btn {
+  margin-top: 4px;
+  padding: 9px 0;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: rgba(200, 220, 255, 0.95);
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.launch-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.7) 0%, rgba(118, 75, 162, 0.7) 100%);
+  box-shadow: 0 0 16px rgba(102, 126, 234, 0.25);
+}
+
+.launch-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 </style>

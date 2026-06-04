@@ -58,25 +58,27 @@ async def stream_state():
         while True:
             try:
                 if current_factory_proxy is None:
-                    # ✅ 不要 return，继续循环等待工厂加载
                     yield format_sse_message("state", {"status": "no_factory"})
                     await asyncio.sleep(2.0)
                     continue
-                # 只在工厂运行时发送数据
 
+                # DockerProxy 等支持透传的代理：逐事件流式传输
+                if hasattr(current_factory_proxy, "state_stream") and current_factory_proxy.is_running():
+                    async for event_type, data in current_factory_proxy.state_stream():
+                        yield format_sse_message(event_type, data)
+                    continue
+
+                # 其他代理：轮询 get_state_events()
                 events = await current_factory_proxy.get_state_events()
-                print(f"State events: {events}")
                 if events:
                     for event_type, data in events:
                         yield format_sse_message(event_type, data)
                 else:
-                    # 工厂未运行时，发送空闲状态
                     yield format_sse_message(
                         "state", {"status": "idle", "message": "Factory is not running"}
                     )
                     await asyncio.sleep(2.0)
-
-                await asyncio.sleep(0.1)  # 减少轮询间隔，避免状态丢失
+                await asyncio.sleep(0.1)
             except Exception as e:
                 yield format_sse_message(
                     "state", {"status": "error", "message": str(e)}
@@ -103,8 +105,34 @@ async def stream_metrics():
 
     async def generate():
         while True:
-            yield format_sse_message("state", {"status": "idle"})
-            await asyncio.sleep(1.5)  # 确保是 asyncio.sleep 不是 time.sleep
+            try:
+                if current_factory_proxy is None:
+                    yield format_sse_message("metrics", {"status": "no_factory"})
+                    await asyncio.sleep(2.0)
+                    continue
+
+                # DockerProxy 等支持透传的代理
+                if hasattr(current_factory_proxy, "metrics_stream") and current_factory_proxy.is_running():
+                    async for event_type, data in current_factory_proxy.metrics_stream():
+                        yield format_sse_message(event_type, data)
+                    continue
+
+                # 其他代理：轮询
+                if current_factory_proxy.is_running():
+                    events = await current_factory_proxy.get_metrics_events()
+                    for event_type, data in events:
+                        yield format_sse_message(event_type, data)
+                else:
+                    yield format_sse_message(
+                        "metrics",
+                        {"status": "idle", "message": "Factory is not running"},
+                    )
+                    await asyncio.sleep(2.0)
+            except Exception as e:
+                yield format_sse_message(
+                    "metrics", {"status": "error", "message": str(e)}
+                )
+                break
 
     return StreamingResponse(
         generate(),
@@ -115,43 +143,6 @@ async def stream_metrics():
             "Connection": "keep-alive",
         },
     )
-    # async def generate():
-    #     while True:
-    #         try:
-    #             if current_factory_proxy is None:
-    #                 # ✅ 不要 return，继续循环等待工厂加载
-    #                 yield format_sse_message("state", {"status": "no_factory"})
-    #                 await asyncio.sleep(2.0)
-    #                 continue
-    #             # 只在工厂运行时发送数据
-    #             if current_factory_proxy.is_running():
-    #                 # 从工厂代理获取事件列表（支持多事件类型）
-    #                 events = await current_factory_proxy.get_metrics_events()
-    #                 for event_type, data in events:
-    #                     yield format_sse_message(event_type, data)
-    #             else:
-    #                 # 工厂未运行时，发送空闲状态
-    #                 yield format_sse_message(
-    #                     "metrics",
-    #                     {"status": "idle", "message": "Factory is not running"},
-    #                 )
-    #                 await asyncio.sleep(2.0)
-
-    #         except Exception as e:
-    #             yield format_sse_message(
-    #                 "metrics", {"status": "error", "message": str(e)}
-    #             )
-    #             break
-
-    # return StreamingResponse(
-    #     generate(),
-    #     media_type="text/event-stream",
-    #     headers={
-    #         "Cache-Control": "no-cache",
-    #         "X-Accel-Buffering": "no",
-    #         "Connection": "keep-alive",
-    #     },
-    # )
 
 
 # 工厂控制流（简化路由，不使用 factory_id）
@@ -163,8 +154,21 @@ async def stream_control():
 
     async def generate():
         while True:
-            yield format_sse_message("control", {"status": "idle"})
-            await asyncio.sleep(2.0)
+            try:
+                if current_factory_proxy is None:
+                    yield format_sse_message("control", {"status": "no_factory"})
+                    await asyncio.sleep(2.0)
+                    continue
+
+                events = await current_factory_proxy.get_control_events()
+                for event_type, data in events:
+                    yield format_sse_message(event_type, data)
+                await asyncio.sleep(2.0)
+            except Exception as e:
+                yield format_sse_message(
+                    "control", {"status": "error", "message": str(e)}
+                )
+                break
 
     return StreamingResponse(
         generate(),
@@ -175,35 +179,6 @@ async def stream_control():
             "Connection": "keep-alive",
         },
     )
-    # async def generate():
-    #     while True:
-    #         try:
-    #             if current_factory_proxy is None:
-    #                 # ✅ 不要 return，继续循环等待工厂加载
-    #                 yield format_sse_message("state", {"status": "no_factory"})
-    #                 await asyncio.sleep(2.0)
-    #                 continue
-    #             # 控制流始终发送状态（包括 idle/running/paused）
-    #             events = await current_factory_proxy.get_control_events()
-    #             for event_type, data in events:
-    #                 yield format_sse_message(event_type, data)
-
-    #             await asyncio.sleep(2.0)  # 控制状态更新频率较低
-    #         except Exception as e:
-    #             yield format_sse_message(
-    #                 "control", {"status": "error", "message": str(e)}
-    #             )
-    #             break
-
-    # return StreamingResponse(
-    #     generate(),
-    #     media_type="text/event-stream",
-    #     headers={
-    #         "Cache-Control": "no-cache",
-    #         "X-Accel-Buffering": "no",
-    #         "Connection": "keep-alive",
-    #     },
-    # )
 
 
 @app.get("/factory")

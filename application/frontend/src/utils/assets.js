@@ -86,6 +86,48 @@ export const DECOR = {
 export const HIGHLIGHT_COLOR = 0x667eea
 export const HIGHLIGHT_COLLISION_COLOR = 0xff3355
 
+// ==================== 工厂背景主题 ====================
+export const BACKGROUND_THEMES = {
+  clean: {
+    name: '简洁',
+    bgColor: 0xf0f2f5,
+    groundColor: 0xe8eaed,
+    fogNear: 60,
+    fogFar: 150,
+    ambientIntensity: 1.8,
+    sunIntensity: 3.0,
+    bgScale: 1,
+  },
+  factory: {
+    name: '工厂车间',
+    bgColor: 0x1a1d24,
+    groundColor: 0x2a2d35,
+    fogNear: 40,
+    fogFar: 180,
+    ambientIntensity: 1.2,
+    sunIntensity: 2.0,
+    bgScale: 2,
+  },
+}
+
+/** 厂房尺寸预设 */
+export const FACTORY_SIZE_PRESETS = [
+  { key: 1,   label: '紧凑', spread: 1.5, ceiling: 4 },
+  { key: 2,   label: '标准', spread: 3,   ceiling: 6 },
+  { key: 3,   label: '宽敞', spread: 5,   ceiling: 8 },
+  { key: 4,   label: '大厅', spread: 8,   ceiling: 10 },
+]
+
+export const FACTORY_BG = {
+  floorMarking: 0xd4a017,     // 黄色安全线
+  pillar: 0x556677,           // 钢柱
+  pillarBase: 0x3a3f4a,       // 柱基
+  beam: 0x4a5060,             // 天花板横梁
+  distantWall: 0x252830,      // 远景墙面
+  overheadLight: 0xffeedd,    // 顶灯色温
+  overheadLightGlow: 0xfff5e6,
+}
+
 // ==================== 3D 资产构建函数 ====================
 // 每个 createXxx(U) 接收网格单元大小，返回居中原点的 THREE.Group，
 // 由调用方负责定位和挂载。
@@ -535,4 +577,235 @@ export function createAGV(U, index) {
 
   group.userData = { id: `AGV-${index + 1}` }
   return { group, chassisMat, lightMat }
+}
+
+// ==================== 工厂背景构建 ====================
+
+/**
+ * 工厂背景层 — 营造工业车间氛围
+ * 包含：地坪安全标线、钢结构立柱、天花板横梁、远景墙面、顶部照明灯
+ *
+ * @param {number} U           网格单元大小
+ * @param {number} gridWidth   网格列数
+ * @param {number} gridHeight  网格行数
+ * @param {number} sizePreset  厂房尺寸预设 (1=紧凑 2=标准 3=宽敞 4=大厅)
+ * @returns {THREE.Group}      name='factory-background'
+ */
+export function createFactoryBackground(U, gridWidth, gridHeight, sizePreset = 2) {
+  const bgGroup = new THREE.Group()
+  bgGroup.name = 'factory-background'
+
+  const halfW = (gridWidth * U) / 2
+  const halfH = (gridHeight * U) / 2
+
+  const preset = FACTORY_SIZE_PRESETS.find(p => p.key === sizePreset) || FACTORY_SIZE_PRESETS[1]
+  const ceilingH = U * preset.ceiling
+  const spread = U * preset.spread
+
+  // ---------- 材质 ----------
+  const markingMat = new THREE.MeshStandardMaterial({
+    color: FACTORY_BG.floorMarking, roughness: 0.6, metalness: 0.1,
+  })
+  const pillarMat = new THREE.MeshStandardMaterial({
+    color: FACTORY_BG.pillar, roughness: 0.3, metalness: 0.7,
+  })
+  const pillarBaseMat = new THREE.MeshStandardMaterial({
+    color: FACTORY_BG.pillarBase, roughness: 0.5, metalness: 0.4,
+  })
+  const beamMat = new THREE.MeshStandardMaterial({
+    color: FACTORY_BG.beam, roughness: 0.35, metalness: 0.6,
+  })
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: FACTORY_BG.distantWall, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide,
+  })
+  const lightBoxMat = new THREE.MeshStandardMaterial({
+    color: FACTORY_BG.overheadLight, emissive: FACTORY_BG.overheadLightGlow,
+    emissiveIntensity: 0.5, roughness: 0.2, metalness: 0.3,
+  })
+
+  // ---------- 1. 地坪安全标线 (黄色) ----------
+  // 沿工厂区域外围画一圈虚线框
+  const lineW = U * 0.06
+  const lineY = 0.008
+  const offset = U * 0.8   // 标线离围墙的距离
+
+  // 上下两条长线
+  const hLineGeom = new THREE.BoxGeometry(gridWidth * U + offset * 2, 0.01, lineW)
+  const topLine = new THREE.Mesh(hLineGeom, markingMat)
+  topLine.position.set(0, lineY, halfH + offset)
+  bgGroup.add(topLine)
+  const bottomLine = new THREE.Mesh(hLineGeom, markingMat)
+  bottomLine.position.set(0, lineY, -halfH - offset)
+  bgGroup.add(bottomLine)
+
+  // 左右两条宽线
+  const vLineGeom = new THREE.BoxGeometry(lineW, 0.01, gridHeight * U + offset * 2)
+  const leftLine = new THREE.Mesh(vLineGeom, markingMat)
+  leftLine.position.set(-halfW - offset, lineY, 0)
+  bgGroup.add(leftLine)
+  const rightLine = new THREE.Mesh(vLineGeom, markingMat)
+  rightLine.position.set(halfW + offset, lineY, 0)
+  bgGroup.add(rightLine)
+
+  // 四角 L 形标记
+  const cornerLen = U * 1.5
+  const cornerLineH = new THREE.BoxGeometry(cornerLen, 0.01, lineW)
+  const cornerLineV = new THREE.BoxGeometry(lineW, 0.01, cornerLen)
+  const corners = [
+    [-halfW - offset, -halfH - offset],
+    [ halfW + offset, -halfH - offset],
+    [-halfW - offset,  halfH + offset],
+    [ halfW + offset,  halfH + offset],
+  ]
+  corners.forEach(([cx, cz]) => {
+    const h = new THREE.Mesh(cornerLineH, markingMat)
+    h.position.set(cx, lineY, cz)
+    bgGroup.add(h)
+    const v = new THREE.Mesh(cornerLineV, markingMat)
+    v.position.set(cx, lineY, cz)
+    bgGroup.add(v)
+  })
+
+  // ---------- 2. 钢结构立柱 ----------
+  // 在工厂外围间隔放置 H 型钢柱
+  const pillarSpacing = Math.max(4, Math.floor(Math.max(gridWidth, gridHeight) / 4))
+  const pillarH = ceilingH
+  const pillarR = U * 0.12
+  const baseW = U * 0.35
+  const baseH = U * 0.15
+
+  const pillarGeom = new THREE.BoxGeometry(pillarR * 2, pillarH, pillarR)
+  const baseGeom = new THREE.BoxGeometry(baseW, baseH, baseW)
+
+  function addPillar(x, z) {
+    const grp = new THREE.Group()
+    const p = new THREE.Mesh(pillarGeom, pillarMat)
+    p.position.y = pillarH / 2
+    p.castShadow = true
+    grp.add(p)
+    const b = new THREE.Mesh(baseGeom, pillarBaseMat)
+    b.position.y = baseH / 2
+    grp.add(b)
+    grp.position.set(x, 0, z)
+    bgGroup.add(grp)
+  }
+
+  // 上下两侧
+  for (let i = 0; i <= gridWidth; i += pillarSpacing) {
+    const x = (i - gridWidth / 2) * U
+    addPillar(x, halfH + spread)
+    addPillar(x, -halfH - spread)
+  }
+  // 左右两侧（避免与角落重复）
+  for (let i = pillarSpacing; i < gridHeight; i += pillarSpacing) {
+    const z = (i - gridHeight / 2) * U
+    addPillar(-halfW - spread, z)
+    addPillar(halfW + spread, z)
+  }
+
+  // ---------- 3. 天花板横梁 ----------
+  const beamW = U * 0.15
+  const beamH = U * 0.25
+  const totalSpanX = gridWidth * U + spread * 2 + U * 2
+  const totalSpanZ = gridHeight * U + spread * 2 + U * 2
+
+  const mainBeamGeom = new THREE.BoxGeometry(totalSpanX, beamH, beamW)
+  const crossBeamGeom = new THREE.BoxGeometry(beamW, beamH, totalSpanZ)
+
+  // 主横梁 (沿 X 方向)
+  for (let i = 0; i <= gridHeight; i += pillarSpacing) {
+    const z = (i - gridHeight / 2) * U
+    const beam = new THREE.Mesh(mainBeamGeom, beamMat)
+    beam.position.set(0, ceilingH, z)
+    bgGroup.add(beam)
+  }
+  // 纵梁 (沿 Z 方向, 两根)
+  const crossZ1 = new THREE.Mesh(crossBeamGeom, beamMat)
+  crossZ1.position.set(-halfW - spread * 0.5, ceilingH, 0)
+  bgGroup.add(crossZ1)
+  const crossZ2 = new THREE.Mesh(crossBeamGeom, beamMat)
+  crossZ2.position.set(halfW + spread * 0.5, ceilingH, 0)
+  bgGroup.add(crossZ2)
+
+  // ---------- 4. 远景墙面 ----------
+  const wallDist = spread + U * 2
+  const wallH = ceilingH + U
+  const hWallLen = gridWidth * U + wallDist * 2
+  const vWallLen = gridHeight * U + wallDist * 2
+
+  // 上下墙
+  const hWallGeom = new THREE.PlaneGeometry(hWallLen, wallH)
+  const topWall = new THREE.Mesh(hWallGeom, wallMat)
+  topWall.position.set(0, wallH / 2, halfH + wallDist)
+  bgGroup.add(topWall)
+  const bottomWall = new THREE.Mesh(hWallGeom, wallMat)
+  bottomWall.position.set(0, wallH / 2, -halfH - wallDist)
+  bgGroup.add(bottomWall)
+
+  // 左右墙
+  const vWallGeom = new THREE.PlaneGeometry(vWallLen, wallH)
+  const leftWall = new THREE.Mesh(vWallGeom, wallMat)
+  leftWall.position.set(-halfW - wallDist, wallH / 2, 0)
+  leftWall.rotation.y = Math.PI / 2
+  bgGroup.add(leftWall)
+  const rightWall = new THREE.Mesh(vWallGeom, wallMat)
+  rightWall.position.set(halfW + wallDist, wallH / 2, 0)
+  rightWall.rotation.y = Math.PI / 2
+  bgGroup.add(rightWall)
+
+  // ---------- 5. 顶部工业照明灯 ----------
+  const lightBoxW = U * 1.2
+  const lightBoxH = U * 0.1
+  const lightBoxD = U * 0.5
+  const lightBoxGeom = new THREE.BoxGeometry(lightBoxW, lightBoxH, lightBoxD)
+  const lightSpotGeom = new THREE.PlaneGeometry(lightBoxW * 0.8, lightBoxD * 0.8)
+
+  const lightMat = new THREE.MeshBasicMaterial({
+    color: FACTORY_BG.overheadLightGlow,
+  })
+
+  const lightSpacingX = Math.max(3, Math.floor(gridWidth / 3))
+  const lightSpacingZ = Math.max(3, Math.floor(gridHeight / 3))
+
+  for (let ix = lightSpacingX; ix < gridWidth; ix += lightSpacingX) {
+    for (let iz = lightSpacingZ; iz < gridHeight; iz += lightSpacingZ) {
+      const x = (ix - gridWidth / 2) * U
+      const z = (iz - gridHeight / 2) * U
+      const grp = new THREE.Group()
+
+      // 灯壳
+      const box = new THREE.Mesh(lightBoxGeom, beamMat)
+      grp.add(box)
+
+      // 发光面 (朝下)
+      const glow = new THREE.Mesh(lightSpotGeom, lightMat)
+      glow.position.y = -lightBoxH / 2 + 0.005
+      glow.rotation.x = Math.PI / 2
+      grp.add(glow)
+
+      // 吊杆
+      const rodGeom = new THREE.CylinderGeometry(U * 0.015, U * 0.015, ceilingH - U * 1.5, 4)
+      const rod = new THREE.Mesh(rodGeom, beamMat)
+      rod.position.y = (ceilingH - U * 1.5) / 2 + lightBoxH
+      grp.add(rod)
+
+      grp.position.set(x, ceilingH - U * 1.5, z)
+      bgGroup.add(grp)
+    }
+  }
+
+  // ---------- 6. 扩展地面 (工厂区域外围) ----------
+  const extGroundW = gridWidth * U + (spread + U * 3) * 2
+  const extGroundH = gridHeight * U + (spread + U * 3) * 2
+  const extGroundGeom = new THREE.PlaneGeometry(extGroundW, extGroundH)
+  const extGroundMat = new THREE.MeshStandardMaterial({
+    color: 0x22252d, roughness: 0.95, metalness: 0.0,
+  })
+  const extGround = new THREE.Mesh(extGroundGeom, extGroundMat)
+  extGround.rotation.x = -Math.PI / 2
+  extGround.position.y = -0.01
+  extGround.receiveShadow = true
+  bgGroup.add(extGround)
+
+  return bgGroup
 }

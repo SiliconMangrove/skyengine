@@ -29,9 +29,11 @@ import {
   ZONE_COLORS,
   EDGE_COLOR, WAYPOINT_DOCK_COLOR, WAYPOINT_DEFAULT_COLOR,
   HIGHLIGHT_COLOR, HIGHLIGHT_COLLISION_COLOR,
+  BACKGROUND_THEMES,
   createBollard, createRack, createCabinet, createSafetyBarrier,
   createPerimeterWall, getDecorationLayout,
   createMachine, createAGV,
+  createFactoryBackground,
 } from '@/utils/assets'
 
 // ==================== Props ====================
@@ -41,6 +43,8 @@ const props = defineProps({
   defaultGridWidth: { type: Number, default: 20 },
   defaultGridHeight: { type: Number, default: 14 },
   editMode: { type: Boolean, default: false },
+  backgroundTheme: { type: String, default: 'clean' },
+  backgroundSize: { type: Number, default: 2 },
 })
 
 // ==================== Emits ====================
@@ -79,7 +83,8 @@ function gridToWorld(gx, gy) {
 
 // ==================== Three.js 对象 ====================
 let scene, camera, renderer, controls, clock
-let groundPlane, gridHelper
+let groundPlane, gridHelper, backgroundGroup
+let ambientLight, sunLight
 let machineGroup, agvGroup, zoneGroup, waypointGroup, edgeGroup, decorGroup
 
 // 对象映射
@@ -337,10 +342,11 @@ function initScene() {
   renderer.toneMappingExposure = 1.0
   container.appendChild(renderer.domElement)
 
-  // Scene — 白色背景
+  // Scene — 根据背景主题设置
+  const theme = BACKGROUND_THEMES[props.backgroundTheme] || BACKGROUND_THEMES.clean
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(BG_COLOR)
-  scene.fog = new THREE.Fog(BG_COLOR, 60, 150)
+  scene.background = new THREE.Color(theme.bgColor)
+  scene.fog = new THREE.Fog(theme.bgColor, theme.fogNear, theme.fogFar)
 
   // Camera
   camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.5, 200)
@@ -350,23 +356,23 @@ function initScene() {
   camera.position.set(dist * 0.55, dist * 0.65, dist * 0.55)
   camera.lookAt(0, 0, 0)
 
-  // Lights — 调整为白色场景
-  const ambient = new THREE.AmbientLight(0xffffff, 1.8)
-  scene.add(ambient)
+  // Lights — 根据主题调整强度
+  ambientLight = new THREE.AmbientLight(0xffffff, theme.ambientIntensity)
+  scene.add(ambientLight)
 
-  const sun = new THREE.DirectionalLight(0xffffff, 3.0)
-  sun.position.set(20, 35, 15)
-  sun.castShadow = true
-  sun.shadow.mapSize.width = 2048
-  sun.shadow.mapSize.height = 2048
-  sun.shadow.camera.near = 0.5
-  sun.shadow.camera.far = 150
-  sun.shadow.camera.left = -40
-  sun.shadow.camera.right = 40
-  sun.shadow.camera.top = 40
-  sun.shadow.camera.bottom = -40
-  sun.bias = -0.0002
-  scene.add(sun)
+  sunLight = new THREE.DirectionalLight(0xffffff, theme.sunIntensity)
+  sunLight.position.set(20, 35, 15)
+  sunLight.castShadow = true
+  sunLight.shadow.mapSize.width = 2048
+  sunLight.shadow.mapSize.height = 2048
+  sunLight.shadow.camera.near = 0.5
+  sunLight.shadow.camera.far = 150
+  sunLight.shadow.camera.left = -40
+  sunLight.shadow.camera.right = 40
+  sunLight.shadow.camera.top = 40
+  sunLight.shadow.camera.bottom = -40
+  sunLight.bias = -0.0002
+  scene.add(sunLight)
 
   const fill = new THREE.DirectionalLight(0xffffff, 0.8)
   fill.position.set(-10, 8, -10)
@@ -402,10 +408,11 @@ function buildGroundAndGrid() {
 
   const w = topology.value.gridWidth
   const h = topology.value.gridHeight
+  const theme = BACKGROUND_THEMES[props.backgroundTheme] || BACKGROUND_THEMES.clean
 
   groundPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(w * GRID_SIZE, h * GRID_SIZE),
-    new THREE.MeshStandardMaterial({ color: GROUND_COLOR, roughness: 0.95, metalness: 0.0 }),
+    new THREE.MeshStandardMaterial({ color: theme.groundColor, roughness: 0.95, metalness: 0.0 }),
   )
   groundPlane.rotation.x = -Math.PI / 2
   groundPlane.receiveShadow = true
@@ -537,6 +544,24 @@ function buildEdges() {
   }
 }
 
+// ==================== 工厂背景层 ====================
+function buildBackground() {
+  // 清理旧背景
+  if (backgroundGroup) {
+    backgroundGroup.traverse(ch => { ch.geometry?.dispose(); ch.material?.dispose() })
+    scene.remove(backgroundGroup)
+    backgroundGroup = null
+  }
+
+  // 仅 factory 主题才构建背景层
+  if (props.backgroundTheme !== 'factory') return
+
+  const w = topology.value.gridWidth
+  const h = topology.value.gridHeight
+  backgroundGroup = createFactoryBackground(GRID_SIZE, w, h, props.backgroundSize)
+  scene.add(backgroundGroup)
+}
+
 // ==================== 科技感围墙 ====================
 function buildPerimeterWall() {
   const existingWall = scene.getObjectByName('perimeter-wall')
@@ -600,6 +625,7 @@ function buildPerimeterWall() {
 // }
 
 function buildStaticElements() {
+  buildBackground()
   buildGroundAndGrid()
   buildPerimeterWall()
   buildZones()
@@ -864,6 +890,28 @@ watch(() => props.editMode, (val) => {
     removeEditModeListeners()
   }
 })
+
+// ==================== 监听背景主题/尺寸切换 ====================
+watch([() => props.backgroundTheme, () => props.backgroundSize], () => {
+  if (!scene) return
+  const theme = BACKGROUND_THEMES[props.backgroundTheme] || BACKGROUND_THEMES.clean
+  scene.background = new THREE.Color(theme.bgColor)
+  scene.fog.color.set(theme.bgColor)
+  scene.fog.near = theme.fogNear
+  scene.fog.far = theme.fogFar
+  if (ambientLight) ambientLight.intensity = theme.ambientIntensity
+  if (sunLight) sunLight.intensity = theme.sunIntensity
+  buildBackground()
+  buildGroundAndGrid()
+})
+
+// ==================== 暴露方法 ====================
+defineExpose({
+  /** 获取当前可用的背景主题列表 */
+  getBackgroundThemes() {
+    return Object.entries(BACKGROUND_THEMES).map(([key, val]) => ({ key, name: val.name }))
+  },
+})
 </script>
 
 <style scoped>
@@ -872,7 +920,7 @@ watch(() => props.editMode, (val) => {
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: #f0f2f5;
+  background: #0a0e1c;
 }
 
 .hud-header {
@@ -909,7 +957,7 @@ watch(() => props.editMode, (val) => {
   font-size: 10px;
   font-weight: bold;
   transform: translate(-50%, -50%);
-  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 6px rgba(255, 255, 255, 0.5);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
   pointer-events: none;
 }

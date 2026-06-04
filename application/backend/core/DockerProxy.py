@@ -14,7 +14,6 @@ DockerProxy — 通过 docker SDK 按需启停 SkyEngine 在线仿真服务
 import os
 import uuid
 import asyncio
-import threading
 import json
 from enum import Enum
 
@@ -87,10 +86,8 @@ class DockerProxy:
         self._algorithm_parts: dict = {}
         self.initialized: bool = False
 
-        # SSE 轮询
-        self._poll_thread: threading.Thread | None = None
-        self._state_queue_internal: asyncio.Queue = asyncio.Queue()
-        self._polling = False
+        # SSE 透传
+        self._streaming = False
 
     # ==================== 配置方法 ====================
 
@@ -282,8 +279,8 @@ class DockerProxy:
             await client.post(f"{self._engine_url}/sim/create", json=sim_config)
             await client.post(f"{self._engine_url}/sim/play")
 
-        # 5. 启动 SSE 轮询
-        self._start_polling()
+        # 5. 标记流式传输就绪
+        self._streaming = True
 
         self.status = ExecutionStatus.RUNNING
         print("[DockerProxy] Phase 2 完成: 仿真已启动")
@@ -302,7 +299,7 @@ class DockerProxy:
         self.current_step = 0
 
     async def stop(self) -> None:
-        self._stop_polling()
+        self._streaming = False
         if self._engine_url:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 try:
@@ -315,12 +312,7 @@ class DockerProxy:
     # ==================== SSE 流接口 ====================
 
     async def get_state_events(self) -> list:
-        events = []
-        while not self._state_queue_internal.empty():
-            events.append(await self._state_queue_internal.get())
-        if not events:
-            events.append(("state", {"status": self.status.value, "step": self.current_step}))
-        return events
+        return [("state", {"status": self.status.value, "step": self.current_step})]
 
     async def get_metrics_events(self) -> list:
         return [("metrics", {"status": self.status.value})]
@@ -402,42 +394,61 @@ class DockerProxy:
                 await asyncio.sleep(1.0)
         raise TimeoutError(f"Engine not ready within {timeout}s")
 
-    # ==================== SSE 轮询 ====================
+    # ==================== SSE 透传 ====================
 
-    def _start_polling(self):
-        self._polling = True
-        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
-        self._poll_thread.start()
-
-    def _stop_polling(self):
-        self._polling = False
-        if self._poll_thread:
-            self._poll_thread.join(timeout=5)
-            self._poll_thread = None
-
-    def _poll_loop(self):
+    async def state_stream(self):
+        """直接透传 sim_server 的 /stream/state SSE 事件，零队列缓冲"""
+        if not self._engine_url or not self._streaming:
+            return
         url = f"{self._engine_url}/stream/state"
         try:
-            with httpx.stream("GET", url, timeout=None) as resp:
-                for line in resp.iter_lines():
-                    if not self._polling:
-                        break
-                    if line.startswith("data: "):
-                        try:
-                            data = json.loads(line[6:])
-                            self._state_queue_internal.put_nowait(("state", data))
-                            frame = data.get("frame")
-                            if frame and "timestamp" in frame:
-                                ts = frame["timestamp"]
-                                if ts.startswith("T+"):
-                                    try:
-                                        self.current_step = int(ts[2:].rstrip("s"))
-                                    except ValueError:
-                                        pass
-                        except Exception:
-                            pass
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", url) as resp:
+                    async for line in resp.aiter_lines():
+                        if not self._streaming:
+                            break
+                        if line.startswith("data: "):
+                            try:
+                                data = json.loads(line[6:])
+                                frame = data.get("frame")
+                                if frame and "timestamp" in frame:
+                                    ts = frame["timestamp"]
+                                    if ts.startswith("T+"):
+                                        try:
+                                            self.current_step = int(ts[2:].rstrip("s"))
+                                        except ValueError:
+                                            pass
+                                yield ("state", data)
+                                if data.get("status") == "stopped":
+                                    self._streaming = False
+                                    self.status = ExecutionStatus.STOPPED
+                                    break
+                            except (json.JSONDecodeError, KeyError):
+                                pass
         except Exception as e:
-            print(f"[DockerProxy] SSE 轮询结束: {e}")
+            print(f"[DockerProxy] state_stream 结束: {e}")
+            if self._streaming:
+                self.status = ExecutionStatus.ERROR
+
+    async def metrics_stream(self):
+        """直接透传 sim_server 的 /stream/metrics SSE 事件"""
+        if not self._engine_url or not self._streaming:
+            return
+        url = f"{self._engine_url}/stream/metrics"
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", url) as resp:
+                    async for line in resp.aiter_lines():
+                        if not self._streaming:
+                            break
+                        if line.startswith("data: "):
+                            try:
+                                data = json.loads(line[6:])
+                                yield ("metrics", data)
+                            except (json.JSONDecodeError, KeyError):
+                                pass
+        except Exception as e:
+            print(f"[DockerProxy] metrics_stream 结束: {e}")
 
     # ==================== 状态判断 ====================
 
