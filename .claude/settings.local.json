@@ -17,7 +17,12 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)",
       "mcp__web-search-prime__web_search_prime",
-      "mcp__web-reader__webReader"
+      "mcp__web-reader__webReader",
+      "Bash(grep -r \"networks/create\\\\|sim-net\\\\|_sim-net\" /data1/home/wuhao/project/grouppro/skyengine --include=*.py)",
+      "Bash(docker ps:*)",
+      "Bash(docker images:*)",
+      "Bash(grep -r \"SERVICE_URL\\\\|http.*solver\\\\|remote\" /data1/home/wuhao/project/grouppro/skyengine/application/backend/joint_sim/ --include=*.py)",
+      "Bash(ls /data1/home/wuhao/project/finalpro/SkyEngine/*.dockerfile /data1/home/wuhao/project/finalpro/SkyEngine/Dockerfile*)"
     ]
   }
 }

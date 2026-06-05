@@ -52,9 +52,7 @@ def parse_grid_config(config: Dict[str, Any]) -> GridConfig:
 
     grid_width = topology.get("gridWidth", 20)
     grid_height = topology.get("gridHeight", 20)
-
-    if grid_width != grid_height:
-        raise ValueError("gridWidth 和 gridHeight 必须相等")
+    grid_size = max(grid_width, grid_height)
 
     num_agents = len(agvs)
 
@@ -65,7 +63,7 @@ def parse_grid_config(config: Dict[str, Any]) -> GridConfig:
     # 否则会走到 else 分支随机生成位置，导致 initialLocation 被覆盖
     # 在 LifeLong 模式下，初始目标可以和起始位置相同（后续会被实际任务目标覆盖）
     return GridConfig(
-        size=max(grid_width, grid_height),
+        size=grid_size,
         num_agents=num_agents,
         density=0.0,  # 无随机障碍物
         seed=42,

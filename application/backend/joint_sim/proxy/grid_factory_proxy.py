@@ -92,7 +92,6 @@ class GridFactoryProxy:
     # ====================================
 
     async def initialize(self) -> None:
-        self.initialized = True
         if self._config is None:
             raise RuntimeError("FactoryProxy 未设置 config")
 
@@ -104,8 +103,8 @@ class GridFactoryProxy:
         job_algo, route_algo, assign_algo = self._algorithm.split("+")
         self.coordinator = Coordinator(
             job_solver=job_algo,
-            route_solver=route_algo,  # RouteSolverFactory.create(route_algo),
-            assigner=assign_algo,  # AssignerFactory.create(assign_algo)
+            route_solver=route_algo,
+            assigner=assign_algo,
         )
         # 之前 reset的时候把自定义的设定全清了，现在使用预定配置
         obs, info = self.env.reset()
@@ -115,6 +114,7 @@ class GridFactoryProxy:
 
         self.status = ExecutionStatus.IDLE
         self.current_step = 0
+        self.initialized = True
 
     async def cleanup(self) -> None:
         self.env = None

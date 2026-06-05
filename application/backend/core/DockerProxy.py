@@ -1,24 +1,21 @@
 """
-DockerProxy — 通过 docker SDK 按需启停 SkyEngine 在线仿真服务
+DockerProxy — 通过 docker compose 按需启停 SkyEngine 在线仿真服务
 
-纯 Python 实现，无需在容器内安装 Docker CLI。
-通过 docker SDK (Python) 直连 Docker Socket 管理容器/网络。
+调用 docker compose CLI 管理容器生命周期，无需 Docker SDK。
+所有容器/网络/卷的定义都在 docker-compose-online.yaml 中。
 
 两阶段启动:
-  1. initialize() — 创建网络 + 启动 engine 容器
-  2. start()      — 根据算法选择启动 mapf/fjsp 容器
-                    → HTTP 发送仿真配置 → 启动仿真
-  3. stop()       — 停止并移除所有容器 + 网络
+  1. initialize() — docker compose up engine     → 等待就绪
+  2. start()      — docker compose up mapf fjsp  → POST /sim/create → POST /sim/play
+  3. stop()       — docker compose down
 """
 
 import os
-import uuid
 import asyncio
 import json
 from enum import Enum
 
 import httpx
-import docker
 
 
 class ExecutionStatus(str, Enum):
@@ -46,7 +43,7 @@ ALGORITHM_MAP = {
 
 
 class DockerProxy:
-    """通过 docker SDK 联动 SkyEngine 在线服务的工厂代理"""
+    """通过 docker compose 联动 SkyEngine 在线服务的工厂代理"""
 
     def __init__(self):
         print("[DockerProxy] __init__ 被调用")
@@ -63,23 +60,13 @@ class DockerProxy:
         self.current_step: int = 0
         self._total_steps: int = 0
 
-        # ---- DockerProxy 专有状态 ----
-        self._skyengine_dir: str = os.getenv(
-            "SKYENGINE_DIR", "/opt/skyengine"
+        # ---- compose 配置 ----
+        self._compose_file: str = os.getenv(
+            "SKYENGINE_COMPOSE_FILE",
+            "/data1/home/wuhao/project/finalpro/SkyEngine/docker-compose-online.yaml",
         )
-        self._dataset_dir: str = os.getenv(
-            "SKYENGINE_DATASET_DIR", "/opt/skyengine/dataset"
-        )
-        self._project_name: str | None = None
-
-        self._client: docker.DockerClient | None = None
-        self._engine_url: str | None = None
-        self._network: docker.models.networks.Network | None = None
-
-        # 容器引用
-        self._engine_container = None
-        self._mapf_container = None
-        self._fjsp_container = None
+        self._project_name: str = "skyengine-online"
+        self._engine_url: str = f"http://localhost:{os.getenv('ENGINE_PORT', '8080')}"
 
         self._config: dict = {}
         self._algorithm: str = "pso+astar+nearest"
@@ -88,6 +75,37 @@ class DockerProxy:
 
         # SSE 透传
         self._streaming = False
+
+    # ==================== docker compose 辅助 ====================
+
+    async def _compose(self, *args: str, env: dict | None = None) -> str:
+        """执行 docker compose 命令并返回输出"""
+        cmd = [
+            "docker", "compose",
+            "-p", self._project_name,
+            "-f", self._compose_file,
+            *args,
+        ]
+        print(f"[DockerProxy] $ {' '.join(cmd)}")
+
+        merged_env = {**os.environ}
+        if env:
+            merged_env.update(env)
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=merged_env,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            err = stderr.decode().strip()
+            print(f"[DockerProxy] compose 失败 (rc={proc.returncode}): {err}")
+            raise RuntimeError(f"docker compose failed: {err}")
+
+        return stdout.decode().strip()
 
     # ==================== 配置方法 ====================
 
@@ -118,94 +136,35 @@ class DockerProxy:
     # ==================== 生命周期方法 ====================
 
     async def initialize(self) -> None:
-        """Phase 1: 创建网络 + 启动 engine 容器"""
-        print("[DockerProxy] Phase 1: 初始化引擎...")
+        """Phase 1: docker compose up engine + 等待就绪"""
+        print("[DockerProxy] Phase 1: 启动 engine ...")
 
-        self._project_name = "skyengine-online"
-        self._client = docker.from_env()
-
-        # 0. 清理可能残留的旧容器/网络
-        await self._cleanup_all()
-
-        # 1. 创建独立网络
-        self._network = await asyncio.to_thread(
-            self._client.networks.create,
-            f"{self._project_name}_sim-net",
-            driver="bridge",
-        )
-        print(f"[DockerProxy] 网络 {self._network.name} 已创建")
-
-        # 2. 启动 engine 容器
-        # SKYENGINE_DIR / SKYENGINE_DATASET_DIR 是宿主机路径!
-        # Docker SDK 在 HOST 上创建容器, volume 必须用宿主机路径
-        sky_dir_host = os.getenv("SKYENGINE_DIR", "/opt/skyengine")
-        dataset_dir_host = self._dataset_dir  # 已经是宿主机路径
-
-        engine_volumes = {
-            dataset_dir_host: {"bind": "/dataset", "mode": "ro"},
-            f"{sky_dir_host}/sim_server.py": {"bind": "/app/sim_server.py", "mode": "ro"},
-            f"{sky_dir_host}/sky_executor": {"bind": "/app/sky_executor", "mode": "ro"},
-        }
-
-        print(f"[DockerProxy] engine volume 挂载: {json.dumps(engine_volumes, indent=2)}")
-
-        engine_env = {
-            "SKY_LOG_LEVEL": "INFO",
-            "CUDA_VISIBLE_DEVICES": os.getenv("CUDA_VISIBLE_DEVICES", "0"),
-            "SEED": "42",
-            "DATA_DIR": "/dataset",
-            "SKY_LOG_DIR": "/app/sky_logs",
-            "PYTHONUNBUFFERED": "1",
-        }
-
+        # 清理可能残留的旧容器
         try:
-            # 尝试创建 sky_logs 目录的 volume
-            self._engine_container = await asyncio.to_thread(
-                self._client.containers.run,
-                image="skyengine:latest",
-                command=["uv", "run", "python", "-u", "sim_server.py"],
-                name=f"{self._project_name}-engine",
-                environment=engine_env,
-                volumes=engine_volumes,
-                detach=True,
-                network=self._network.name,
-                # GPU 支持
-                device_requests=[
-                    docker.types.DeviceRequest(
-                        device_ids=[os.getenv("CUDA_VISIBLE_DEVICES", "0")],
-                        capabilities=[["gpu"]],
-                    )
-                ] if os.getenv("CUDA_VISIBLE_DEVICES") else None,
-            )
-        except Exception as e:
-            print(f"[DockerProxy] engine 启动失败 (无 GPU fallback): {e}")
-            # fallback: 不挂 GPU
-            self._engine_container = await asyncio.to_thread(
-                self._client.containers.run,
-                image="skyengine:latest",
-                command=["uv", "run", "python", "-u", "sim_server.py"],
-                name=f"{self._project_name}-engine",
-                environment=engine_env,
-                volumes=engine_volumes,
-                detach=True,
-                network=self._network.name,
-            )
+            await self._compose("down", "--remove-orphans")
+        except Exception:
+            pass
 
-        print(f"[DockerProxy] engine 容器已启动: {self._engine_container.name}")
+        # 启动 engine
+        await self._compose("up", "-d", "engine")
 
-        # 3. 发现引擎 IP + 等待就绪
-        self._engine_url = await self._discover_engine()
-        await self._wait_for_health(self._engine_url)
+        # 等待 engine 健康检查
+        await self._wait_for_health()
 
         self.initialized = True
         self.status = ExecutionStatus.IDLE
         print(f"[DockerProxy] Phase 1 完成: engine 就绪 @ {self._engine_url}")
 
     async def cleanup(self) -> None:
-        await self._cleanup_all()
+        try:
+            await self._compose("down", "--remove-orphans")
+        except Exception as e:
+            print(f"[DockerProxy] cleanup 失败: {e}")
+        self.initialized = False
+        self._engine_url = None
 
     async def start(self) -> None:
-        """Phase 2: 启动 mapf/fjsp 容器 + 发送仿真配置 + 启动仿真"""
+        """Phase 2: docker compose up mapf fjsp + 发送仿真配置 + 启动仿真"""
         if not self.initialized:
             raise RuntimeError("请先调用 initialize()")
         if not self._algorithm_parts:
@@ -213,75 +172,35 @@ class DockerProxy:
 
         print(f"[DockerProxy] Phase 2: 启动算法容器, 算法={self._algorithm}")
 
-        # 1. 确定镜像名
+        # 1. 确定镜像，通过环境变量传给 docker compose
         fjsp_algo = self._algorithm_parts.get("fjsp", "pso")
         mapf_algo = self._algorithm_parts.get("mapf", "astar")
         mapf_image = ALGORITHM_MAP["mapf"].get(mapf_algo, "skyengine-mapf-gpt:latest")
         fjsp_image = ALGORITHM_MAP["fjsp"].get(fjsp_algo, "skyengine-fjsp-pso:latest")
 
-        common_env = {
-            "SKY_LOG_LEVEL": "INFO",
-            "CUDA_VISIBLE_DEVICES": os.getenv("CUDA_VISIBLE_DEVICES", "0"),
-            "SEED": "42",
+        compose_env = {
+            "MAPF_IMAGE": mapf_image,
+            "FJSP_IMAGE": fjsp_image,
         }
+        print(f"[DockerProxy] mapf={mapf_image}, fjsp={fjsp_image}")
 
-        # 2. 启动 mapf 容器
-        print(f"[DockerProxy] 启动 mapf: {mapf_image}")
-        self._mapf_container = await asyncio.to_thread(
-            self._client.containers.run,
-            image=mapf_image,
-            name=f"{self._project_name}-mapf",
-            environment={**common_env, "TIME_LIMIT": "30"},
-            detach=True,
-            network=self._network.name,
-            device_requests=[
-                docker.types.DeviceRequest(
-                    device_ids=[os.getenv("CUDA_VISIBLE_DEVICES", "0")],
-                    capabilities=[["gpu"]],
-                )
-            ] if os.getenv("CUDA_VISIBLE_DEVICES") else None,
-        )
+        # 2. 启动算法容器
+        await self._compose("up", "-d", "mapf", "fjsp", env=compose_env)
 
-        # 3. 启动 fjsp 容器
-        print(f"[DockerProxy] 启动 fjsp: {fjsp_image}")
-        self._fjsp_container = await asyncio.to_thread(
-            self._client.containers.run,
-            image=fjsp_image,
-            name=f"{self._project_name}-fjsp",
-            environment={**common_env, "TIME_LIMIT": "5"},
-            detach=True,
-            network=self._network.name,
-            device_requests=[
-                docker.types.DeviceRequest(
-                    device_ids=[os.getenv("CUDA_VISIBLE_DEVICES", "0")],
-                    capabilities=[["gpu"]],
-                )
-            ] if os.getenv("CUDA_VISIBLE_DEVICES") else None,
-        )
-
-        # 4. 发送仿真配置到 engine
+        # 3. 发送仿真配置到 engine（前端 JSON 原样转发 + 算法参数）
         sim_config = {
-            "fjsp_instance": self._config.get("fjsp_instance", "J10P5M6.json"),
-            "mapf_instance": self._config.get("mapf_instance", ""),
-            "solver_job": "http",
-            "solver_route": "http",
-            "solver_assign": self._algorithm_parts.get("assigner", "random"),
-            "mapf_service_url": "http://mapf:8001",
-            "fjsp_service_url": "http://fjsp:8002",
-            "num_agv": self._config.get("num_agv", 4),
-            "seed": self._config.get("seed", 42),
-            "max_steps": self._config.get("max_steps", 1000),
-            "obs_radius": self._config.get("obs_radius", 5),
-            "obs_type": self._config.get("obs_type", "default"),
+            "config": self._config,
+            "fjsp_algorithm": fjsp_algo,
+            "mapf_algorithm": mapf_algo,
+            "solver_assign": self._algorithm_parts.get("assigner", "nearest"),
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(f"{self._engine_url}/sim/create", json=sim_config)
             await client.post(f"{self._engine_url}/sim/play")
 
-        # 5. 标记流式传输就绪
+        # 4. 标记流式传输就绪
         self._streaming = True
-
         self.status = ExecutionStatus.RUNNING
         print("[DockerProxy] Phase 2 完成: 仿真已启动")
 
@@ -306,8 +225,12 @@ class DockerProxy:
                     await client.post(f"{self._engine_url}/sim/stop")
                 except Exception:
                     pass
-        await self._cleanup_all()
+        try:
+            await self._compose("down", "--remove-orphans")
+        except Exception:
+            pass
         self.status = ExecutionStatus.STOPPED
+        self.initialized = False
 
     # ==================== SSE 流接口 ====================
 
@@ -329,68 +252,19 @@ class DockerProxy:
     async def get_control_status(self) -> dict:
         return {"status": self.status.value, "algorithm": self._algorithm}
 
-    # ==================== 容器/网络清理 ====================
+    # ==================== 健康检查 ====================
 
-    async def _cleanup_all(self):
-        """停止并移除所有容器 + 网络"""
-        for container in [self._mapf_container, self._fjsp_container, self._engine_container]:
-            if container:
-                try:
-                    await asyncio.to_thread(container.stop)
-                    await asyncio.to_thread(container.remove)
-                except Exception as e:
-                    print(f"[DockerProxy] 清理容器失败: {e}")
-
-        self._engine_container = None
-        self._mapf_container = None
-        self._fjsp_container = None
-
-        if self._network:
-            try:
-                await asyncio.to_thread(self._network.remove)
-            except Exception as e:
-                print(f"[DockerProxy] 清理网络失败: {e}")
-            self._network = None
-
-        self._engine_url = None
-        self._project_name = None
-        self.initialized = False
-        print("[DockerProxy] 容器栈已清理")
-
-    # ==================== 引擎发现 ====================
-
-    async def _discover_engine(self) -> str:
-        """获取引擎容器 IP"""
-        container_name = f"{self._project_name}-engine"
-        for attempt in range(30):
-            try:
-                self._engine_container.reload()
-                networks = self._engine_container.attrs["NetworkSettings"]["Networks"]
-                status = self._engine_container.status
-                print(f"[DockerProxy] _discover_engine 尝试 {attempt}: status={status}, networks={list(networks.keys())}")
-                for net_name, net_info in networks.items():
-                    ip = net_info.get("IPAddress")
-                    print(f"[DockerProxy]   网络 {net_name}: IP={ip}")
-                    if ip:
-                        return f"http://{ip}:8080"
-            except Exception as e:
-                print(f"[DockerProxy] _discover_engine 尝试 {attempt} 异常: {e}")
-            await asyncio.sleep(1.0)
-
-        raise RuntimeError(f"无法发现引擎容器 IP: {container_name}")
-
-    async def _wait_for_health(self, url: str, timeout: float = 60.0):
-        print(f"[DockerProxy] _wait_for_health: 等待 {url}/health ...")
+    async def _wait_for_health(self, timeout: float = 60.0):
+        print(f"[DockerProxy] 等待 {self._engine_url}/health ...")
         async with httpx.AsyncClient() as client:
             for i in range(int(timeout)):
                 try:
-                    resp = await client.get(f"{url}/health", timeout=2.0)
-                    print(f"[DockerProxy]   health 尝试 {i}: status={resp.status_code}")
+                    resp = await client.get(f"{self._engine_url}/health", timeout=2.0)
                     if resp.status_code == 200:
                         print(f"[DockerProxy] engine 就绪 (耗时 {i}s)")
                         return
-                except Exception as e:
-                    print(f"[DockerProxy]   health 尝试 {i} 失败: {type(e).__name__}: {e}")
+                except Exception:
+                    pass
                 await asyncio.sleep(1.0)
         raise TimeoutError(f"Engine not ready within {timeout}s")
 

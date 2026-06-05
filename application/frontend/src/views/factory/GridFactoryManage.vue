@@ -2,7 +2,12 @@
   <div class="factory-manage-container">
     <!-- 工厂可视化 (全屏) -->
     <div class="middle-panel">
-      <FactoryPlayerSSE :hide-control-panel="true" :edit-mode="isEditMode" :background-theme="backgroundTheme" :background-size="backgroundSize" />
+      <FactoryPlayerSSE
+        :hide-control-panel="true"
+        :edit-mode="isEditMode"
+        :background-theme="backgroundTheme"
+        :background-size="backgroundSize"
+      />
     </div>
 
     <!-- 唯一浮动面板: Tab 切换 -->
@@ -32,29 +37,60 @@
       <div v-if="activeTab === 'simulation'" class="simulation-tab">
         <div class="sim-field">
           <label>FJSP 排程</label>
-          <select v-model="selectedFjsp" class="plan-select" :disabled="isRunningTest">
-            <option v-for="opt in fjspOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+          <select
+            v-model="selectedFjsp"
+            class="plan-select"
+            :disabled="isRunningTest"
+          >
+            <option
+              v-for="opt in fjspOptions"
+              :key="opt.value"
+              :value="opt.value"
+              :disabled="opt.disabled"
+            >
               {{ opt.label }}
             </option>
           </select>
         </div>
         <div class="sim-field">
           <label>MAPF 路由</label>
-          <select v-model="selectedMapf" class="plan-select" :disabled="isRunningTest">
-            <option v-for="opt in mapfOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+          <select
+            v-model="selectedMapf"
+            class="plan-select"
+            :disabled="isRunningTest"
+          >
+            <option
+              v-for="opt in mapfOptions"
+              :key="opt.value"
+              :value="opt.value"
+              :disabled="opt.disabled"
+            >
               {{ opt.label }}
             </option>
           </select>
         </div>
         <div class="sim-field">
           <label>任务分配</label>
-          <select v-model="selectedAssigner" class="plan-select" :disabled="isRunningTest">
-            <option v-for="opt in assignerOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+          <select
+            v-model="selectedAssigner"
+            class="plan-select"
+            :disabled="isRunningTest"
+          >
+            <option
+              v-for="opt in assignerOptions"
+              :key="opt.value"
+              :value="opt.value"
+              :disabled="opt.disabled"
+            >
               {{ opt.label }}
             </option>
           </select>
         </div>
-        <button @click="handleExecutePlan" class="launch-btn" :disabled="isRunningTest">
+        <button
+          @click="handleExecutePlan"
+          class="launch-btn"
+          :disabled="isRunningTest"
+        >
           🚀 启动仿真
         </button>
 
@@ -95,7 +131,11 @@
     </DraggablePanel>
 
     <!-- 边缘切换按钮 -->
-    <button v-if="!showPanel" class="panel-toggle left" @click="showPanel = true">
+    <button
+      v-if="!showPanel"
+      class="panel-toggle left"
+      @click="showPanel = true"
+    >
       ▶ 面板
     </button>
   </div>
@@ -132,11 +172,13 @@ const tabs = [
   { key: "events", label: "日志", icon: "📋" },
 ];
 
-const currentTab = computed(() => tabs.find((t) => t.key === activeTab.value) || tabs[0]);
+const currentTab = computed(
+  () => tabs.find((t) => t.key === activeTab.value) || tabs[0],
+);
 
 const isEditMode = ref(false);
 const isRunningTest = ref(false);
-const backgroundTheme = ref("clean");
+const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
 
 // ==================== 三旋钮算法配置 ====================
@@ -145,7 +187,8 @@ const fjspOptions = ref([
   { label: "PSO 粒子群", value: "pso", disabled: true },
   { label: "DE 差分进化", value: "de", disabled: true },
   { label: "DRL 深度强化学习", value: "drl", disabled: true },
-  { label: "BEST 最优搜索", value: "best", disabled: false },
+  { label: "BEST 最优搜索", value: "best", disabled: true },
+  { label: "Greedy 贪心搜索", value: "greedy", disabled: false },
 ]);
 
 const mapfOptions = ref([
@@ -154,20 +197,16 @@ const mapfOptions = ref([
 ]);
 
 const assignerOptions = ref([
-  { label: "FIFO 先来先服务", value: "fifo", disabled: true },
   { label: "贪心分配", value: "greedy", disabled: true },
-  { label: "匈牙利算法", value: "hungarian", disabled: true },
   { label: "最小拥堵", value: "least_congestion", disabled: true },
   { label: "负载均衡", value: "load_balance", disabled: true },
-  { label: "最近分配", value: "nearest", disabled: true },
+  { label: "最近分配", value: "nearest", disabled: false },
   { label: "随机分配", value: "random", disabled: true },
-  { label: "SJT 最短作业", value: "sjt", disabled: true },
-  { label: "紧迫度优先", value: "urgency", disabled: true },
 ]);
 
-const selectedFjsp = ref("best");
+const selectedFjsp = ref("greedy");
 const selectedMapf = ref("astar");
-const selectedAssigner = ref("fifo");
+const selectedAssigner = ref("nearest");
 
 // ==================== 生命周期 ====================
 
@@ -217,13 +256,18 @@ const handleExecutePlan = async () => {
   }, SIMULATION_TIMEOUT_MS);
 
   try {
-    stopTest = await backendSystemTest(store, monitorStore, { algorithm }, () => {
-      clearTimeout(simulationTimeout);
-      simulationTimeout = null;
-      isRunningTest.value = false;
-      stopTest = null;
-      ElMessage.success("仿真执行完成");
-    });
+    stopTest = await backendSystemTest(
+      store,
+      monitorStore,
+      { algorithm },
+      () => {
+        clearTimeout(simulationTimeout);
+        simulationTimeout = null;
+        isRunningTest.value = false;
+        stopTest = null;
+        ElMessage.success("仿真执行完成");
+      },
+    );
   } catch (error) {
     clearTimeout(simulationTimeout);
     simulationTimeout = null;
@@ -331,7 +375,11 @@ onUnmounted(() => {
   margin-top: 4px;
   padding: 9px 0;
   border: 1px solid rgba(102, 126, 234, 0.3);
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.5) 0%,
+    rgba(118, 75, 162, 0.5) 100%
+  );
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
@@ -341,7 +389,11 @@ onUnmounted(() => {
 }
 
 .launch-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.7) 0%, rgba(118, 75, 162, 0.7) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.7) 0%,
+    rgba(118, 75, 162, 0.7) 100%
+  );
   box-shadow: 0 0 16px rgba(102, 126, 234, 0.25);
 }
 
