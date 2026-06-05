@@ -47,3 +47,138 @@
   top: 50%;
   transform: translateY(-50%);
 }
+
+/* ============================================================
+   Tab 栏 (FactoryTabsPanel / 工厂管理视图共用)
+   ============================================================ */
+
+.dp-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(100, 180, 255, 0.1);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.dp-tab-btn {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  background: transparent;
+  color: rgba(160, 190, 230, 0.5);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.dp-tab-btn:hover {
+  color: rgba(200, 220, 255, 0.8);
+}
+
+.dp-tab-btn.active {
+  color: rgba(200, 220, 255, 0.95);
+  border-bottom-color: rgba(100, 180, 255, 0.6);
+}
+
+/* ==================== 仿真 Tab 内容 ==================== */
+
+.simulation-tab {
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sim-field label {
+  font-size: 11px;
+  color: rgba(160, 190, 230, 0.6);
+  font-weight: 500;
+}
+
+.plan-select {
+  padding: 7px 10px;
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  background: rgba(20, 25, 45, 0.6);
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(200, 220, 255, 0.9);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.plan-select option {
+  background: #141929;
+  color: rgba(200, 220, 255, 0.9);
+}
+
+.plan-select:hover:not(:disabled) {
+  border-color: rgba(100, 180, 255, 0.35);
+}
+
+.plan-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== 操作按钮 ==================== */
+
+.sim-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.launch-btn {
+  flex: 1;
+  padding: 9px 0;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: rgba(200, 220, 255, 0.95);
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.launch-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.7) 0%, rgba(118, 75, 162, 0.7) 100%);
+  box-shadow: 0 0 16px rgba(102, 126, 234, 0.25);
+}
+
+.launch-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.stop-btn {
+  flex: 1;
+  padding: 9px 0;
+  border: 1px solid rgba(234, 102, 102, 0.3);
+  background: linear-gradient(135deg, rgba(234, 102, 102, 0.5) 0%, rgba(162, 75, 75, 0.5) 100%);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: rgba(200, 220, 255, 0.95);
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.stop-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(234, 102, 102, 0.7) 0%, rgba(162, 75, 75, 0.7) 100%);
+  box-shadow: 0 0 16px rgba(234, 102, 102, 0.25);
+}
+
+.stop-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

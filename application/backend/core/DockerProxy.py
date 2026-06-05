@@ -62,8 +62,8 @@ class DockerProxy:
 
         # ---- compose 配置 ----
         self._compose_file: str = os.getenv(
-            "SKYENGINE_COMPOSE_FILE",
-            "/data1/home/wuhao/project/finalpro/SkyEngine/docker-compose-online.yaml",
+            "SKYENGINE_COMPOSE_PATH",
+            "/opt/skyengine/docker-compose-online.yaml",
         )
         self._project_name: str = "skyengine-online"
         self._engine_url: str = f"http://localhost:{os.getenv('ENGINE_PORT', '8080')}"

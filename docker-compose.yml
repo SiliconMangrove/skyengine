@@ -21,11 +21,11 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       # SkyEngine 在线服务 compose 文件 (容器内路径)
-      - SKYENGINE_COMPOSE_PATH=/opt/skyengine/docker-compose-online.yaml
+      - SKYENGINE_COMPOSE_PATH=/data1/home/wuhao/project/finalpro/SkyEngine/docker-compose-online.yaml
       # SkyEngine 仓库目录 (宿主机路径, 用于创建引擎容器的 volume 挂载)
       - SKYENGINE_DIR=${SKYENGINE_DIR:-/opt/skyengine}
       # SkyEngine 数据集目录 (宿主机路径, compose 会挂载给引擎容器)
-      - SKYENGINE_DATASET_DIR=${SKYENGINE_DATASET_DIR:-/opt/skyengine/dataset}
+      - SKYENGINE_DATASET_DIR=${SKYENGINE_DATASET_DIR:-/data1/home/wuhao/project/finalpro/SkyEngine}
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
     networks:
       - skyengine-network

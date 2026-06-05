@@ -21,24 +21,23 @@
             </span>
           </div>
           <div class="toolbar-right">
-            <!-- 三旋钮: FJSP / MAPF / Assigner -->
-            <select v-model="selectedFjsp" class="plan-select" :disabled="isRunningTest">
-              <option v-for="opt in fjspOptions" :key="opt.value" :value="opt.value">
+            <select v-model="sim.selectedFjsp.value" class="plan-select" :disabled="sim.isRunningTest.value">
+              <option v-for="opt in sim.fjspOptions.value" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
             </select>
-            <select v-model="selectedMapf" class="plan-select" :disabled="isRunningTest">
-              <option v-for="opt in mapfOptions" :key="opt.value" :value="opt.value">
+            <select v-model="sim.selectedMapf.value" class="plan-select" :disabled="sim.isRunningTest.value">
+              <option v-for="opt in sim.mapfOptions.value" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
             </select>
-            <select v-model="selectedAssigner" class="plan-select" :disabled="isRunningTest">
-              <option v-for="opt in assignerOptions" :key="opt.value" :value="opt.value">
+            <select v-model="sim.selectedAssigner.value" class="plan-select" :disabled="sim.isRunningTest.value">
+              <option v-for="opt in sim.assignerOptions.value" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
             </select>
             <button @click="handleExecutePlan" class="glass-btn primary"
-              :disabled="isRunningTest || isStartingContainer" title="上传选中的方案">
+              :disabled="sim.isRunningTest.value || isStartingContainer" title="上传选中的方案">
               🚀 上传选中方案
             </button>
           </div>
@@ -54,13 +53,13 @@
         <!-- API 测试按钮组 -->
         <div class="api-test-toolbar">
           <span class="test-label">API 测试:</span>
-          <button @click="testSetAlgorithm" class="test-btn" :disabled="isRunningTest || isStartingContainer">
+          <button @click="testSetAlgorithm" class="test-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
             1️⃣ 设定策略
           </button>
-          <button @click="testReset" class="test-btn" :disabled="isRunningTest || isStartingContainer">
+          <button @click="testReset" class="test-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
             2️⃣ 重置工厂
           </button>
-          <button @click="testPlay" class="test-btn" :disabled="isRunningTest || isStartingContainer">
+          <button @click="testPlay" class="test-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
             3️⃣ 启动执行
           </button>
         </div>
@@ -77,8 +76,8 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
-import { backendSystemTest } from "@/scenarios/backendSystemTest";
 import { apiPost, API_ROUTES } from "@/utils/api";
+import { useSimulationConfig } from "@/composables/useSimulationConfig";
 
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import ControlPanel from "@/components/ControlPanel.vue";
@@ -87,49 +86,42 @@ import RightSidePanel from "@/components/RightSidePanel.vue";
 const store = useFactoryStore();
 const monitorStore = useMonitorStore();
 
-let stopTest = null;
+const sim = useSimulationConfig({
+  defaults: { fjsp: "pso", mapf: "mapf_gpt", assigner: "nearest" },
+  defaultOptions: {
+    fjsp: [
+      { label: "PSO 粒子群", value: "pso" },
+      { label: "DE 差分进化", value: "de" },
+      { label: "DRL 深度强化学习", value: "drl" },
+      { label: "BEST 最优搜索", value: "best" },
+    ],
+    mapf: [
+      { label: "A* 路由", value: "astar" },
+      { label: "GPT 路由", value: "mapf_gpt" },
+    ],
+    assigner: [
+      { label: "FIFO 先来先服务", value: "fifo" },
+      { label: "贪心分配", value: "greedy" },
+      { label: "匈牙利算法", value: "hungarian" },
+      { label: "最小拥堵", value: "least_congestion" },
+      { label: "负载均衡", value: "load_balance" },
+      { label: "最近分配", value: "nearest" },
+      { label: "随机分配", value: "random" },
+      { label: "SJT 最短作业", value: "sjt" },
+      { label: "紧迫度优先", value: "urgency" },
+    ],
+  },
+});
 
-// ==================== 三旋钮算法配置 ====================
-// 带 needs_image 和 available 标记的下拉选项
+// ==================== Docker 专属状态 ====================
 
-const fjspOptions = ref([
-  { label: 'PSO 粒子群', value: 'pso' },
-  { label: 'DE 差分进化', value: 'de' },
-  { label: 'DRL 深度强化学习', value: 'drl' },
-  { label: 'BEST 最优搜索', value: 'best' },
-]);
-
-const mapfOptions = ref([
-  { label: 'A* 路由', value: 'astar' },
-  { label: 'GPT 路由', value: 'mapf_gpt' },
-]);
-
-const assignerOptions = ref([
-  { label: 'FIFO 先来先服务', value: 'fifo' },
-  { label: '贪心分配', value: 'greedy' },
-  { label: '匈牙利算法', value: 'hungarian' },
-  { label: '最小拥堵', value: 'least_congestion' },
-  { label: '负载均衡', value: 'load_balance' },
-  { label: '最近分配', value: 'nearest' },
-  { label: '随机分配', value: 'random' },
-  { label: 'SJT 最短作业', value: 'sjt' },
-  { label: '紧迫度优先', value: 'urgency' },
-]);
-
-const selectedFjsp = ref('pso');
-const selectedMapf = ref('mapf_gpt');
-const selectedAssigner = ref('nearest');
-
-// ==================== 状态 ====================
-
-const isRunningTest = ref(false);
 const isEditMode = ref(false);
 const isStartingContainer = ref(false);
-const containerStartStatus = ref('');
+const containerStartStatus = ref("");
 
 const containerStatus = computed(() => {
   if (isStartingContainer.value) return '启动容器中...';
-  if (isRunningTest.value) return '运行中';
+  if (sim.isRunningTest.value) return '运行中';
   return '就绪';
 });
 
@@ -143,63 +135,32 @@ const connectionStatus = ref({
 onMounted(async () => {
   console.log("✅ DockerFactoryManage 已挂载");
   store.reset();
-
-  // 获取后端算法配置（含镜像可用性）
-  try {
-    const data = await apiPost(API_ROUTES.ALGO, {});
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
-      // 后端返回带 available 标记的选项
-      if (data.fjsp?.options) fjspOptions.value = data.fjsp.options;
-      if (data.mapf?.options) mapfOptions.value = data.mapf.options;
-      if (data.assigner?.options) assignerOptions.value = data.assigner.options;
-    }
-  } catch (error) {
-    console.warn("[DockerFactory] 获取算法列表失败，使用默认值:", error);
-  }
-
-  // 默认选中第一个选项
-  if (fjspOptions.value.length > 0) selectedFjsp.value = fjspOptions.value[0].value;
-  if (mapfOptions.value.length > 0) selectedMapf.value = mapfOptions.value[0].value;
-  if (assignerOptions.value.length > 0) selectedAssigner.value = assignerOptions.value[0].value;
+  await sim.fetchAlgoOptions();
 });
 
-// ==================== 执行方案 ====================
+// ==================== 执行方案 (Docker 3步模式) ====================
 
 const handleExecutePlan = async () => {
-  if (isRunningTest.value) return;
-
-  const algorithm = `${selectedFjsp.value}+${selectedMapf.value}+${selectedAssigner.value}`;
-  console.log(`[DockerFactory] 执行方案: ${algorithm}`);
+  if (sim.isRunningTest.value) return;
 
   isStartingContainer.value = true;
   containerStartStatus.value = '正在设定策略...';
 
   try {
-    // Step 1: 设定算法 (后端期望 {"algorithm": "fjsp+mapf+assigner"} 格式)
     await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
-      algorithm: algorithm,
+      algorithm: sim.algorithmString.value,
     }, { timeout: 30000 });
 
     containerStartStatus.value = '正在重置环境...';
-
-    // Step 2: 重置
     await apiPost(API_ROUTES.FACTORY_CONTROL_RESET, null, { timeout: 30000 });
 
     containerStartStatus.value = '正在启动容器...';
-
-    // Step 3: 启动（DockerProxy.start() 会启动容器）
     isStartingContainer.value = false;
-    isRunningTest.value = true;
 
-    stopTest = await backendSystemTest(store, monitorStore, { algorithm }, () => {
-      isRunningTest.value = false;
-      stopTest = null;
-      ElMessage.success("✅ 容器化仿真执行完成");
-    });
+    sim.handleExecutePlan(store, monitorStore, { mode: "docker" });
   } catch (error) {
     isStartingContainer.value = false;
-    isRunningTest.value = false;
-    stopTest = null;
+    sim.isRunningTest.value = false;
     ElMessage.error(`仿真执行失败: ${error.message}`);
   }
 };
@@ -207,12 +168,11 @@ const handleExecutePlan = async () => {
 // ==================== 分步测试 API ====================
 
 const testSetAlgorithm = async () => {
-  const algorithm = `${selectedFjsp.value}+${selectedMapf.value}+${selectedAssigner.value}`;
   try {
-    const result = await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
-      algorithm: algorithm,
+    await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
+      algorithm: sim.algorithmString.value,
     }, { timeout: 15000 });
-    ElMessage.success(`✅ 设定策略成功: ${algorithm}`);
+    ElMessage.success(`✅ 设定策略成功: ${sim.algorithmString.value}`);
   } catch (error) {
     ElMessage.error(`❌ 设定策略失败: ${error.message}`);
   }
@@ -238,11 +198,7 @@ const testPlay = async () => {
 
 onUnmounted(() => {
   console.log("🛑 DockerFactoryManage 卸载");
-  if (stopTest) {
-    stopTest();
-    stopTest = null;
-  }
-  store.clearAll();
+  sim.cleanup(store);
 });
 </script>
 
