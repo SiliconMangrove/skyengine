@@ -118,6 +118,7 @@ import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
 import { apiPost, API_ROUTES } from "@/utils/api";
 import { useSimulationConfig } from "@/composables/useSimulationConfig";
+import { getAlgorithmOptions } from "@/config/algorithms";
 
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import FactoryTabsPanel from "@/components/FactoryTabsPanel.vue";
@@ -128,27 +129,9 @@ const monitorStore = useMonitorStore();
 const sim = useSimulationConfig({
   defaults: { fjsp: "pso", mapf: "mapf_gpt", assigner: "nearest" },
   defaultOptions: {
-    fjsp: [
-      { label: "PSO 粒子群", value: "pso" },
-      { label: "DE 差分进化", value: "de" },
-      { label: "DRL 深度强化学习", value: "drl" },
-      { label: "BEST 最优搜索", value: "best" },
-    ],
-    mapf: [
-      { label: "A* 路由", value: "astar" },
-      { label: "GPT 路由", value: "mapf_gpt" },
-    ],
-    assigner: [
-      { label: "FIFO 先来先服务", value: "fifo" },
-      { label: "贪心分配", value: "greedy" },
-      { label: "匈牙利算法", value: "hungarian" },
-      { label: "最小拥堵", value: "least_congestion" },
-      { label: "负载均衡", value: "load_balance" },
-      { label: "最近分配", value: "nearest" },
-      { label: "随机分配", value: "random" },
-      { label: "SJT 最短作业", value: "sjt" },
-      { label: "紧迫度优先", value: "urgency" },
-    ],
+    fjsp: getAlgorithmOptions("fjsp"),
+    mapf: getAlgorithmOptions("mapf"),
+    assigner: getAlgorithmOptions("assigner"),
   },
 });
 

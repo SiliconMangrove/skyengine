@@ -25,6 +25,9 @@
             <span class="icon">←</span>
             <span class="text">返回主页</span>
           </button>
+          <button class="btn-algo-pool" @click="goToAlgorithms">
+            算法池
+          </button>
         </div>
 
         <div class="selector-content">
@@ -184,6 +187,11 @@ const backToSelector = async () => {
   }
 };
 
+// 跳转算法池页面
+const goToAlgorithms = () => {
+  router.push("/algorithms");
+};
+
 // 返回主页 (Router) — 先清理再跳转
 const backToHome = async () => {
   startLoading("正在返回主页", "清理资源中...");
@@ -309,5 +317,22 @@ const currentFactoryComponent = computed(() => {
   font-variant-numeric: tabular-nums;
   min-width: 40px;
   text-align: center;
+}
+
+/* 算法池入口 */
+.btn-algo-pool {
+  padding: 8px 20px;
+  background: rgba(100, 181, 255, 0.1);
+  border: 1px solid rgba(100, 181, 255, 0.3);
+  border-radius: 8px;
+  color: #64b5ff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-algo-pool:hover {
+  background: rgba(100, 181, 255, 0.2);
+  border-color: rgba(100, 181, 255, 0.5);
 }
 </style>

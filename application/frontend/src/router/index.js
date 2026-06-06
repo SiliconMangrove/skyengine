@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import FactoryView from '../views/FactoryView.vue'
+import AlgorithmPoolView from '../views/AlgorithmPoolView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -16,6 +17,12 @@ const router = createRouter({
       name: 'factory',
       component: FactoryView,
       meta: { title: '工厂管理系统' }
+    },
+    {
+      path: '/algorithms',
+      name: 'algorithms',
+      component: AlgorithmPoolView,
+      meta: { title: '算法池' }
     },
   ],
 })
