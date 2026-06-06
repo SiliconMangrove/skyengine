@@ -2,23 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies + docker CLI
+# Use Chinese mirror for apt
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    ca-certificates \
-    curl \
-    gnupg \
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && chmod a+r /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
-    && apt-get install -y docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Copy local binaries: uv + docker CLI + compose plugin
+COPY application/dockerfile/docker-bin/uv /usr/local/bin/uv
+COPY application/dockerfile/docker-bin/docker /usr/local/bin/docker
+COPY application/dockerfile/docker-bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Set PyPI mirror (tsinghua)
 ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple

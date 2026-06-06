@@ -4,6 +4,7 @@
     :title="currentTab.label"
     :icon="currentTab.icon"
     :width="300"
+    :height="480"
     :initial-pos="{ x: 12, y: 12 }"
     :max-height="0"
     @close="$emit('update:showPanel', false)"
@@ -33,6 +34,7 @@
         />
         <MetricsPanel v-else-if="tab.key === 'metrics'" :show-chart="true" />
         <EventPanel v-else-if="tab.key === 'events'" title="系统日志" />
+        <AgentPanel v-else-if="tab.key === 'agent'" />
       </slot>
     </template>
   </DraggablePanel>
@@ -50,6 +52,7 @@ import ControlPanel from '@/components/ControlPanel.vue';
 import ConfigPanel from '@/components/ConfigPanel.vue';
 import MetricsPanel from '@/components/MetricsPanel.vue';
 import EventPanel from '@/components/EventPanel.vue';
+import AgentPanel from '@/components/AgentPanel.vue';
 
 const props = defineProps({
   tabs: { type: Array, required: true },

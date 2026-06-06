@@ -1,34 +1,36 @@
+/* ============================================================
+   ConfigPanel — 暗色玻璃风格
+   ============================================================ */
+
 .data-panel {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: transparent;
   overflow: hidden;
-  border: 1px solid #eee;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   height: 100%;
+  color: rgba(200, 220, 255, 0.85);
+  font-size: 12px;
 }
 
 .panel-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 12px 16px;
+  padding: 10px 12px 6px;
   flex-shrink: 0;
 }
 
 .panel-header h3 {
   margin: 0;
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(200, 220, 255, 0.9);
 }
 
 .panel-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  gap: 20px;
+  padding: 4px 10px 10px;
+  gap: 12px;
   overflow-y: auto;
   min-height: 0;
   background: transparent;
@@ -38,7 +40,7 @@
 .section-block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .section-block.flex-grow {
@@ -49,9 +51,9 @@
 }
 
 .section-title {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
-  color: #666;
+  color: rgba(160, 190, 230, 0.6);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -59,7 +61,7 @@
 
 .info-icon {
   font-size: 12px;
-  color: #999;
+  color: rgba(160, 190, 230, 0.4);
   cursor: help;
 }
 
@@ -68,28 +70,28 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 24px;
-  border: 2px dashed #d9d9d9;
-  border-radius: 6px;
-  background: #fafafa;
+  gap: 8px;
+  padding: 16px;
+  border: 2px dashed rgba(100, 180, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(100, 180, 255, 0.03);
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .upload-area:hover {
-  border-color: #667eea;
-  background: #f5f5ff;
+  border-color: rgba(100, 180, 255, 0.3);
+  background: rgba(100, 180, 255, 0.06);
 }
 
 .upload-area.drag-active {
-  border-color: #667eea;
-  background: #f0f0ff;
-  box-shadow: 0 0 12px rgba(102, 126, 234, 0.15);
+  border-color: rgba(100, 180, 255, 0.4);
+  background: rgba(100, 180, 255, 0.08);
+  box-shadow: 0 0 12px rgba(100, 180, 255, 0.1);
 }
 
-/* 覆盖 Element Upload 的默认样式，使其更紧凑 */
+/* 覆盖 Element Upload 的默认样式 */
 :deep(.el-upload-dragger) {
   padding: 10px;
   height: auto;
@@ -98,51 +100,51 @@
 }
 
 .upload-icon {
-  font-size: 32px;
+  font-size: 28px;
 }
 
 .upload-text {
   margin: 0;
-  font-size: 13px;
-  color: #606266;
+  font-size: 12px;
+  color: rgba(160, 190, 230, 0.6);
   text-align: center;
 }
 
 .upload-text em {
-  color: #667eea;
+  color: rgba(100, 180, 255, 0.8);
   font-style: normal;
   font-weight: 600;
 }
 
 .browse-link {
-  color: #667eea;
+  color: rgba(100, 180, 255, 0.8);
   font-weight: 600;
   cursor: pointer;
   text-decoration: underline;
 }
 
 .browse-link:hover {
-  color: #5a6fd6;
+  color: rgba(100, 180, 255, 1);
 }
 
 .upload-hint {
   margin: 0;
-  font-size: 11px;
-  color: #999;
+  font-size: 10px;
+  color: rgba(160, 190, 230, 0.35);
 }
 
 .upload-tip {
   font-size: 10px;
-  color: #909399;
+  color: rgba(160, 190, 230, 0.3);
   text-align: center;
   margin-top: 4px;
 }
 
 .upload-actions {
-  margin-top: 12px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .config-name-input {
@@ -161,67 +163,67 @@
 
 /* --- 文件预览 --- */
 .file-preview {
-  padding: 12px;
-  background: #fafafa;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  margin-bottom: 12px;
+  padding: 10px;
+  background: rgba(100, 180, 255, 0.04);
+  border: 1px solid rgba(100, 180, 255, 0.1);
+  border-radius: 6px;
+  margin-bottom: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .preview-item {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .preview-label {
-  color: #999;
+  color: rgba(160, 190, 230, 0.45);
   font-weight: 500;
 }
 
 .preview-value {
-  color: #333;
+  color: rgba(200, 220, 255, 0.8);
   font-family: 'Monaco', monospace;
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-end;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .error-alert,
 .success-alert {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 4px;
-  margin-bottom: 12px;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
   animation: slideIn 0.3s ease;
 }
 
 .error-alert {
-  background: #ffebee;
-  border: 1px solid #ffcdd2;
+  background: rgba(244, 67, 54, 0.08);
+  border: 1px solid rgba(244, 67, 54, 0.2);
 }
 
 .success-alert {
-  background: #e8f5e9;
-  border: 1px solid #c8e6c9;
+  background: rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.2);
 }
 
 .error-icon {
-  font-size: 18px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
 .success-icon {
-  font-size: 18px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -232,30 +234,30 @@
 
 .error-title,
 .success-title {
-  margin: 0 0 4px 0;
-  font-size: 12px;
+  margin: 0 0 3px 0;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .error-title {
-  color: #c62828;
+  color: rgba(244, 67, 54, 0.9);
 }
 
 .success-title {
-  color: #2e7d32;
+  color: rgba(76, 175, 80, 0.9);
 }
 
 .error-detail {
   margin: 0;
-  font-size: 11px;
-  color: #d32f2f;
+  font-size: 10px;
+  color: rgba(244, 67, 54, 0.7);
   word-break: break-word;
 }
 
 .success-detail {
   margin: 0;
-  font-size: 11px;
-  color: #388e3c;
+  font-size: 10px;
+  color: rgba(76, 175, 80, 0.7);
 }
 
 .error-close,
@@ -263,33 +265,33 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   flex-shrink: 0;
   padding: 0;
 }
 
 .error-close {
-  color: #d32f2f;
+  color: rgba(244, 67, 54, 0.6);
 }
 
 .success-close {
-  color: #388e3c;
+  color: rgba(76, 175, 80, 0.6);
 }
 
 .config-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .config-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
-  background: #fafafa;
-  border: 1px solid #eee;
-  border-radius: 4px;
+  padding: 8px 10px;
+  background: rgba(100, 180, 255, 0.04);
+  border: 1px solid rgba(100, 180, 255, 0.1);
+  border-radius: 6px;
 }
 
 .config-info {
@@ -297,17 +299,17 @@
 }
 
 .config-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: #333;
-  margin-bottom: 4px;
+  color: rgba(200, 220, 255, 0.85);
+  margin-bottom: 3px;
 }
 
 .config-meta {
   display: flex;
-  gap: 12px;
-  font-size: 11px;
-  color: #999;
+  gap: 10px;
+  font-size: 10px;
+  color: rgba(160, 190, 230, 0.4);
 }
 
 .config-version,
@@ -315,9 +317,9 @@
   font-family: 'Monaco', monospace;
 }
 
-/* ===== 滚动条美化 ===== */
+/* ===== 滚动条 ===== */
 .panel-content::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
 }
 
 .panel-content::-webkit-scrollbar-track {
@@ -325,18 +327,18 @@
 }
 
 .panel-content::-webkit-scrollbar-thumb {
-  background: #d0d0d0;
-  border-radius: 3px;
+  background: rgba(100, 180, 255, 0.15);
+  border-radius: 2px;
 }
 
 .panel-content::-webkit-scrollbar-thumb:hover {
-  background: #b0b0b0;
+  background: rgba(100, 180, 255, 0.25);
 }
 
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-6px);
   }
   to {
     opacity: 1;

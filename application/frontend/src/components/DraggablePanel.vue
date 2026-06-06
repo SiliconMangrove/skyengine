@@ -47,6 +47,8 @@ const props = defineProps({
   defaultCollapsed: { type: Boolean, default: false },
   /** 最小宽度 */
   minWidth: { type: Number, default: 200 },
+  /** 固定高度 (px)，0 = 自适应 */
+  height: { type: Number, default: 0 },
   /** 最大高度 (px)，超出内容滚动 */
   maxHeight: { type: Number, default: 0 },
 })
@@ -69,6 +71,9 @@ const panelStyle = computed(() => {
     width: `${props.width}px`,
     minWidth: `${props.minWidth}px`,
     transform: `translate(${posX.value}px, ${posY.value}px)`,
+  }
+  if (props.height > 0) {
+    style.height = `${props.height}px`
   }
   if (props.maxHeight > 0) {
     style.maxHeight = `${props.maxHeight}px`

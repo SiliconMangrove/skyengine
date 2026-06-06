@@ -1,8 +1,5 @@
 <template>
   <div class="factory-manage-container">
-    <div class="left-panel">
-      <ControlPanel :disabled="isEditMode" />
-    </div>
     <div class="middle-panel">
       <FactoryPlayerSSE :hide-control-panel="true" :edit-mode="isEditMode" />
 
@@ -21,24 +18,9 @@
             </span>
           </div>
           <div class="toolbar-right">
-            <select v-model="sim.selectedFjsp.value" class="plan-select" :disabled="sim.isRunningTest.value">
-              <option v-for="opt in sim.fjspOptions.value" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-            <select v-model="sim.selectedMapf.value" class="plan-select" :disabled="sim.isRunningTest.value">
-              <option v-for="opt in sim.mapfOptions.value" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-            <select v-model="sim.selectedAssigner.value" class="plan-select" :disabled="sim.isRunningTest.value">
-              <option v-for="opt in sim.assignerOptions.value" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
             <button @click="handleExecutePlan" class="glass-btn primary"
               :disabled="sim.isRunningTest.value || isStartingContainer" title="上传选中的方案">
-              🚀 上传选中方案
+              🚀 启动仿真
             </button>
           </div>
         </div>
@@ -49,25 +31,59 @@
           <span>正在启动仿真容器...</span>
           <span class="loading-detail">{{ containerStartStatus }}</span>
         </div>
-
-        <!-- API 测试按钮组 -->
-        <div class="api-test-toolbar">
-          <span class="test-label">API 测试:</span>
-          <button @click="testSetAlgorithm" class="test-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
-            1️⃣ 设定策略
-          </button>
-          <button @click="testReset" class="test-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
-            2️⃣ 重置工厂
-          </button>
-          <button @click="testPlay" class="test-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
-            3️⃣ 启动执行
-          </button>
-        </div>
       </div>
     </div>
 
-    <RightSidePanel ref="rightSidePanelRef" config-panel-title="⚙️ 容器化仿真配置" :show-chart="true"
-      event-panel-title="📋 系统日志" @edit-mode-change="isEditMode = $event" />
+    <FactoryTabsPanel
+      :tabs="tabs"
+      v-model="activeTab"
+      v-model:show-panel="showPanel"
+      :is-edit-mode="isEditMode"
+      :is-running-test="sim.isRunningTest.value"
+      @edit-mode-change="isEditMode = $event"
+    >
+      <template #tab-simulation>
+        <div class="simulation-tab">
+          <div class="sim-field">
+            <label>FJSP 排程</label>
+            <select v-model="sim.selectedFjsp.value" class="plan-select" :disabled="sim.isRunningTest.value">
+              <option v-for="opt in sim.fjspOptions.value" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+          <div class="sim-field">
+            <label>MAPF 路由</label>
+            <select v-model="sim.selectedMapf.value" class="plan-select" :disabled="sim.isRunningTest.value">
+              <option v-for="opt in sim.mapfOptions.value" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+          <div class="sim-field">
+            <label>任务分配</label>
+            <select v-model="sim.selectedAssigner.value" class="plan-select" :disabled="sim.isRunningTest.value">
+              <option v-for="opt in sim.assignerOptions.value" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="sim-divider"></div>
+
+          <span class="test-label">分步测试:</span>
+          <button @click="testSetAlgorithm" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
+            1️⃣ 设定策略
+          </button>
+          <button @click="testReset" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
+            2️⃣ 重置工厂
+          </button>
+          <button @click="testPlay" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
+            3️⃣ 启动执行
+          </button>
+        </div>
+      </template>
+    </FactoryTabsPanel>
   </div>
 </template>
 
@@ -80,8 +96,7 @@ import { apiPost, API_ROUTES } from "@/utils/api";
 import { useSimulationConfig } from "@/composables/useSimulationConfig";
 
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
-import ControlPanel from "@/components/ControlPanel.vue";
-import RightSidePanel from "@/components/RightSidePanel.vue";
+import FactoryTabsPanel from "@/components/FactoryTabsPanel.vue";
 
 const store = useFactoryStore();
 const monitorStore = useMonitorStore();
@@ -118,6 +133,17 @@ const sim = useSimulationConfig({
 const isEditMode = ref(false);
 const isStartingContainer = ref(false);
 const containerStartStatus = ref("");
+const showPanel = ref(true);
+const activeTab = ref("simulation");
+
+const tabs = [
+  { key: "simulation", label: "仿真", icon: "🚀" },
+  { key: "control", label: "控制", icon: "⚙️" },
+  { key: "config", label: "配置", icon: "🔧" },
+  { key: "agent", label: "Agent", icon: "🤖" },
+  { key: "metrics", label: "指标", icon: "📊" },
+  { key: "events", label: "日志", icon: "📋" },
+];
 
 const containerStatus = computed(() => {
   if (isStartingContainer.value) return '启动容器中...';
@@ -234,43 +260,40 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.api-test-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.simulation-tab .step-btn {
+  width: 100%;
   padding: 8px 12px;
-  background: rgba(30, 30, 40, 0.85);
-  border-radius: 8px;
-  margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  pointer-events: auto;
-}
-
-.test-label {
-  color: #a0a0a0;
-  font-size: 12px;
-  margin-right: 4px;
-}
-
-.test-btn {
-  padding: 6px 12px;
-  font-size: 12px;
+  font-size: 13px;
   border: 1px solid rgba(100, 180, 255, 0.3);
   border-radius: 6px;
   background: rgba(60, 120, 200, 0.2);
   color: #b0d0ff;
   cursor: pointer;
   transition: all 0.2s ease;
+  margin-bottom: 6px;
 }
 
-.test-btn:hover:not(:disabled) {
+.simulation-tab .step-btn:hover:not(:disabled) {
   background: rgba(60, 120, 200, 0.4);
   border-color: rgba(100, 180, 255, 0.6);
   color: #ffffff;
 }
 
-.test-btn:disabled {
+.simulation-tab .step-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.simulation-tab .test-label {
+  color: #a0a0a0;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.sim-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 10px 0;
 }
 </style>

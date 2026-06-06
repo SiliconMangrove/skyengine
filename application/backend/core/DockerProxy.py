@@ -65,8 +65,15 @@ class DockerProxy:
             "SKYENGINE_COMPOSE_PATH",
             "/opt/skyengine/docker-compose-online.yaml",
         )
+        self._project_dir: str = os.getenv(
+            "SKYENGINE_PROJECT_DIR",
+            "",
+        )
         self._project_name: str = "skyengine-online"
-        self._engine_url: str = f"http://localhost:{os.getenv('ENGINE_PORT', '8080')}"
+        self._engine_url: str = os.getenv(
+            "ENGINE_URL",
+            f"http://localhost:{os.getenv('ENGINE_PORT', '8080')}",
+        )
 
         self._config: dict = {}
         self._algorithm: str = "pso+astar+nearest"
@@ -83,9 +90,10 @@ class DockerProxy:
         cmd = [
             "docker", "compose",
             "-p", self._project_name,
-            "-f", self._compose_file,
-            *args,
         ]
+        if self._project_dir:
+            cmd += ["--project-directory", self._project_dir]
+        cmd += ["-f", self._compose_file, *args]
         print(f"[DockerProxy] $ {' '.join(cmd)}")
 
         merged_env = {**os.environ}

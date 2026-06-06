@@ -25,6 +25,8 @@
         <slot name="metrics-extra"></slot>
       </MetricsPanel>
 
+      <AgentPanel />
+
       <EventPanel :title="eventPanelTitle" />
     </div>
   </div>
@@ -35,6 +37,7 @@ import { ref } from 'vue'
 import ConfigPanel from './ConfigPanel.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import EventPanel from './EventPanel.vue'
+import AgentPanel from './AgentPanel.vue'
 
 const configPanelRef = ref(null)
 

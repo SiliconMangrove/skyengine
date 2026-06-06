@@ -22,7 +22,8 @@
       "Bash(docker ps:*)",
       "Bash(docker images:*)",
       "Bash(grep -r \"SERVICE_URL\\\\|http.*solver\\\\|remote\" /data1/home/wuhao/project/grouppro/skyengine/application/backend/joint_sim/ --include=*.py)",
-      "Bash(ls /data1/home/wuhao/project/finalpro/SkyEngine/*.dockerfile /data1/home/wuhao/project/finalpro/SkyEngine/Dockerfile*)"
+      "Bash(ls /data1/home/wuhao/project/finalpro/SkyEngine/*.dockerfile /data1/home/wuhao/project/finalpro/SkyEngine/Dockerfile*)",
+      "Bash(docker network:*)"
     ]
   }
 }
