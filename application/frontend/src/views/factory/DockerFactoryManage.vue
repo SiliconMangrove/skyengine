@@ -1,7 +1,12 @@
 <template>
   <div class="factory-manage-container">
     <div class="middle-panel">
-      <FactoryPlayerSSE :hide-control-panel="true" :edit-mode="isEditMode" />
+      <FactoryPlayerSSE
+        :hide-control-panel="true"
+        :edit-mode="isEditMode"
+        :background-theme="backgroundTheme"
+        :background-size="backgroundSize"
+      />
 
       <div class="floating-toolbar-wrapper">
         <div class="floating-toolbar">
@@ -81,6 +86,25 @@
           <button @click="testPlay" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
             3️⃣ 启动执行
           </button>
+
+          <div class="sim-divider"></div>
+
+          <div class="sim-field">
+            <label>场景风格</label>
+            <select v-model="backgroundTheme" class="plan-select">
+              <option value="clean">简洁</option>
+              <option value="factory">工厂车间</option>
+            </select>
+          </div>
+          <div v-if="backgroundTheme === 'factory'" class="sim-field">
+            <label>厂房尺寸</label>
+            <select v-model.number="backgroundSize" class="plan-select">
+              <option :value="1">紧凑</option>
+              <option :value="2">标准</option>
+              <option :value="3">宽敞</option>
+              <option :value="4">大厅</option>
+            </select>
+          </div>
         </div>
       </template>
     </FactoryTabsPanel>
@@ -135,6 +159,8 @@ const isStartingContainer = ref(false);
 const containerStartStatus = ref("");
 const showPanel = ref(true);
 const activeTab = ref("simulation");
+const backgroundTheme = ref("factory");
+const backgroundSize = ref(2);
 
 const tabs = [
   { key: "simulation", label: "仿真", icon: "🚀" },

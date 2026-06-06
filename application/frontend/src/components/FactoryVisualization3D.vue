@@ -78,7 +78,7 @@ const GRID_SIZE = 1 // 每个格子 = 1 世界单位
 function gridToWorld(gx, gy) {
   const w = topology.value.gridWidth
   const h = topology.value.gridHeight
-  return new THREE.Vector3((gx - w / 2) * GRID_SIZE, 0, (gy - h / 2) * GRID_SIZE)
+  return new THREE.Vector3((gx - w / 2 + 0.5) * GRID_SIZE, 0, (gy - h / 2 + 0.5) * GRID_SIZE)
 }
 
 // ==================== Three.js 对象 ====================
@@ -111,8 +111,8 @@ let lastDragGridY = 0           // 拖拽过程中最新的网格 Y
 function snapToGrid(worldPos) {
   const w = topology.value.gridWidth
   const h = topology.value.gridHeight
-  const gx = Math.round(worldPos.x / GRID_SIZE + w / 2)
-  const gy = Math.round(worldPos.z / GRID_SIZE + h / 2)
+  const gx = Math.round(worldPos.x / GRID_SIZE + w / 2 - 0.5)
+  const gy = Math.round(worldPos.z / GRID_SIZE + h / 2 - 0.5)
   return {
     gx: Math.max(0, Math.min(gx, w - 1)),
     gy: Math.max(0, Math.min(gy, h - 1)),

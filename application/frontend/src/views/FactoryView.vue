@@ -3,7 +3,23 @@
     <div class="bg-overlay"></div>
 
     <transition name="fade" mode="out-in">
-      <div class="factory-selector" v-if="!isInFactory" key="selector">
+      <!-- 加载过渡页 -->
+      <div class="factory-loading" v-if="isLoading" key="loading">
+        <div class="loading-content">
+          <div class="loading-spinner-ring">
+            <svg viewBox="0 0 100 100">
+              <circle class="ring-bg" cx="50" cy="50" r="42" />
+              <circle class="ring-fg" cx="50" cy="50" r="42" />
+            </svg>
+          </div>
+          <h2 class="loading-title">{{ loadingTitle }}</h2>
+          <p class="loading-subtitle">{{ loadingSubtitle }}</p>
+          <div class="loading-timer" v-if="loadingElapsed > 0">{{ loadingElapsed }}s</div>
+        </div>
+      </div>
+
+      <!-- 工厂选择器 -->
+      <div class="factory-selector" v-else-if="!isInFactory" key="selector">
         <div class="nav-bar">
           <button class="btn-home" @click="backToHome">
             <span class="icon">←</span>
@@ -44,6 +60,7 @@
         </div>
       </div>
 
+      <!-- 工厂内容 -->
       <div class="factory-content" v-else key="content">
         <div class="content-header">
           <div class="header-left">
@@ -79,6 +96,31 @@ const router = useRouter();
 const isInFactory = ref(false);
 const currentFactoryId = ref(null);
 
+// 加载过渡状态
+const isLoading = ref(false);
+const loadingTitle = ref("");
+const loadingSubtitle = ref("");
+const loadingElapsed = ref(0);
+let loadingTimer = null;
+
+function startLoading(title, subtitle = "") {
+  isLoading.value = true;
+  loadingTitle.value = title;
+  loadingSubtitle.value = subtitle;
+  loadingElapsed.value = 0;
+  loadingTimer = setInterval(() => {
+    loadingElapsed.value++;
+  }, 1000);
+}
+
+function stopLoading() {
+  isLoading.value = false;
+  if (loadingTimer) {
+    clearInterval(loadingTimer);
+    loadingTimer = null;
+  }
+}
+
 // 工厂配置列表
 const factories = computed(() => factoryStore.getFactories());
 
@@ -100,54 +142,57 @@ async function cleanupFactory() {
 
 // 进入工厂
 const enterFactory = async (factoryId) => {
+  startLoading("工厂正在准备中", "正在初始化资源，请稍候...");
   try {
-    // 先调用后端切换工厂接口，确保工厂代理已初始化
-    console.log("切换工厂到ID:", factoryId);
     const response = await apiPost(API_ROUTES.FACTORY_CONTROL_SWITCH, {
       factory_id: factoryId,
-    });
-    console.log("Factory switch response:", response);
+    }, { timeout: 120000 });
+
     if (response.status === "ok") {
       currentFactoryId.value = factoryId;
       factoryStore.setCurrentFactory(factoryId);
-
       isInFactory.value = true;
 
-      // 快速切换，减少卡顿
       const factory = factories.value.find((f) => f.id === factoryId);
-      if (factory) {
-        ElMessage.success({
-          message: `已连接: ${factory.name}`,
-          type: "success",
-          duration: 1500,
-        });
-      }
+      ElMessage.success({
+        message: `已连接: ${factory.name}`,
+        duration: 1500,
+      });
     } else {
       ElMessage.error({
         message: `切换工厂失败: ${response.message || "未知错误"}`,
-        type: "error",
         duration: 3000,
       });
     }
   } catch (error) {
-    console.error("切换工厂时出错:", error);
     ElMessage.error({
       message: `切换工厂失败: ${error.message || "网络错误"}`,
-      type: "error",
       duration: 3000,
     });
+  } finally {
+    stopLoading();
   }
 };
 
 // 返回选择列表 — 统一清理
-const backToSelector = () => {
-  cleanupFactory();
+const backToSelector = async () => {
+  startLoading("工厂资源正在清理中", "正在释放资源，请稍候...");
+  try {
+    await cleanupFactory();
+  } finally {
+    stopLoading();
+  }
 };
 
 // 返回主页 (Router) — 先清理再跳转
 const backToHome = async () => {
-  await cleanupFactory();
-  router.push("/");
+  startLoading("正在返回主页", "清理资源中...");
+  try {
+    await cleanupFactory();
+    router.push("/");
+  } finally {
+    stopLoading();
+  }
 };
 
 // 浏览器后退 / 路由跳转时清理
@@ -157,7 +202,7 @@ onBeforeRouteLeave(async () => {
 
 // 组件卸载兜底
 onBeforeUnmount(() => {
-  // sync 版本，防止 async 未完成
+  stopLoading();
   factoryStore.clearAll();
   isInFactory.value = false;
   currentFactoryId.value = null;
@@ -167,7 +212,6 @@ const currentFactoryComponent = computed(() => {
   if (!currentFactory.value) return null;
   const factoryId = currentFactory.value.id;
 
-  // 根据工厂类型加载不同的管理组件
   switch (factoryId) {
     case "grid_factory":
       return defineAsyncComponent(
@@ -199,4 +243,71 @@ const currentFactoryComponent = computed(() => {
 
 <style scoped>
 @import "./styles/FactoryView.scss";
+
+/* 加载过渡页 */
+.factory-loading {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.loading-spinner-ring {
+  width: 80px;
+  height: 80px;
+}
+
+.loading-spinner-ring svg {
+  width: 100%;
+  height: 100%;
+  animation: loading-spin 1.5s linear infinite;
+}
+
+.ring-bg {
+  fill: none;
+  stroke: rgba(100, 180, 255, 0.15);
+  stroke-width: 6;
+}
+
+.ring-fg {
+  fill: none;
+  stroke: #64b5ff;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 180;
+  stroke-dashoffset: 80;
+}
+
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.5px;
+}
+
+.loading-subtitle {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.loading-timer {
+  font-size: 13px;
+  color: #64b5ff;
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: center;
+}
 </style>
