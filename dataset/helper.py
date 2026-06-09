@@ -6,9 +6,9 @@
 SkyEngine 的 grid_factory.json 格式。
 
 支持的输入格式:
-  1. FJSP JSON (dataset/fjsp-instances/**/*.json)
-  2. FJSP Benchmark 文本 (dataset/fjsp-instances/**/*.txt)
-  3. MAPF YAML 地图 (dataset/mapf/*.yaml)
+    1. FJSP JSON (dataset/fjsp-instances/**/*.json)
+    2. FJSP Benchmark 文本 (dataset/fjsp-instances/**/*.txt)
+    3. MAPF YAML 地图 (dataset/mapf/*.yaml)
 
 输出: grid_factory.json 格式, 可被 SkyEngine 直接加载。
 
