@@ -98,7 +98,7 @@ const tabs = [
   { key: "simulation", label: "仿真", icon: "🚀" },
   { key: "control", label: "控制", icon: "⚙️" },
   { key: "config", label: "配置", icon: "🔧" },
-  { key: "agent", label: "Agent", icon: "🤖" },
+  { key: "agent", label: "分析", icon: "🤖" },
   { key: "metrics", label: "指标", icon: "📊" },
   { key: "events", label: "日志", icon: "📋" },
 ];

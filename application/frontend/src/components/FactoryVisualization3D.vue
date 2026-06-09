@@ -31,6 +31,7 @@ import {
   HIGHLIGHT_COLOR, HIGHLIGHT_COLLISION_COLOR,
   BACKGROUND_THEMES,
   createBollard, createRack, createCabinet, createSafetyBarrier,
+  createObstacleWall,
   createPerimeterWall, getDecorationLayout,
   createMachine, createAGV,
   createFactoryBackground,
@@ -474,18 +475,25 @@ function buildZones() {
       }
     }
 
-    // 普通区域：渲染半透明底板
+    // 普通区域：渲染半透明底板（obstacle 除外，用 3D 墙体）
     if (!z.decor) {
-      const geom = new THREE.BoxGeometry(area.w * U, 0.06, area.h * U)
-      const mat = new THREE.MeshStandardMaterial({
-        color: ZONE_COLORS[z.type] || ZONE_COLORS.default,
-        transparent: true, opacity: 0.15, roughness: 0.9,
-      })
-      const mesh = new THREE.Mesh(geom, mat)
-      mesh.position.set(cx, 0.03, cz)
-      mesh.receiveShadow = true
-      mesh.userData = { id: z.id, name: z.name, type: z.type }
-      zoneGroup.add(mesh)
+      if (z.type === 'obstacle') {
+        const wall = createObstacleWall(U, area.w, area.h)
+        wall.position.set(cx, 0, cz)
+        wall.userData = { id: z.id, name: z.name, type: z.type }
+        zoneGroup.add(wall)
+      } else {
+        const geom = new THREE.BoxGeometry(area.w * U, 0.06, area.h * U)
+        const mat = new THREE.MeshStandardMaterial({
+          color: ZONE_COLORS[z.type] || ZONE_COLORS.default,
+          transparent: true, opacity: 0.15, roughness: 0.9,
+        })
+        const mesh = new THREE.Mesh(geom, mat)
+        mesh.position.set(cx, 0.03, cz)
+        mesh.receiveShadow = true
+        mesh.userData = { id: z.id, name: z.name, type: z.type }
+        zoneGroup.add(mesh)
+      }
     }
   })
 }

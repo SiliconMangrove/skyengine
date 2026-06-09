@@ -2,7 +2,7 @@
   <div class="agent-panel">
     <!-- ===== 顶部 Agent 状态概览 ===== -->
     <div class="agent-header">
-      <h3>🤖 Agent 分析</h3>
+      <h3>🤖 异常分析检测 </h3>
       <span class="agent-counter" v-if="agvList.length > 0">
         {{ activeCount }}/{{ agvList.length }} 活跃
       </span>

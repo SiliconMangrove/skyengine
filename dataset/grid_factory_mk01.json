@@ -1,0 +1,543 @@
+{
+  "id": "grid_factory",
+  "name": "SkyEngine 统一问题描述",
+  "version": "1.2.0",
+  "createdAt": "2026-06-04",
+  "description": "自动生成: 6 台机器, 10 个工件, 4 台 AGV",
+  "topology": {
+    "gridWidth": 21,
+    "gridHeight": 21,
+    "zones": [],
+    "machines": {
+      "MACHINE_1_1": {
+        "id": "TABLE_1_MACHINE_1",
+        "name": "PLC 1-1",
+        "location": [
+          0,
+          9
+        ],
+        "size": [
+          1,
+          1
+        ],
+        "status": "IDLE"
+      },
+      "MACHINE_1_2": {
+        "id": "TABLE_1_MACHINE_2",
+        "name": "PLC 1-2",
+        "location": [
+          0,
+          11
+        ],
+        "size": [
+          1,
+          1
+        ],
+        "status": "IDLE"
+      },
+      "MACHINE_2_1": {
+        "id": "TABLE_2_MACHINE_1",
+        "name": "PLC 2-1",
+        "location": [
+          12,
+          0
+        ],
+        "size": [
+          1,
+          1
+        ],
+        "status": "IDLE"
+      },
+      "MACHINE_2_2": {
+        "id": "TABLE_2_MACHINE_2",
+        "name": "PLC 2-2",
+        "location": [
+          8,
+          4
+        ],
+        "size": [
+          1,
+          1
+        ],
+        "status": "IDLE"
+      },
+      "MACHINE_3_1": {
+        "id": "TABLE_3_MACHINE_1",
+        "name": "PLC 3-1",
+        "location": [
+          9,
+          14
+        ],
+        "size": [
+          1,
+          1
+        ],
+        "status": "IDLE"
+      },
+      "MACHINE_3_2": {
+        "id": "TABLE_3_MACHINE_2",
+        "name": "PLC 3-2",
+        "location": [
+          17,
+          8
+        ],
+        "size": [
+          1,
+          1
+        ],
+        "status": "IDLE"
+      }
+    },
+    "waypoints": {}
+  },
+  "agvs": [
+    {
+      "id": 0,
+      "name": "AGV-01",
+      "initialLocation": [
+        3,
+        6
+      ],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 1,
+      "name": "AGV-02",
+      "initialLocation": [
+        2,
+        20
+      ],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 2,
+      "name": "AGV-03",
+      "initialLocation": [
+        17,
+        2
+      ],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 3,
+      "name": "AGV-04",
+      "initialLocation": [
+        18,
+        18
+      ],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    }
+  ],
+  "jobs": {
+    "_comment": "machine_id 映射: 0-based 索引",
+    "_machine_id_map": {
+      "0": "MACHINE_1_1",
+      "1": "MACHINE_1_2",
+      "2": "MACHINE_2_1",
+      "3": "MACHINE_2_2",
+      "4": "MACHINE_3_1",
+      "5": "MACHINE_3_2"
+    },
+    "job_list": [
+      {
+        "job_id": 0,
+        "name": "工件-000",
+        "operations": [
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 0,
+            "duration": 1,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 4,
+            "duration": 2,
+            "name": "焊接"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "检测"
+          },
+          {
+            "machine_id": 1,
+            "duration": 1,
+            "name": "组装"
+          },
+          {
+            "machine_id": 2,
+            "duration": 3,
+            "name": "清洗"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 236,
+        "priority": 1
+      },
+      {
+        "job_id": 1,
+        "name": "工件-001",
+        "operations": [
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 1,
+            "duration": 1,
+            "name": "贴片"
+          },
+          {
+            "machine_id": -1,
+            "duration": 2,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "检测"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "组装"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 248,
+        "priority": 1
+      },
+      {
+        "job_id": 2,
+        "name": "工件-002",
+        "operations": [
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 4,
+            "duration": 2,
+            "name": "贴片"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "检测"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "组装"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 242,
+        "priority": 1
+      },
+      {
+        "job_id": 3,
+        "name": "工件-003",
+        "operations": [
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 1,
+            "duration": 1,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 0,
+            "duration": 1,
+            "name": "检测"
+          },
+          {
+            "machine_id": 4,
+            "duration": 2,
+            "name": "组装"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 233,
+        "priority": 1
+      },
+      {
+        "job_id": 4,
+        "name": "工件-004",
+        "operations": [
+          {
+            "machine_id": 0,
+            "duration": 1,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "检测"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "组装"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "清洗"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 266,
+        "priority": 1
+      },
+      {
+        "job_id": 5,
+        "name": "工件-005",
+        "operations": [
+          {
+            "machine_id": 4,
+            "duration": 2,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": -1,
+            "duration": 2,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "检测"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "组装"
+          },
+          {
+            "machine_id": 2,
+            "duration": 2,
+            "name": "清洗"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 251,
+        "priority": 1
+      },
+      {
+        "job_id": 6,
+        "name": "工件-006",
+        "operations": [
+          {
+            "machine_id": 4,
+            "duration": 1,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 2,
+            "duration": 2,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 3,
+            "duration": 1,
+            "name": "检测"
+          },
+          {
+            "machine_id": 1,
+            "duration": 1,
+            "name": "组装"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 227,
+        "priority": 1
+      },
+      {
+        "job_id": 7,
+        "name": "工件-007",
+        "operations": [
+          {
+            "machine_id": 4,
+            "duration": 2,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "贴片"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "检测"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "组装"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 257,
+        "priority": 1
+      },
+      {
+        "job_id": 8,
+        "name": "工件-008",
+        "operations": [
+          {
+            "machine_id": 4,
+            "duration": 1,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": -1,
+            "duration": 1,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 2,
+            "duration": 3,
+            "name": "焊接"
+          },
+          {
+            "machine_id": -1,
+            "duration": 2,
+            "name": "检测"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "组装"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "清洗"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 251,
+        "priority": 1
+      },
+      {
+        "job_id": 9,
+        "name": "工件-009",
+        "operations": [
+          {
+            "machine_id": 4,
+            "duration": 2,
+            "name": "涂胶"
+          },
+          {
+            "machine_id": 1,
+            "duration": 4,
+            "name": "贴片"
+          },
+          {
+            "machine_id": 0,
+            "duration": 1,
+            "name": "焊接"
+          },
+          {
+            "machine_id": 4,
+            "duration": 1,
+            "name": "检测"
+          },
+          {
+            "machine_id": 0,
+            "duration": 6,
+            "name": "组装"
+          },
+          {
+            "machine_id": 2,
+            "duration": 2,
+            "name": "清洗"
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 248,
+        "priority": 1
+      }
+    ]
+  },
+  "renderConfig": {
+    "baseGridSize": 40,
+    "gridWidth": 21,
+    "gridHeight": 20,
+    "colors": {
+      "background": "#ECEFF1",
+      "grid": "#CFD8DC",
+      "dock": "#1565C0",
+      "route": "#4CAF50",
+      "route_text": "#FFF",
+      "agv": "#FF5722",
+      "agv_stroke": "#FFF",
+      "machine_working": "#FFD700",
+      "machine_idle": "#90EE90",
+      "machine_broken": "#F44336",
+      "machine_maintenance": "#FF9800",
+      "machine_stroke": "#333"
+    }
+  },
+  "metadata": {
+    "gridUnit": "米（假设每个网格 = 1m）",
+    "agvCapacity": 100,
+    "machineCount": 6,
+    "waypointCount": 0,
+    "notes": "由 helper.py 自动生成。map_name=medium-mazes-seed-0000"
+  }
+}

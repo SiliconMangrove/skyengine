@@ -33,6 +33,10 @@ export const API_ROUTES = {
   // 监控相关
   MONITOR_STATUS: "/monitor/status",
   MONITOR_METRICS: "/monitor/metrics",
+
+  // 数据集相关
+  DATASET_LIST: "/dataset/list",
+  DATASET_GENERATE: "/dataset/generate",
 };
 
 /**

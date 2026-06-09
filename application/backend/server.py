@@ -535,6 +535,90 @@ async def disconnect_factory():
     return {"status": "ok", "message": "Factory disconnected"}
 
 
+@app.get("/dataset/list")
+async def list_datasets():
+    """列出所有可用的 FJSP 实例和 MAPF 地图"""
+    from dataset.helper import list_available_datasets
+    import yaml
+    from pathlib import Path
+
+    # FJSP: 使用 helper 原生方法（只从 fjsp-instances/ 读取）
+    datasets = list_available_datasets(data_dir="./dataset")
+
+    # MAPF: 从 map_dataset/gpt_eval_config/ 读取（本项目实际路径）
+    mapf_maps = {}
+    map_base = Path("./dataset/map_dataset/gpt_eval_config")
+    if map_base.exists():
+        for cat_dir in sorted(map_base.iterdir()):
+            if not cat_dir.is_dir():
+                continue
+            maps_yaml = cat_dir / "maps.yaml"
+            if maps_yaml.exists():
+                try:
+                    with open(maps_yaml) as f:
+                        maps = yaml.safe_load(f)
+                    mapf_maps[cat_dir.name] = list(maps.keys())
+                except Exception:
+                    pass
+
+    # 合并 fjsp_benchmarks 的 key 已含子目录路径（如 hurink/edata），
+    # 直接作为前端 category 使用
+    result = {
+        "fjsp_instances": datasets.get("fjsp_benchmarks", {}),
+        "mapf_maps": mapf_maps,
+    }
+    return result
+
+
+@app.post("/dataset/generate")
+async def generate_dataset_config(body: dict = Body(...)):
+    """根据选择的 FJSP + MAPF 生成工厂配置"""
+    from dataset.helper import (
+        _find_fjsp, load_fjsp_json, load_fjsp_benchmark,
+        load_mapf_yaml, convert_to_grid_factory,
+    )
+    from pathlib import Path
+
+    fjsp_category = body.get("fjsp_category", "")
+    fjsp_instance = body.get("fjsp_instance", "")
+    map_category = body.get("map_category", "")
+    map_name = body.get("map_name", "")
+
+    try:
+        data_dir = Path("./dataset")
+
+        # --- 解析 FJSP ---
+        fjsp_name = f"{fjsp_category}/{fjsp_instance}" if fjsp_category else fjsp_instance
+        fjsp_path = _find_fjsp(data_dir, fjsp_name)
+        if fjsp_path is None:
+            return {"status": "error", "message": f"FJSP 实例未找到: {fjsp_name}"}
+
+        if fjsp_path.suffix == ".json":
+            fjsp_data = load_fjsp_json(str(fjsp_path))
+        else:
+            fjsp_data = load_fjsp_benchmark(str(fjsp_path))
+
+        # --- 解析 MAPF 地图 ---
+        map_yaml = data_dir / f"map_dataset/gpt_eval_config/{map_category}/maps.yaml"
+        if not map_yaml.exists():
+            return {"status": "error", "message": f"地图类别不存在: {map_category}"}
+        map_data = load_mapf_yaml(str(map_yaml), map_name or None)
+
+        # --- 转换 ---
+        config = convert_to_grid_factory(
+            fjsp_data=fjsp_data,
+            map_data=map_data,
+            num_agvs=body.get("num_agvs", 4),
+            agv_velocity=body.get("agv_velocity", 1.0),
+            seed=body.get("seed", 42),
+        )
+        return {"status": "ok", "config": config}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
 @app.get("/health")
 async def health_check():
     """健康检查端点"""

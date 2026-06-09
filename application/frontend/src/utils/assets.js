@@ -82,6 +82,13 @@ export const DECOR = {
   greenLight: 0x44ff44,
 }
 
+// ==================== 障碍物墙 ====================
+export const OBSTACLE_WALL = {
+  body: 0x5a5d66,
+  top: 0x44474f,
+  mortar: 0x6b6e77,
+}
+
 // ==================== 编辑模式高亮 ====================
 export const HIGHLIGHT_COLOR = 0x667eea
 export const HIGHLIGHT_COLLISION_COLOR = 0xff3355
@@ -278,6 +285,62 @@ export function createSafetyBarrier(U) {
   const bar2 = new THREE.Mesh(railBarGeom, yellowMat)
   bar2.position.y = U * 0.2
   grp.add(bar2)
+
+  return grp
+}
+
+/**
+ * 障碍物墙
+ * 灰色实体砖墙 + 深灰压顶 + 横向砖缝纹理
+ *
+ * @param {number} U      网格单元大小
+ * @param {number} areaW  墙宽度（网格单位数）
+ * @param {number} areaH  墙深度（网格单位数）
+ * @returns {THREE.Group}
+ */
+export function createObstacleWall(U, areaW, areaH) {
+  const grp = new THREE.Group()
+
+  const wallH = U * 0.6
+  const w = areaW * U
+  const d = areaH * U
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: OBSTACLE_WALL.body, roughness: 0.85, metalness: 0.05,
+  })
+  const topMat = new THREE.MeshStandardMaterial({
+    color: OBSTACLE_WALL.top, roughness: 0.6, metalness: 0.1,
+  })
+  const mortarMat = new THREE.MeshStandardMaterial({
+    color: OBSTACLE_WALL.mortar, roughness: 0.9, metalness: 0.0,
+  })
+
+  // 1. 墙体主体
+  const bodyGeom = new THREE.BoxGeometry(w, wallH, d)
+  const body = new THREE.Mesh(bodyGeom, bodyMat)
+  body.position.y = wallH / 2
+  body.castShadow = true
+  body.receiveShadow = true
+  grp.add(body)
+
+  // 2. 压顶条
+  const topH = U * 0.04
+  const topGeom = new THREE.BoxGeometry(w + U * 0.02, topH, d + U * 0.02)
+  const topMesh = new THREE.Mesh(topGeom, topMat)
+  topMesh.position.y = wallH + topH / 2
+  topMesh.castShadow = true
+  grp.add(topMesh)
+
+  // 3. 砖缝纹理 — 横向细条纹
+  const mortarThick = U * 0.008
+  const mortarGeomH = new THREE.BoxGeometry(w - U * 0.04, mortarThick, d - U * 0.04)
+  const rows = Math.max(1, Math.floor(wallH / (U * 0.12)))
+  for (let i = 1; i <= rows; i++) {
+    const y = (i / (rows + 1)) * wallH
+    const stripe = new THREE.Mesh(mortarGeomH, mortarMat)
+    stripe.position.y = y
+    grp.add(stripe)
+  }
 
   return grp
 }

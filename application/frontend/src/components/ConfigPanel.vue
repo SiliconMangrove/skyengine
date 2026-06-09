@@ -5,6 +5,110 @@
     </div>
 
     <div class="panel-content">
+      <!-- ===== 数据源 ===== -->
+      <div class="section-block">
+        <div class="section-title"><i class="el-icon-folder-opened"></i> 数据源</div>
+
+        <!-- FJSP 任务选择 -->
+        <div class="data-source-row">
+          <label>任务实例</label>
+          <div class="data-source-selects">
+            <el-select
+              v-model="selectedFjspCategory"
+              placeholder="选择类别"
+              size="small"
+              @change="onFjspCategoryChange"
+            >
+              <el-option
+                v-for="cat in fjspCategories"
+                :key="cat"
+                :label="cat"
+                :value="cat"
+              />
+            </el-select>
+            <el-select
+              v-model="selectedFjspInstance"
+              placeholder="选择实例"
+              size="small"
+              filterable
+            >
+              <el-option
+                v-for="inst in currentFjspInstances"
+                :key="inst"
+                :label="inst"
+                :value="inst"
+              />
+            </el-select>
+          </div>
+        </div>
+
+        <!-- MAPF 地图选择 -->
+        <div class="data-source-row">
+          <label>地图</label>
+          <div class="data-source-selects">
+            <el-select
+              v-model="selectedMapCategory"
+              placeholder="选择类别"
+              size="small"
+              @change="onMapCategoryChange"
+            >
+              <el-option
+                v-for="cat in mapCategories"
+                :key="cat"
+                :label="cat"
+                :value="cat"
+              />
+            </el-select>
+            <el-select
+              v-model="selectedMapName"
+              placeholder="选择地图"
+              size="small"
+              filterable
+            >
+              <el-option
+                v-for="m in currentMapNames"
+                :key="m"
+                :label="m"
+                :value="m"
+              />
+            </el-select>
+          </div>
+        </div>
+
+        <!-- 参数 -->
+        <div class="data-source-row data-source-params">
+          <div class="param-item">
+            <label>AGV 数量</label>
+            <el-input-number v-model="numAgvs" :min="1" :max="20" size="small" controls-position="right" />
+          </div>
+          <div class="param-item">
+            <label>随机种子</label>
+            <el-input-number v-model="seed" :min="0" size="small" controls-position="right" />
+          </div>
+        </div>
+
+        <!-- 生成 / 导出按钮 -->
+        <div class="action-buttons">
+          <el-button size="small" :disabled="!canGenerate && !isGenerating" @click="resetDataSource"> ✕ 重置</el-button>
+          <el-button
+            size="small"
+            :disabled="!store.currentConfig"
+            @click="exportConfig"
+          >
+            📤 导出配置
+          </el-button>
+          <el-button
+            size="small"
+            type="primary"
+            :loading="isGenerating"
+            :disabled="!canGenerate"
+            @click="generateConfig"
+          >
+            {{ isGenerating ? '生成中...' : '✓ 生成配置' }}
+          </el-button>
+        </div>
+      </div>
+
       <!-- ===== 生产线配置管理 ===== -->
       <div class="section-block">
         <div class="section-title"><i class="el-icon-upload"></i> 生产线配置管理</div>
@@ -115,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useFactoryStore } from '@/stores/factory'
 import { validateAndNormalizeConfig } from '@/utils/configValidator'
@@ -151,6 +255,26 @@ const dragover = ref(false)
 const isLoading = ref(false)
 const validationError = ref(null)
 const successMessage = ref(null)
+
+// --- 数据源 State ---
+const isGenerating = ref(false)
+
+const selectedFjspCategory = ref(null)
+const selectedFjspInstance = ref(null)
+const selectedMapCategory = ref(null)
+const selectedMapName = ref(null)
+const numAgvs = ref(4)
+const seed = ref(42)
+
+const fjspCategories = computed(() => Object.keys(store.datasetList?.fjsp_instances || {}))
+const currentFjspInstances = computed(() =>
+  (store.datasetList?.fjsp_instances || {})[selectedFjspCategory.value] || [],
+)
+const mapCategories = computed(() => Object.keys(store.datasetList?.mapf_maps || {}))
+const currentMapNames = computed(() =>
+  (store.datasetList?.mapf_maps || {})[selectedMapCategory.value] || [],
+)
+const canGenerate = computed(() => selectedFjspInstance.value && selectedMapName.value)
 
 // --- Computed ---
 const loadedConfigs = computed(() => {
@@ -362,6 +486,99 @@ function downloadTemplate() {
   URL.revokeObjectURL(url)
 
   ElMessage.success('模板下载成功')
+}
+
+// --- 数据源 Methods ---
+function resetDataSource() {
+  selectedFjspCategory.value = null
+  selectedFjspInstance.value = null
+  selectedMapCategory.value = null
+  selectedMapName.value = null
+  numAgvs.value = 4
+  seed.value = 42
+}
+
+function onFjspCategoryChange(cat) {
+  selectedFjspInstance.value = null
+  const instances = (store.datasetList?.fjsp_instances || {})[cat]
+  if (instances && instances.length > 0) {
+    selectedFjspInstance.value = instances[0]
+  }
+}
+
+function onMapCategoryChange(cat) {
+  selectedMapName.value = null
+  const names = (store.datasetList?.mapf_maps || {})[cat]
+  if (names && names.length > 0) {
+    selectedMapName.value = names[0]
+  }
+}
+
+async function loadDatasets() {
+  try {
+    await store.fetchDatasets()
+  } catch (e) {
+    console.error('加载数据集失败:', e)
+  }
+}
+
+async function generateConfig() {
+  if (!canGenerate.value) return
+  isGenerating.value = true
+  validationError.value = null
+  successMessage.value = null
+  try {
+    const { config } = await apiPost(API_ROUTES.DATASET_GENERATE, {
+      fjsp_category: selectedFjspCategory.value,
+      fjsp_instance: selectedFjspInstance.value,
+      map_category: selectedMapCategory.value,
+      map_name: selectedMapName.value,
+      num_agvs: numAgvs.value,
+      seed: seed.value,
+    })
+    // 1. 清空旧配置，保存到前端 Store
+    store.factoryConfigs = {}
+    store.reset()
+    store.loadConfigFromFile(config)
+    store.initializeAGVs()
+    // 2. 上传到后端
+    const response = await apiPost(API_ROUTES.FACTORY_CONFIG_UPLOAD, {
+      filename: `${config.id || 'generated'}.json`,
+      config: config,
+    })
+    if (response.status !== 'ok') {
+      throw new Error(response.message || '后端同步失败')
+    }
+    successMessage.value = `配置生成成功: ${config.name || config.id}`
+    setTimeout(() => {
+      successMessage.value = null
+    }, 3000)
+  } catch (e) {
+    validationError.value = `生成失败: ${e.message}`
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+onMounted(() => {
+  loadDatasets()
+})
+
+function exportConfig() {
+  const config = store.exportCurrentConfig()
+  if (!config) {
+    ElMessage.warning('没有可导出的配置')
+    return
+  }
+  const dataStr = JSON.stringify(config, null, 2)
+  const blob = new Blob([dataStr], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${config.id || 'factory_config'}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('配置已导出')
 }
 
 /**

@@ -187,8 +187,11 @@
 .action-buttons {
   display: flex;
   gap: 6px;
-  justify-content: flex-end;
   margin-bottom: 8px;
+}
+
+.action-buttons .el-button {
+  flex: 1;
 }
 
 .error-alert,
@@ -339,4 +342,50 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ===== 数据源区块 ===== */
+.data-source-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.data-source-row > label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 190, 230, 0.5);
+}
+
+.data-source-selects {
+  display: flex;
+  gap: 6px;
+}
+
+.data-source-selects .el-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.data-source-params {
+  flex-direction: row;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.data-source-params .param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.data-source-params .param-item label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 190, 230, 0.5);
+}
+
+.data-source-params .el-input-number {
+  width: 100%;
 }

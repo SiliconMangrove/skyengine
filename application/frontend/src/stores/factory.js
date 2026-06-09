@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed, nextTick } from "vue";
 import { ZONE_COLORS } from "@/utils/assets";
+import { apiGet, API_ROUTES } from "@/utils/api";
 
 // ─────────────────────────────────────────────
 // 常量
@@ -15,8 +16,6 @@ function hexToRgba(hex, alpha = 0.15) {
 }
 const STORAGE_KEYS = {
   SELECTED_FACTORY: "selectedFactoryId",
-  CURRENT_CONFIG_ID: "currentConfigId",
-  FACTORY_CONFIGS: "factoryConfigs",
 };
 
 const DEFAULT_RENDER_CONFIG = Object.freeze({
@@ -126,30 +125,6 @@ function getAssetUrl(name) {
 }
 
 /**
- * 安全读取 localStorage，解析失败时返回 fallback。
- */
-function readStorage(key, fallback = null) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-
-/**
- * 安全写入 localStorage，序列化失败时静默跳过。
- */
-function writeStorage(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.warn(`[FactoryStore] 无法写入 localStorage (${key}):`, e);
-  }
-}
-
-/**
  * 校验配置对象的必要字段，通过返回 true。
  */
 function validateConfig(config) {
@@ -246,19 +221,9 @@ export const useFactoryStore = defineStore("factory", () => {
    * 配置持久化到 localStorage，刷新后可恢复完整内容。
    * 读取时做 validateConfig 二次校验，防止缓存数据损坏导致崩溃。
    */
-  const factoryConfigs = ref(
-    (() => {
-      const saved = readStorage(STORAGE_KEYS.FACTORY_CONFIGS, {});
-      // 过滤损坏条目
-      return Object.fromEntries(
-        Object.entries(saved).filter(([, v]) => validateConfig(v)),
-      );
-    })(),
-  );
+  const factoryConfigs = ref({});
 
-  const currentConfigId = ref(
-    readStorage(STORAGE_KEYS.CURRENT_CONFIG_ID, null),
-  );
+  const currentConfigId = ref(null);
 
   /** 3D 重建提示：记录最近一次编辑操作的资产类型，供 watch 精准局部重建 */
   const rebuildHint = ref(null);   // 'zone' | 'machine' | 'waypoint' | 'agv' | null
@@ -277,13 +242,6 @@ export const useFactoryStore = defineStore("factory", () => {
   );
 
   /**
-   * 持久化所有配置到 localStorage（每次变更后调用）。
-   */
-  function _persistConfigs() {
-    writeStorage(STORAGE_KEYS.FACTORY_CONFIGS, factoryConfigs.value);
-  }
-
-  /**
    * 加载并激活一个外部配置文件对象。
    * 会先做字段校验，失败时抛出错误而非静默写入。
    */
@@ -295,8 +253,6 @@ export const useFactoryStore = defineStore("factory", () => {
     }
     factoryConfigs.value[config.id] = config;
     currentConfigId.value = config.id;
-    writeStorage(STORAGE_KEYS.CURRENT_CONFIG_ID, config.id);
-    _persistConfigs();
   }
 
   function setCurrentConfig(configId) {
@@ -305,7 +261,6 @@ export const useFactoryStore = defineStore("factory", () => {
       return;
     }
     currentConfigId.value = configId;
-    writeStorage(STORAGE_KEYS.CURRENT_CONFIG_ID, configId);
   }
 
   function getLoadedConfigs() {
@@ -316,9 +271,7 @@ export const useFactoryStore = defineStore("factory", () => {
     delete factoryConfigs.value[configId];
     if (currentConfigId.value === configId) {
       currentConfigId.value = null;
-      writeStorage(STORAGE_KEYS.CURRENT_CONFIG_ID, null);
     }
-    _persistConfigs();
   }
 
   /**
@@ -362,8 +315,6 @@ export const useFactoryStore = defineStore("factory", () => {
 
     factoryConfigs.value[configId] = completeConfig;
     currentConfigId.value = configId;
-    writeStorage(STORAGE_KEYS.CURRENT_CONFIG_ID, configId);
-    _persistConfigs();
 
     return configId;
   }
@@ -590,7 +541,6 @@ export const useFactoryStore = defineStore("factory", () => {
       });
     }
 
-    _persistConfigs();
     // rebuildHint 由 3D 组件的 deep watcher 负责清除，
     // 避免 nextTick 时序竞争导致 watcher 读到 null 而触发全量重建。
     return defaultName;
@@ -630,7 +580,6 @@ export const useFactoryStore = defineStore("factory", () => {
       const agv = cfg.agvs.find(a => String(a.id) === String(assetId));
       if (agv) agv.initialLocation = [gridX, gridY];
     }
-    _persistConfigs();
     return true;
   }
 
@@ -653,7 +602,6 @@ export const useFactoryStore = defineStore("factory", () => {
       const agv = cfg.agvs.find(a => String(a.id) === String(assetId));
       if (agv) agv.name = newName;
     }
-    _persistConfigs();
   }
 
   /**
@@ -675,7 +623,6 @@ export const useFactoryStore = defineStore("factory", () => {
     } else if (assetType === 'agv' && cfg.agvs) {
       cfg.agvs = cfg.agvs.filter(a => String(a.id) !== String(assetId));
     }
-    _persistConfigs();
     // rebuildHint 由 3D 组件的 deep watcher 负责清除。
   }
 
@@ -830,6 +777,29 @@ export const useFactoryStore = defineStore("factory", () => {
   }
 
   // ══════════════════════════════════════════
+  // 数据集缓存（首次请求后缓存在 Pinia）
+  // ══════════════════════════════════════════
+  const datasetList = ref(null);
+  let _datasetPromise = null;
+
+  async function fetchDatasets() {
+    if (datasetList.value) return datasetList.value;
+    if (_datasetPromise) return _datasetPromise;
+    _datasetPromise = (async () => {
+      try {
+        const data = await apiGet(API_ROUTES.DATASET_LIST);
+        datasetList.value = data;
+        return data;
+      } catch (e) {
+        console.error('[FactoryStore] 加载数据集失败:', e);
+        _datasetPromise = null;
+        throw e;
+      }
+    })();
+    return _datasetPromise;
+  }
+
+  // ══════════════════════════════════════════
   // 全量清理 (退出工厂时调用)
   // ══════════════════════════════════════════
   function clearAll() {
@@ -838,10 +808,8 @@ export const useFactoryStore = defineStore("factory", () => {
     // 配置
     factoryConfigs.value = {};
     currentConfigId.value = null;
-    // localStorage
+    // 工厂选择仍保留 localStorage
     localStorage.removeItem(STORAGE_KEYS.SELECTED_FACTORY);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_CONFIG_ID);
-    localStorage.removeItem(STORAGE_KEYS.FACTORY_CONFIGS);
   }
 
   // ══════════════════════════════════════════
@@ -897,5 +865,9 @@ export const useFactoryStore = defineStore("factory", () => {
     togglePlay,
     setIndex,
     nextStep,
+
+    // ── 数据集缓存 ──
+    datasetList,
+    fetchDatasets,
   };
 });

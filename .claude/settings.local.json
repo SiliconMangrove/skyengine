@@ -25,7 +25,9 @@
       "Bash(ls /data1/home/wuhao/project/finalpro/SkyEngine/*.dockerfile /data1/home/wuhao/project/finalpro/SkyEngine/Dockerfile*)",
       "Bash(docker network:*)",
       "Bash(git:*)",
-      "Bash(curl -sI https://github.com --connect-timeout 10)"
+      "Bash(curl -sI https://github.com --connect-timeout 10)",
+      "Bash(rsync -av --exclude='__pycache__' /data1/home/wuhao/project/finalpro/SkyEngine/dataset/ /data1/home/wuhao/project/grouppro/skyengine/dataset/ --ignore-existing)",
+      "Bash(uv run:*)"
     ]
   }
 }
