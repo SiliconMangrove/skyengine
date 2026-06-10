@@ -7,9 +7,12 @@
 """
 
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from enum import Enum
 import random
+
+logger = logging.getLogger(__name__)
 
 # Import base proxy class and ProxyFactory
 from .BaseFactoryProxy import BaseFactoryProxy, ExecutionStatus
@@ -433,47 +436,3 @@ class StaticFactoryProxy(BaseFactoryProxy):
     def is_idle(self) -> bool:
         """Check if factory is idle"""
         return self._status == ExecutionStatus.IDLE
-
-
-if __name__ == "__main__":
-    # Simple test for StaticFactoryProxy
-    print("=== StaticFactoryProxy Test ===")
-
-    async def test():
-        # Create proxy
-        proxy = StaticFactoryProxy()
-        print(f"Created StaticFactoryProxy, status: {proxy.status}")
-
-        # Initialize
-        await proxy.initialize()
-        print(f"Initialized, status: {proxy.status}, step: {proxy.current_step}")
-
-        # Get state snapshot
-        state = await proxy.get_state_snapshot()
-        print(f"State snapshot keys: {list(state.keys())}")
-        print(f"Timestamp: {state.get('timestamp')}")
-
-        # Get metrics snapshot
-        metrics = await proxy.get_metrics_snapshot()
-        print(f"Metrics: {metrics}")
-
-        # Start and run briefly
-        await proxy.start()
-        print(f"Started, status: {proxy.status}")
-        await asyncio.sleep(1.5)  # Run for a bit
-        print(f"After 1.5s, step: {proxy.current_step}")
-
-        # Pause
-        await proxy.pause()
-        print(f"Paused, status: {proxy.status}")
-
-        # Reset
-        await proxy.reset()
-        print(f"Reset, status: {proxy.status}, step: {proxy.current_step}")
-
-        # Cleanup
-        await proxy.cleanup()
-        print(f"Cleaned up, status: {proxy.status}")
-        print("StaticFactoryProxy test passed!")
-
-    asyncio.run(test())

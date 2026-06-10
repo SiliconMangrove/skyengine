@@ -31,7 +31,6 @@ export class SSEManager {
       const eventSource = new EventSource(endpoint)
 
       eventSource.addEventListener('open', () => {
-        console.log(`[SSE] Connected to ${endpoint}`)
         onOpen && onOpen()
       })
 

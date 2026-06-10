@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy local binaries: uv + docker CLI + compose plugin
-COPY application/dockerfile/docker-bin/uv /usr/local/bin/uv
-COPY application/dockerfile/docker-bin/docker /usr/local/bin/docker
-COPY application/dockerfile/docker-bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+# COPY application/dockerfile/docker-bin/uv /usr/local/bin/uv
+# COPY application/dockerfile/docker-bin/docker /usr/local/bin/docker
+# COPY application/dockerfile/docker-bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Set PyPI mirror (tsinghua)
 ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple

@@ -7,8 +7,11 @@
 """
 
 import asyncio
+import logging
 from typing import Optional, Protocol, runtime_checkable
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionStatus(str, Enum):
@@ -108,7 +111,7 @@ class BaseFactoryProxy:
 
         # 持久化到 inner_properties
         self.inner_properties["current_algorithm"] = algorithm
-        print(f"[BaseFactoryProxy] 调度算法已设置: {algorithm}")
+        logger.info(f"[BaseFactoryProxy] 调度算法已设置: {algorithm}")
 
     def get_algorithm(self) -> str:
         """
@@ -254,17 +257,3 @@ class BaseFactoryProxy:
     def is_idle(self) -> bool:
         """Check if factory is idle"""
         return self._status == ExecutionStatus.IDLE
-
-
-if __name__ == "__main__":
-    # Simple test for BaseFactoryProxy
-    print("=== BaseFactoryProxy Test ===")
-    print(f"ExecutionStatus values: {[s.value for s in ExecutionStatus]}")
-
-    # Create instance (abstract base class, just testing basic properties)
-    proxy = BaseFactoryProxy()
-    print(f"Initial status: {proxy.status}")
-    print(f"Is idle: {proxy.is_idle()}")
-    print(f"Is running: {proxy.is_running()}")
-    print(f"Is paused: {proxy.is_paused()}")
-    print("BaseFactoryProxy test passed!")

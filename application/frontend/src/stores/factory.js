@@ -773,7 +773,6 @@ export const useFactoryStore = defineStore("factory", () => {
     };
 
     pushSnapshot(initialSnapshot);
-    console.log(`✅ 已初始化 ${agvs.length} 个 AGV`);
   }
 
   // ══════════════════════════════════════════

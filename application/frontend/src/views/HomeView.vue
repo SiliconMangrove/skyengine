@@ -134,9 +134,6 @@ const checkBackendStatus = async () => {
     if (backendRetries < retryConfig.maxRetries) {
       const delay = getRetryDelay(backendRetries)
       backendRetries++
-      console.log(
-        `[HomeView] 后端检查失败，${(delay / 1000).toFixed(1)}秒后重试 (${backendRetries}/${retryConfig.maxRetries})`,
-      )
 
       backendTimeoutId = setTimeout(() => {
         checkBackendStatus()
@@ -165,9 +162,6 @@ const checkScenarioConnection = async () => {
     if (scenarioRetries < retryConfig.maxRetries) {
       const delay = getRetryDelay(scenarioRetries)
       scenarioRetries++
-      console.log(
-        `[HomeView] 场景检查失败，${(delay / 1000).toFixed(1)}秒后重试 (${scenarioRetries}/${retryConfig.maxRetries})`,
-      )
 
       scenarioTimeoutId = setTimeout(() => {
         checkScenarioConnection()

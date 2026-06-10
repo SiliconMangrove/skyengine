@@ -741,3 +741,11 @@ model
 experiment/data/*
 sky_logs/metrics/*
 sky_logs/renders/*
+
+# Claude Code local settings (含本地路径和权限信息)
+.claude/settings.local.json
+
+# Frontend env files (含本地开发 IP 地址)
+application/frontend/.env.development
+application/frontend/.env.production
+application/dockerfile/docker-bin/

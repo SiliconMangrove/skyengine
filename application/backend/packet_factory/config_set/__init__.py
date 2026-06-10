@@ -1,5 +1,8 @@
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 初始化目录映射字典
 dir_map = {}
@@ -34,6 +37,3 @@ def scan_directories(root_dir='.'):
 scan_directories()
 
 # 打印结果（可选）
-if __name__ == "__main__":
-    print(json.dumps(dir_map, indent=2))
-    print(dir_path)

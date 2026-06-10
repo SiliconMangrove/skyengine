@@ -13,9 +13,12 @@ DockerProxy — 通过 docker compose 按需启停 SkyEngine 在线仿真服务
 import os
 import asyncio
 import json
+import logging
 from enum import Enum
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionStatus(str, Enum):
@@ -46,7 +49,7 @@ class DockerProxy:
     """通过 docker compose 联动 SkyEngine 在线服务的工厂代理"""
 
     def __init__(self):
-        print("[DockerProxy] __init__ 被调用")
+        logger.info("[DockerProxy] __init__ 被调用")
         # ---- 普通实例属性 (与 GridFactoryProxy 风格一致) ----
         self.inner_properties: dict = {
             "algorithm": [
@@ -94,7 +97,7 @@ class DockerProxy:
         if self._project_dir:
             cmd += ["--project-directory", self._project_dir]
         cmd += ["-f", self._compose_file, *args]
-        print(f"[DockerProxy] $ {' '.join(cmd)}")
+        logger.debug(f"[DockerProxy] $ {' '.join(cmd)}")
 
         merged_env = {**os.environ}
         if env:
@@ -110,7 +113,7 @@ class DockerProxy:
 
         if proc.returncode != 0:
             err = stderr.decode().strip()
-            print(f"[DockerProxy] compose 失败 (rc={proc.returncode}): {err}")
+            logger.error(f"[DockerProxy] compose 失败 (rc={proc.returncode}): {err}")
             raise RuntimeError(f"docker compose failed: {err}")
 
         return stdout.decode().strip()
@@ -121,7 +124,7 @@ class DockerProxy:
         self._config = config
 
     def set_algorithm(self, algorithm: str) -> None:
-        print(f"[DockerProxy] set_algorithm: {algorithm}")
+        logger.info(f"[DockerProxy] set_algorithm: {algorithm}")
         if not algorithm:
             return
         self._algorithm = algorithm
@@ -138,14 +141,14 @@ class DockerProxy:
         return self._algorithm
 
     def get_initialized(self) -> bool:
-        print(f"[DockerProxy] get_initialized: {self.initialized}")
+        logger.debug(f"[DockerProxy] get_initialized: {self.initialized}")
         return self.initialized
 
     # ==================== 生命周期方法 ====================
 
     async def initialize(self) -> None:
         """Phase 1: docker compose up engine + 等待就绪"""
-        print("[DockerProxy] Phase 1: 启动 engine ...")
+        logger.info("[DockerProxy] Phase 1: 启动 engine ...")
 
         # 清理可能残留的旧容器
         try:
@@ -161,13 +164,13 @@ class DockerProxy:
 
         self.initialized = True
         self.status = ExecutionStatus.IDLE
-        print(f"[DockerProxy] Phase 1 完成: engine 就绪 @ {self._engine_url}")
+        logger.info(f"[DockerProxy] Phase 1 完成: engine 就绪 @ {self._engine_url}")
 
     async def cleanup(self) -> None:
         try:
             await self._compose("down", "--remove-orphans")
         except Exception as e:
-            print(f"[DockerProxy] cleanup 失败: {e}")
+            logger.error(f"[DockerProxy] cleanup 失败: {e}")
         self.initialized = False
         self._engine_url = None
 
@@ -178,7 +181,7 @@ class DockerProxy:
         if not self._algorithm_parts:
             raise RuntimeError("未设置算法配置")
 
-        print(f"[DockerProxy] Phase 2: 启动算法容器, 算法={self._algorithm}")
+        logger.info(f"[DockerProxy] Phase 2: 启动算法容器, 算法={self._algorithm}")
 
         # 1. 确定镜像，通过环境变量传给 docker compose
         fjsp_algo = self._algorithm_parts.get("fjsp", "pso")
@@ -190,7 +193,7 @@ class DockerProxy:
             "MAPF_IMAGE": mapf_image,
             "FJSP_IMAGE": fjsp_image,
         }
-        print(f"[DockerProxy] mapf={mapf_image}, fjsp={fjsp_image}")
+        logger.info(f"[DockerProxy] mapf={mapf_image}, fjsp={fjsp_image}")
 
         # 2. 启动算法容器
         await self._compose("up", "-d", "mapf", "fjsp", env=compose_env)
@@ -210,7 +213,7 @@ class DockerProxy:
         # 4. 标记流式传输就绪
         self._streaming = True
         self.status = ExecutionStatus.RUNNING
-        print("[DockerProxy] Phase 2 完成: 仿真已启动")
+        logger.info("[DockerProxy] Phase 2 完成: 仿真已启动")
 
     async def pause(self) -> None:
         if self._engine_url:
@@ -263,13 +266,13 @@ class DockerProxy:
     # ==================== 健康检查 ====================
 
     async def _wait_for_health(self, timeout: float = 60.0):
-        print(f"[DockerProxy] 等待 {self._engine_url}/health ...")
+        logger.info(f"[DockerProxy] 等待 {self._engine_url}/health ...")
         async with httpx.AsyncClient() as client:
             for i in range(int(timeout)):
                 try:
                     resp = await client.get(f"{self._engine_url}/health", timeout=2.0)
                     if resp.status_code == 200:
-                        print(f"[DockerProxy] engine 就绪 (耗时 {i}s)")
+                        logger.info(f"[DockerProxy] engine 就绪 (耗时 {i}s)")
                         return
                 except Exception:
                     pass
@@ -308,7 +311,7 @@ class DockerProxy:
                             except (json.JSONDecodeError, KeyError):
                                 pass
         except Exception as e:
-            print(f"[DockerProxy] state_stream 结束: {e}")
+            logger.error(f"[DockerProxy] state_stream 结束: {e}")
             if self._streaming:
                 self.status = ExecutionStatus.ERROR
 
@@ -330,7 +333,7 @@ class DockerProxy:
                             except (json.JSONDecodeError, KeyError):
                                 pass
         except Exception as e:
-            print(f"[DockerProxy] metrics_stream 结束: {e}")
+            logger.error(f"[DockerProxy] metrics_stream 结束: {e}")
 
     # ==================== 状态判断 ====================
 

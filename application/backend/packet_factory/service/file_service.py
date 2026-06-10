@@ -12,6 +12,9 @@ import application.backend.packet_factory.config_set as config_set
 import application.backend.packet_factory.config as config
 import executor.packet_factory.logger.backend_logs as BACKEND_LOGGER
 import executor.packet_factory.logger.system_logs as SYSTEM_LOGGER
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_config_set_dir():
     return config_set.dir_path
@@ -91,7 +94,7 @@ def get_config_list():
         List[str]: 所有子文件夹的名称列表。
     """
     config_root = get_config_set_dir()
-    print(config_root)
+    logger.debug(f"config_root: {config_root}")
     if not os.path.exists(config_root):
         return []
 
@@ -99,7 +102,7 @@ def get_config_list():
         name for name in os.listdir(config_root)
         if os.path.isdir(os.path.join(config_root, name)) and name != '__pycache__'
     ]
-    print(folder_list)
+    logger.debug(f"folder_list: {folder_list}")
 
     return folder_list
 
@@ -142,8 +145,5 @@ def get_new_config_file(target_factory: str):
         yaml.dump(specific_config, f, default_flow_style=False, allow_unicode=True)
 
     sky_config['config_path'] = new_config_path
-    print(sky_config)
+    logger.debug(f"sky_config: {sky_config}")
     return sky_config
-
-if __name__ == '__main__':
-    get_new_config_file('template_config_set')

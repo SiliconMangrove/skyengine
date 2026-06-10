@@ -49,7 +49,3 @@ AGV_LOGGER = Logger(log_path=os.path.join(config.LOG_DIR, 'component_logs'), nam
 MACHINE_LOGGER = Logger(log_path=os.path.join(config.LOG_DIR, 'component_logs'), name="machine").logger
 
 TEST_LOGGER = Logger(log_path=config.TEST_LOG_DIR, name="test").logger
-
-if __name__ == '__main__':
-    LOGGER.info("233")
-    LOGGER.warning("233")

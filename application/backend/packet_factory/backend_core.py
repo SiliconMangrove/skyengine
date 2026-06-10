@@ -15,6 +15,9 @@ import config
 from application.backend.packet_factory.service import file_service
 
 from executor.packet_factory.logger.logger import Logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 LOGGER = Logger(log_path=config.BACKEND_LOG_DIR, name="backend").logger
 
@@ -90,19 +93,19 @@ class BackendCore:
         return self.env is not None
 
     def factory_start(self):
-        print("factory_start")
+        logger.info("factory_start")
         self.env.env_visualizer.run()
 
     def factory_pause(self):
-        print("factory_pause")
+        logger.info("factory_pause")
         self.env.env_visualizer.pause()
 
     def factory_reset(self):
-        print("factory_reset")
+        logger.info("factory_reset")
         self.env.env_visualizer.restart()
 
     def change_factory_speed(self, speed_level: int):
-        print(f"change_factory_speed: {speed_level}")
+        logger.info(f"change_factory_speed: {speed_level}")
         self.env.env_visualizer.change_speed(speed_level)
 
     def get_agvs(self):
@@ -113,11 +116,11 @@ class BackendCore:
         return agv_list
 
     def pause_agv(self, agv_id):
-        print("pause_agv")
+        logger.info("pause_agv")
         self.env.env_visualizer.pause_agv(agv_id)
 
     def resume_agv(self, agv_id):
-        print("resume_agv")
+        logger.info("resume_agv")
         self.env.env_visualizer.resume_agv(agv_id)
 
     def get_machines(self):
@@ -128,11 +131,11 @@ class BackendCore:
         return machine_list
 
     def pause_machine(self, machine_id):
-        print("pause_machine")
+        logger.info("pause_machine")
         self.env.env_visualizer.pause_machine(machine_id)
 
     def resume_machine(self, machine_id):
-        print("resume_machine")
+        logger.info("resume_machine")
         self.env.env_visualizer.resume_machine(machine_id)
 
     def get_job_templates(self):
@@ -143,7 +146,7 @@ class BackendCore:
         return job_list
 
     def add_job(self, job_id: int):
-        print(f"Job {job_id} added")
+        logger.info(f"Job {job_id} added")
         self.env.env_visualizer.add_job(job_id)
 
     def get_jobs_progress(self):
@@ -164,5 +167,5 @@ class BackendCore:
         try:
             pic = self.env.env_visualizer.get_map()
         except Exception as e:
-            print(e)
+            logger.debug(f"get_map_current failed: {e}")
         return pic

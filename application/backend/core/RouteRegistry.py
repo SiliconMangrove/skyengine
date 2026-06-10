@@ -1,9 +1,12 @@
 """
 路由注册表：用于统一管理 FastAPI 路由
 """
+import logging
 from typing import Callable, Dict, List, Any
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+
+logger = logging.getLogger(__name__)
 
 
 class RouteRegistry:
@@ -72,4 +75,4 @@ class RouteRegistry:
             )
             
             app.router.routes.append(route)
-            print(f"✅ 注册路由：{route_info['method']} {full_path}")
+            logger.info(f"注册路由：{route_info['method']} {full_path}")

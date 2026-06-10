@@ -100,7 +100,6 @@ let connectionManager = null;
 
 onMounted(() => {
   // 工厂初始化生命周期：清除上次残留状态
-  console.log("✅ FactoryManage 已挂载");
   store.reset();
 
   // 初始化多连接管理器
@@ -109,14 +108,12 @@ onMounted(() => {
 
   connectionManager.init({
     onStateUpdate: (data) => {
-      console.log("[Factory] 状态更新:", data);
       // 可以在这里更新 store 的状态
       if (data.snapshot) {
         store.pushSnapshot(data.snapshot);
       }
     },
     onMetricsUpdate: (data) => {
-      console.log("[Factory] 指标更新:", data);
       // 更新监控数据
       if (data.metrics) {
         monitorStore.pushMetrics(data.metrics);
@@ -147,7 +144,6 @@ const handleExecutePlan = async () => {
   const environment = selectedEnvironment.value;
   const algorithm = selectedAlgorithm.value;
 
-  console.log(`执行方案: 环境=${environment}, 算法=${algorithm}`);
 
   // 如果选择真实环境，检查场景连接
   if (environment === "real") {
@@ -190,7 +186,6 @@ const handleExecutePlan = async () => {
 
 onUnmounted(() => {
   // 清理连接和测试
-  console.log("🛑 FactoryManage 卸载，清理连接和测试");
   if (stopTest) stopTest();
   if (eventSource) sseManager.disconnect(eventSource);
   if (connectionManager) connectionManager.disconnect();

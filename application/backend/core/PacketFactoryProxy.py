@@ -1,10 +1,13 @@
 import os
+import logging
 from typing import List, Optional
 from fastapi import FastAPI, File, UploadFile, Form, Body, Request
 from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 
 from application.backend.core.BaseFactoryProxy import BaseFactoryProxy
 from application.backend.core.RouteRegistry import RouteRegistry
+
+logger = logging.getLogger(__name__)
 # 导入后端服务
 from application.backend.packet_factory.backend_server import APIHandler
 from application.backend.packet_factory.backend_core import BackendCore
@@ -147,7 +150,7 @@ class PacketFactoryProxy(BaseFactoryProxy):
             file_name = ""
             if file_type == "backend":
                 log_path = file_service.get_log(file_service.get_backend_log_dir())
-                print(log_path)
+                logger.info(log_path)
                 file_name = log_path.split("\\")[-1]
             elif file_type == "system":
                 log_path = file_service.get_log(file_service.get_system_log_dir())
@@ -170,7 +173,7 @@ class PacketFactoryProxy(BaseFactoryProxy):
         @RouteRegistry.register_route("/map/render", method="POST")
         async def api_map_render(request: Request):
             body = await request.json()
-            print(body)
+            logger.info(body)
             self._backend_core.render_map(body.get("target_factory"))
             return JSONResponse({"success": True})
         
@@ -181,7 +184,7 @@ class PacketFactoryProxy(BaseFactoryProxy):
             return JSONResponse({"factory_list": factory_list, "success": True})
         
         self._routes_registered = True
-        print(f"✅ PacketFactoryProxy 路由已注册，共 {len(RouteRegistry.get_routes())} 条")
+        logger.info(f"PacketFactoryProxy 路由已注册，共 {len(RouteRegistry.get_routes())} 条")
     
     # ========== BaseFactoryProxy 接口实现 ==========
     

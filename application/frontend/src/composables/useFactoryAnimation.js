@@ -81,12 +81,10 @@ export function useFactoryAnimation(apiUrl = '/api/stream-state') {
 
     try {
       sseConnectionAttempts++;
-      console.log(`[SSE] Attempting connection... (attempt ${sseConnectionAttempts}/${maxSSERetries})`);
       
       eventSource = new EventSource(apiUrl);
 
       eventSource.onopen = () => {
-        console.log('[SSE] ✓ Connection established successfully');
         sseConnected = true;
         sseConnectionAttempts = 0; // 重置重试计数
       };
@@ -109,7 +107,6 @@ export function useFactoryAnimation(apiUrl = '/api/stream-state') {
           
           // 自动重试（仅在重试次数未超限时）
           if (sseConnectionAttempts < maxSSERetries) {
-            console.log(`[SSE] Retrying in 3 seconds...`);
             setTimeout(() => {
               initializeSSE();
             }, 3000);

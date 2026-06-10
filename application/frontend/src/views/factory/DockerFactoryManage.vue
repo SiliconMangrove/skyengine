@@ -168,7 +168,6 @@ const connectionStatus = ref({
 });
 
 onMounted(async () => {
-  console.log("✅ DockerFactoryManage 已挂载");
   store.reset();
   await sim.fetchAlgoOptions();
 });
@@ -237,7 +236,6 @@ const testPlay = async () => {
 };
 
 onUnmounted(() => {
-  console.log("🛑 DockerFactoryManage 卸载");
   sim.cleanup(store);
 });
 </script>

@@ -120,7 +120,6 @@ const tabs = [
 ];
 
 onMounted(async () => {
-  console.log("[GridFactory] 已挂载");
   store.reset();
   await sim.fetchAlgoOptions();
 });
@@ -130,7 +129,6 @@ function handleExecute() {
 }
 
 onUnmounted(() => {
-  console.log("[GridFactory] 卸载，清理连接和测试");
   sim.cleanup(store);
 });
 </script>

@@ -15,6 +15,9 @@ from pogema import GridConfig
 
 from joint_sim.utils.structure import MachineConfig, JobConfig
 from joint_sim.grid_factory_env import GridFactoryEnv
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def load_grid_factory_config(config_path: str) -> Dict[str, Any]:
@@ -107,11 +110,11 @@ def parse_job_config(config: Dict[str, Any], num_machines: int) -> JobConfig:
     Returns:
         JobConfig 实例
     """
-    print(f"正在解析任务配置...{config}")
+    logger.info(f"正在解析任务配置...{config}")
     jobs = config.get("jobs", {})
-    print(f"已解析任务配置，任务参数：\n{jobs}")
+    logger.info(f"已解析任务配置，任务参数：\n{jobs}")
     job_list = jobs.get("job_list", [])
-    print(f"已解析任务配置，任务参数：\n{job_list}")
+    logger.info(f"已解析任务配置，任务参数：\n{job_list}")
     if not job_list:
         # 如果没有任务，使用默认配置
         return JobConfig(
@@ -177,11 +180,11 @@ def create_env_from_config(config_path: str | dict, random_target: bool = False)
     # 1. 按类型划分逻辑，加载/验证配置
     if isinstance(config_path, str):
         config = load_grid_factory_config(config_path)
-        # print(f"成功从路径 {config_path} 加载配置")
+        # logger.info(f"成功从路径 {config_path} 加载配置")
 
     elif isinstance(config_path, dict):
         config = config_path
-        # print("直接使用传入的配置字典")
+        # logger.info("直接使用传入的配置字典")
 
     else:
         pass
@@ -197,7 +200,7 @@ def create_env_from_config(config_path: str | dict, random_target: bool = False)
     # 3. 设置机器位置到 grid_config
     grid_cfg.possible_targets_xy = machine_positions
 
-    print(
+    logger.info(
         f"已创建 GridFactoryEnv，环境参数：\n"
         f"grid_config: {grid_cfg}\n"
         f"machine_config: {machine_cfg}\n"
@@ -217,36 +220,3 @@ def create_env_from_config(config_path: str | dict, random_target: bool = False)
 # ============================================================
 # 使用示例
 # ============================================================
-if __name__ == "__main__":
-    # 配置文件路径
-    CONFIG_PATH = r"E:\Project\FinalPro\SkyEngine\dataset\grid_factory.json"
-
-    # ====== 示例 1: 基础环境初始化 ======
-    print("\n" + "#" * 60)
-    print("# 示例 1: 基础环境初始化")
-    print("#" * 60)
-
-    env = create_env_from_config(CONFIG_PATH, random_target=False)
-    obs, info = env.reset()
-    from joint_sim.component.Coordinator.coordinator import (
-        Coordinator,
-    )
-    from joint_sim.utils.pic_drawer import (
-        draw_svg_with_machines_and_targets,
-    )
-
-    coordinator = Coordinator()
-    # 测试多次步进
-    for i in range(50):
-        actions = coordinator.decide(obs)
-
-        obs, rewards, terminations, truncations, infos = env.step(actions)
-
-        print(f"步进 {i + 1}: 状态 {terminations}")
-        if terminations["job_done"]:
-            break
-
-        res = draw_svg_with_machines_and_targets(env.pogema_env, env.env_timeline)
-        makedirs("temp", exist_ok=True)
-        with open(f"temp/{env.env_timeline}.svg", "w") as f:
-            f.write(res)

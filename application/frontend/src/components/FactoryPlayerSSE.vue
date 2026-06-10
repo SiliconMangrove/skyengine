@@ -132,7 +132,6 @@ function loadSafetyInspection() {
 watch(() => store.currentConfigId, (newConfigId) => {
   if (newConfigId) {
     configLoaded.value = true;
-    console.log(`✅ 配置已切换，地图已更新: ${newConfigId}`);
 
     // 自动初始化 AGV
     setTimeout(() => {

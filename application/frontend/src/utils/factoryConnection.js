@@ -31,7 +31,6 @@ export class FactoryConnectionManager {
       control: {}, // 控制流的事件处理器映射
     };
     this.isScenarioConnected = false;
-    console.log(`[Factory] 创建工厂连接管理器, 工厂ID: ${factoryId}`);
   }
 
   /**
@@ -71,10 +70,6 @@ export class FactoryConnectionManager {
       const scenarioStatus = await this.checkScenarioConnection();
       this.isScenarioConnected = scenarioStatus;
 
-      console.log(`[Factory] 工厂 ${this.factoryId} 初始化`);
-      console.log(
-        `[Factory] 真实场景连接状态: ${this.isScenarioConnected ? "已连接" : "未连接"}`,
-      );
 
       // 建立状态连接
       this.connectState();
@@ -124,7 +119,6 @@ export class FactoryConnectionManager {
       eventHandlers, // 传入专属事件处理器
       onMessage: (data, eventType) => {
         const message = typeof data === "string" ? JSON.parse(data) : data;
-        console.log(`[Control-Stream][${eventType}]`, message);
         // 如果没有专属处理器，这里会被调用
       },
       onError: (error) => {
@@ -134,7 +128,6 @@ export class FactoryConnectionManager {
         }
       },
     });
-    console.log(`[Factory] 控制连接已建立 (事件: ${eventTypes.join(', ')})`);
   }
 
   /**
@@ -151,7 +144,6 @@ export class FactoryConnectionManager {
       eventHandlers, // 传入专属事件处理器
       onMessage: (data, eventType) => {
         const message = typeof data === "string" ? JSON.parse(data) : data;
-        console.log(`[State-Stream][${eventType}]`, message);
         // 如果有通用处理器且该事件没有专属处理器，调用通用处理器
         if (this.handlers.onStateUpdate) {
           this.handlers.onStateUpdate(message, eventType);
@@ -161,7 +153,6 @@ export class FactoryConnectionManager {
         console.error("[State-Stream] 错误:", error);
       },
     });
-    console.log(`[Factory] 状态连接已建立 (事件: ${eventTypes.join(', ')})`);
   }
 
   /**
@@ -183,7 +174,6 @@ export class FactoryConnectionManager {
       eventHandlers, // 传入专属事件处理器
       onMessage: (data, eventType) => {
         const message = typeof data === "string" ? JSON.parse(data) : data;
-        console.log(`[Metrics-Stream][${eventType}]`, message);
         // 如果有通用处理器且该事件没有专属处理器，调用通用处理器
         if (this.handlers.onMetricsUpdate) {
           this.handlers.onMetricsUpdate(message, eventType);
@@ -193,7 +183,6 @@ export class FactoryConnectionManager {
         console.error("[Metrics-Stream] 错误:", error);
       },
     });
-    console.log(`[Factory] 指标连接已建立 (事件: ${eventTypes.join(', ')})`);
   }
 
   /**
@@ -220,7 +209,6 @@ export class FactoryConnectionManager {
       const response = await apiPost(route, data, {
         params: { id: this.factoryId },
       });
-      console.log(`[Factory] 控制命令 '${command}' 已发送`, response);
 
       // play 成功后启动 monitorStore 运行记录
       if (command === 'play' && response?.run_id) {
@@ -230,7 +218,6 @@ export class FactoryConnectionManager {
             runId: response.run_id,
             factoryType: this.factoryId,
           });
-          console.log(`[Factory] 运行记录已启动: ${response.run_id}`);
         } catch (e) {
           console.warn('[Factory] monitorStore.startRun 失败:', e);
         }
@@ -276,7 +263,6 @@ export class FactoryConnectionManager {
       state: null,
       metrics: null,
     };
-    console.log(`[Factory] 工厂 ${this.factoryId} 所有连接已断开`);
   }
 
   /**

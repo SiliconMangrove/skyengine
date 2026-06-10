@@ -14,6 +14,8 @@
 
 from enum import Enum
 from joint_sim.utils.structure import (
+import logging
+logger = logging.getLogger(__name__)
     Machine,
     Job,
     JobSolverResult,
@@ -157,19 +159,3 @@ class PDRScheduler:
             )
             return (due - t_now) / rem_work
         return op.release
-
-
-if __name__ == "__main__":
-    # 假设已经有了 jobs 和 machines 列表
-    scheduler = PDRScheduler(jobs, machines)
-
-    # 1. 运行 FDD/MWKR
-    result_fdd = scheduler.solve(rule="FDD/MWKR")
-    print(f"FDD/MWKR Makespan: {result_fdd.stats['makespan']}")
-
-    # 2. 运行 MOPNR
-    result_mopnr = scheduler.solve(rule="MOPNR")
-    print(f"MOPNR Makespan: {result_mopnr.stats['makespan']}")
-
-    # 3. 运行经典 SPT
-    result_spt = scheduler.solve(rule="SPT")

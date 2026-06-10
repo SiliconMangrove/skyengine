@@ -381,7 +381,6 @@ const test = () => {
     body: JSON.stringify({}),
   })
     .then((response) => {
-      console.log(response);
     })
     .then((data) => {
       // ...
@@ -404,7 +403,6 @@ const updateCurrentFactoryMapList = () => {
     })
     .then((data) => {
       // 输出factory_list
-      console.log(data.factory_list);
       stores.value.factoryList = data.factory_list;
       factoryList.value = data.factory_list;
     })
@@ -424,7 +422,6 @@ const handleFactoryRender = () => {
       agvIntervalId = setInterval(loadAgvs, 1000);
       machineIntervalId = setInterval(loadMachines, 1000);
       jobIntervalId = setInterval(loadJobs, 1000);
-      console.log(response);
     })
     .catch((error) => {
       console.error(error);
@@ -434,11 +431,9 @@ const handleFactoryRender = () => {
 const checkFactoryAlive = async () => {
   fetch("/api/factory/alive", { method: "GET" })
     .then((response) => {
-      console.log(response);
       return response.json();
     })
     .then((data) => {
-      console.log(data);
       if (data.is_alive) {
         agvIntervalId = setInterval(loadAgvs, 1000);
         machineIntervalId = setInterval(loadMachines, 1000);
@@ -467,7 +462,6 @@ const loadAgvs = async () => {
       const res = await axios.get(`/api/agvs?_t=${Date.now()}`);
       if (res.data && Array.isArray(res.data.agvs) && res.data.agvs.length > 0) {
         agvList.value = res.data.agvs;
-        console.log('AGV data:', res.data.agvs);
         return;
       } else {
         retries++;
@@ -494,7 +488,6 @@ const loadMachines = async () => {
       const res = await axios.get(`/api/machines?_t=${Date.now()}`);
       if (res.data && Array.isArray(res.data.machines) && res.data.machines.length > 0) {
         machineList.value = res.data.machines;
-        console.log('Machine data:', res.data.machines);
         return;
       } else {
         retries++;
@@ -521,7 +514,6 @@ const loadJobs = async () => {
       const res = await axios.get(`/api/jobs?_t=${Date.now()}`);
       if (res.data && Array.isArray(res.data.jobs) && res.data.jobs.length > 0) {
         jobList.value = res.data.jobs;
-        console.log('Job data:', res.data.jobs);
         return;
       } else {
         retries++;
@@ -540,10 +532,8 @@ const loadJobs = async () => {
 
 // ===== 工厂控制 API 调用 =====
 const factoryStart = async () => {
-  console.log("FactoryStart");
   try {
     const response = await axios.post('/api/factory/start');
-    console.log('Response: ', response.data);
   } catch (error) {
     console.error('API request failed:', error.response ? error.response.data : error.message);
     throw error;
@@ -551,10 +541,8 @@ const factoryStart = async () => {
 };
 
 const factoryPause = async () => {
-  console.log("FactoryPause");
   try {
     const response = await axios.post('/api/factory/pause');
-    console.log('Response: ', response.data);
   } catch (error) {
     console.error('API request failed:', error.response ? error.response.data : error.message);
     throw error;
@@ -562,10 +550,8 @@ const factoryPause = async () => {
 };
 
 const factoryReset = async () => {
-  console.log("FactoryReset");
   try {
     const response = await axios.post('/api/factory/reset');
-    console.log('Response: ', response.data);
   } catch (error) {
     console.error('API request failed:', error.response ? error.response.data : error.message);
     throw error;
@@ -590,7 +576,6 @@ const changeSpeed = async (value) => {
     const res = await axios.post('/api/factory/speed', { speedLevel: value });
     sessionStorage.setItem('speedLevel', value);
     ElMessage.success(`Speed has been adjusted to ${value}`);
-    console.log('Speed adjustment successful:', res.data);
   } catch (error) {
     console.error('Speed adjustment failed:', error);
     ElMessage.error('Speed adjustment failed');
@@ -686,15 +671,12 @@ const fetchJobProgress = async () => {
 
 // ===== 日志下载 =====
 const downloadLog = (file_type) => {
-  console.log(file_type);
-  console.log("start download");
   fetch(`/api/log/download?t=${Date.now()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({file_type: file_type}),
   })
     .then(response => {
-      console.log(response);
       const disposition = response.headers.get('Content-Disposition');
       let filename = 'log.txt';
 
@@ -727,7 +709,6 @@ const handleExecutePlan = async () => {
   const environment = selectedEnvironment.value;
   const algorithm = selectedAlgorithm.value;
 
-  console.log(`执行方案：环境=${environment}, 算法=${algorithm}`);
 
   if (environment === "real") {
     if (!connectionManager || !connectionManager.isScenarioConnected) {
@@ -764,7 +745,6 @@ const handleExecutePlan = async () => {
 // ===== 生命周期钩子 =====
 onMounted(() => {
   // 包裹工厂初始化
-  console.log("✅ PacketFactoryManage 已挂载");
 
   // 初始化多连接管理器
   const factoryId = store.selectedFactoryId;
@@ -773,13 +753,11 @@ onMounted(() => {
   connectionManager.init(
     {
       onStateUpdate: (data, eventType) => {
-        console.log(`[PacketFactory] 状态更新 [${eventType}]:`, data);
         if (data.snapshot) {
           store.pushSnapshot(data.snapshot);
         }
       },
       onMetricsUpdate: (data, eventType) => {
-        console.log(`[PacketFactory] 指标更新 [${eventType}]:`, data);
         if (data.metrics) {
           monitorStore.pushMetrics(data.metrics);
         }
@@ -816,7 +794,6 @@ const updateConnectionStatus = () => {
 
 onUnmounted(() => {
   // 清理连接和测试
-  console.log("🛑 PacketFactoryManage 卸载，清理连接和测试");
   if (stopTest) stopTest();
   if (eventSource) sseManager.disconnect(eventSource);
   if (connectionManager) connectionManager.disconnect();
