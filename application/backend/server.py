@@ -18,6 +18,10 @@ from application.backend.core.BaseFactoryProxy import (
 from application.backend.core.ProxyFactory import ProxyFactory
 from application.backend.core.RouteRegistry import RouteRegistry
 
+# History 模块
+from application.backend.history.routes import router as history_router
+from application.backend.history.manager import HistoryManager
+
 
 app = FastAPI()
 
@@ -29,6 +33,15 @@ current_factory_proxy: FactoryProxyProtocol = None
 
 # 存储当前的工厂类型
 current_factory_type: str = "base_factory"
+
+# 当前运行 ID（由 history 模块分配）
+current_run_id: str = None
+
+# History 管理器
+history_manager = HistoryManager()
+
+# 注册 history 路由
+app.include_router(history_router)
 
 # 添加CORS中间件，支持前端跨域请求
 app.add_middleware(
@@ -281,7 +294,7 @@ async def upload_factory_config(filename: str = None, config: dict = None):
 @app.post("/factory/control/reset")
 async def reset_factory_control():
     """重置工厂控制端点"""
-    global current_factory_proxy
+    global current_factory_proxy, current_run_id
 
     print(f"[Reset] 收到请求, 代理: {type(current_factory_proxy).__name__ if current_factory_proxy else 'None'}")
     print(f"[Reset] initialized={current_factory_proxy.get_initialized() if current_factory_proxy else 'N/A'}")
@@ -289,6 +302,15 @@ async def reset_factory_control():
     if current_factory_proxy is None:
         return {"status": "error", "message": "No factory loaded"}
     try:
+        # 完成当前历史运行
+        if current_run_id:
+            try:
+                history_manager.complete_run(current_run_id)
+                print(f"[Reset] 历史记录已完成: {current_run_id}")
+            except Exception as e:
+                print(f"[Reset] 完成历史记录失败: {e}")
+            current_run_id = None
+
         # 如果没有初始化，先初始化
         if not current_factory_proxy.get_initialized():
             await current_factory_proxy.initialize()
@@ -400,7 +422,7 @@ async def switch_factory_proxy(factory_id: str = Body(..., embed=True)):
 @app.post("/factory/control/play")
 async def play_factory_control():
     """播放/启动工厂控制端点"""
-    global current_factory_proxy
+    global current_factory_proxy, current_run_id
 
     print(f"[Play] 收到请求, 代理: {type(current_factory_proxy).__name__ if current_factory_proxy else 'None'}")
     print(f"[Play] initialized={current_factory_proxy.get_initialized() if current_factory_proxy else 'N/A'}")
@@ -421,10 +443,25 @@ async def play_factory_control():
             await current_factory_proxy.reset()
             await current_factory_proxy.start()
         print(f"[Play] Factory started, status: {current_factory_proxy.status.value}")
+
+        # 创建历史运行记录
+        algorithm = ''
+        try:
+            algorithm = current_factory_proxy.get_algorithm()
+        except Exception:
+            pass
+        run_record = history_manager.create_run(
+            factory_type=current_factory_type,
+            algorithm=algorithm or '',
+        )
+        current_run_id = run_record.id
+        print(f"[Play] 创建历史记录: {current_run_id}")
+
         return {
             "status": "ok",
             "message": "Factory control started successfully",
             "current_status": current_factory_proxy.status.value,
+            "run_id": current_run_id,
         }
     except Exception as e:
         print(f"❌ 启动失败: {str(e)}")
@@ -519,9 +556,19 @@ async def get_factory_control_state():
 @app.post("/factory/control/disconnect")
 async def disconnect_factory():
     """断开工厂连接，清理代理资源"""
-    global current_factory_proxy, current_factory_type, current_config
+    global current_factory_proxy, current_factory_type, current_config, current_run_id
 
     print(f"[Disconnect] 清理工厂代理: {current_factory_type}")
+
+    # 完成历史运行记录
+    if current_run_id:
+        try:
+            history_manager.complete_run(current_run_id)
+            print(f"[Disconnect] 历史记录已完成: {current_run_id}")
+        except Exception as e:
+            print(f"[Disconnect] 完成历史记录失败: {e}")
+        current_run_id = None
+
     if current_factory_proxy is not None:
         try:
             await current_factory_proxy.cleanup()

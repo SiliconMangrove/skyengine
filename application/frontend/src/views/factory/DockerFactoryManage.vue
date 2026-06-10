@@ -224,7 +224,12 @@ const testReset = async () => {
 
 const testPlay = async () => {
   try {
-    await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 30000 });
+    const resp = await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 30000 });
+    // 启动运行记录
+    if (resp?.run_id) {
+      const monitorStore = useMonitorStore();
+      monitorStore.startRun({ runId: resp.run_id, factoryType: 'grid_factory' });
+    }
     ElMessage.success('✅ 启动执行成功');
   } catch (error) {
     ElMessage.error(`❌ 启动执行失败: ${error.message}`);

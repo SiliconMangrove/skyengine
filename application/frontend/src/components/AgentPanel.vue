@@ -104,7 +104,11 @@
 
       <!-- 分析结果展示框 -->
       <div class="analysis-result-box" :class="{ 'has-content': !!analysisResult }">
-        <div v-if="!analysisResult" class="result-placeholder">
+        <div v-if="isAnalyzing && !analysisResult" class="result-placeholder">
+          <span class="analyzing-spinner"></span>
+          <span>正在分析中...</span>
+        </div>
+        <div v-else-if="!analysisResult" class="result-placeholder">
           <span>选择上方模板或输入问题，分析结果将在此展示</span>
         </div>
         <div v-else class="result-content" v-html="renderedResult"></div>
@@ -117,6 +121,7 @@
 import { ref, computed } from 'vue'
 import { useFactoryStore } from '@/stores/factory'
 import { useMonitorStore } from '@/stores/monitor'
+import { queryRAG, isRAGAvailable, getRAGInfo } from '@/utils/rag'
 
 const store = useFactoryStore()
 const monitorStore = useMonitorStore()
@@ -143,52 +148,60 @@ const selectedAgvId = ref(null)
 
 const templates = [
   {
+    id: 'hello',
+    icon: '👋',
+    label: '连通测试',
+    prompt: '你好，请简单介绍一下你自己，你是什么模型，能做什么？',
+    disabled: false,
+  },
+  {
     id: 'efficiency',
     icon: '⚡',
     label: 'AGV 效率分析',
-    prompt: '分析当前 AGV 的整体工作效率，包括活跃率、平均负载和空驶情况',
+    prompt: '请分析当前 AGV 车队的整体工作效率。包括：活跃率统计、平均负载率、空驶率估算，并给出效率评级和优化建议。',
     disabled: false,
   },
   {
     id: 'bottleneck',
     icon: '🔍',
     label: '瓶颈检测',
-    prompt: '检测当前生产线上可能的瓶颈节点（机器拥堵、AGV 堆叠等）',
+    prompt: '请检测当前生产线上的瓶颈节点。重点分析：机器拥堵情况、AGV 路径冲突/堆叠、物流断流现象，并给出疏通建议。',
     disabled: false,
   },
   {
     id: 'machine_load',
     icon: '📊',
     label: '机器负载均衡',
-    prompt: '分析各机器的工作负载分布，判断是否存在负载不均衡问题',
+    prompt: '请分析各机器的工作负载分布。评估负载均衡性，指出过载和闲置机器，并给出负载再分配建议。',
     disabled: false,
   },
   {
     id: 'transfer_analysis',
     icon: '🚛',
     label: '运输路径分析',
-    prompt: '分析当前活跃运输任务的路径分布和 AGV 调度合理性',
+    prompt: '请分析当前活跃运输任务的路径分布和 AGV 调度合理性。检查任务分配是否均衡、路径是否最优。',
     disabled: false,
   },
   {
     id: 'event_summary',
     icon: '📋',
     label: '日志事件摘要',
-    prompt: '对近期系统日志进行分类汇总，提取关键异常和趋势',
+    prompt: '请对近期系统日志进行分类汇总。提取关键异常事件、分析错误趋势、识别高频告警类型，并给出系统健康度评估。',
     disabled: false,
   },
   {
-    id: 'optimization',
-    icon: '🧠',
-    label: '优化建议',
-    prompt: '基于当前运行状态，给出调度参数和工厂配置的优化建议',
-    disabled: true,
+    id: 'history_trend',
+    icon: '📈',
+    label: '运行趋势',
+    prompt: '请分析本次运行的指标趋势变化。包括效率变化曲线、利用率波动、异常事件时间分布，判断系统运行是否稳定向好。',
+    disabled: false,
   },
 ]
 
 const selectedTemplate = ref(null)
 const customQuery = ref('')
 const analysisResult = ref('')
+const isAnalyzing = ref(false)
 
 // ==================== 分析逻辑 ====================
 
@@ -205,35 +218,72 @@ function handleCustomQuery() {
   runAnalysis('custom', q)
 }
 
-function runAnalysis(type, prompt) {
-  // 根据模板类型生成基于当前数据的分析结果
-  let result = ''
-
-  switch (type) {
-    case 'efficiency':
-      result = buildEfficiencyAnalysis()
-      break
-    case 'bottleneck':
-      result = buildBottleneckAnalysis()
-      break
-    case 'machine_load':
-      result = buildMachineLoadAnalysis()
-      break
-    case 'transfer_analysis':
-      result = buildTransferAnalysis()
-      break
-    case 'event_summary':
-      result = buildEventSummary()
-      break
-    case 'custom':
-      result = buildCustomAnalysis(prompt)
-      break
+async function runAnalysis(type, prompt) {
+  if (!isRAGAvailable()) {
+    analysisResult.value = runLocalAnalysis(type, prompt)
+      + '\n\n<span class="tag-info">ℹ RAG 服务未配置，当前为本地规则分析</span>'
+    return
   }
 
-  analysisResult.value = result
+  isAnalyzing.value = true
+  analysisResult.value = ''
+
+  try {
+    const currentState = store.currentState
+    // hello 模板不需要上下文
+    const context = type === 'hello' ? null : monitorStore.buildRAGContext(currentState)
+
+    await queryRAG(prompt, context, (chunk) => {
+      analysisResult.value += chunk
+    })
+  } catch (err) {
+    console.warn('RAG 查询失败，降级到本地分析:', err)
+    analysisResult.value = runLocalAnalysis(type, prompt)
+      + '\n\n<span class="tag-warn">⚠ AI 服务暂不可用，已使用本地规则分析</span>'
+  } finally {
+    isAnalyzing.value = false
+  }
+}
+
+function runLocalAnalysis(type, prompt) {
+  switch (type) {
+    case 'hello':
+      return buildHelloAnalysis()
+    case 'efficiency':
+      return buildEfficiencyAnalysis()
+    case 'bottleneck':
+      return buildBottleneckAnalysis()
+    case 'machine_load':
+      return buildMachineLoadAnalysis()
+    case 'transfer_analysis':
+      return buildTransferAnalysis()
+    case 'event_summary':
+      return buildEventSummary()
+    case 'custom':
+      return buildCustomAnalysis(prompt)
+    default:
+      return '未知分析类型'
+  }
 }
 
 // --- 分析生成器 ---
+
+function buildHelloAnalysis() {
+  const info = getRAGInfo()
+  const lines = [
+    `<strong>连通测试 — 本地回退模式</strong>`,
+    ``,
+    `<strong>RAG 状态:</strong> 未配置`,
+    `<strong>RAG URL:</strong> ${info.url || '未设置'}`,
+    `<strong>模型:</strong> ${info.model || '未设置'}`,
+    ``,
+    `请确保:`,
+    `  1. docker-compose.yml 中 frontend 的 RAG_BACKEND_URL 已配置`,
+    `  2. vLLM 服务 (rag-helper) 已启动`,
+    `  3. 前端 entrypoint 正确注入 window.__RAG_BACKEND_URL__`,
+  ]
+  return lines.join('\n')
+}
 
 function buildEfficiencyAnalysis() {
   const total = agvList.value.length
@@ -838,11 +888,26 @@ const renderedResult = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   height: 100%;
   min-height: 60px;
   color: rgba(160, 190, 230, 0.25);
   font-size: 11px;
   text-align: center;
+}
+
+.analyzing-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(100, 180, 255, 0.2);
+  border-top-color: rgba(100, 180, 255, 0.6);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .result-content {

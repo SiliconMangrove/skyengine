@@ -23,6 +23,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
+      // RAG 后端代理（本地开发用，避免浏览器 CORS）
+      "/rag": {
+        target: 'http://114.212.82.168:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rag/, ""),
+      },
     },
   },
 })

@@ -3,12 +3,10 @@ import { ref } from 'vue'
 
 export const useMonitorStore = defineStore('monitor', () => {
     // ============ 1. 事件队列 (Event Queue) ============
-    // 【修复】统一变量名为 eventQueue，而不是 events
     const eventQueue = ref([])
     const totalEventCount = ref(0)
-    
-    // 【修复】统一常量名为 MAX_EVENT_BUFFER
-    const MAX_EVENT_BUFFER = 50 
+
+    const MAX_EVENT_BUFFER = 50
 
     // ============ 2. 图表/指标 State ============
     const chartData = ref({
@@ -21,6 +19,14 @@ export const useMonitorStore = defineStore('monitor', () => {
         efficiency: { value: '--', type: 'info' },
         utilization: { value: '--', type: 'info' }
     })
+
+    // ============ 3. 运行时数据累积 (RAG 上下文) ============
+    const metricsTimeline = ref([])
+    const MAX_METRICS_TIMELINE = 500
+
+    const runId = ref(null)
+    const runStartTime = ref(null)
+    const runMeta = ref({})
 
     // ============ 动作 (Actions) ============
 
@@ -39,18 +45,16 @@ export const useMonitorStore = defineStore('monitor', () => {
             type
         }
 
-        // 【修复】使用正确的变量名 eventQueue
         eventQueue.value.push(newEvent)
         totalEventCount.value++
 
-        // 维护队列长度 (FIFO)
         if (eventQueue.value.length > MAX_EVENT_BUFFER) {
             eventQueue.value.shift()
         }
     }
 
     /**
-     * 推送指标更新 (Push)
+     * 推送指标更新 (Push) — 同时累积 timeline
      */
     function pushMetrics(data) {
         // 更新图表
@@ -62,25 +66,112 @@ export const useMonitorStore = defineStore('monitor', () => {
         if (data.keyMetrics) {
             keyMetrics.value = { ...keyMetrics.value, ...data.keyMetrics }
         }
+
+        // 累积到 timeline
+        metricsTimeline.value.push({
+            timestamp: Date.now(),
+            efficiency: data.keyMetrics?.efficiency?.value,
+            utilization: data.keyMetrics?.utilization?.value,
+            machine: data.machine,
+            agv: data.agv,
+            job: data.job,
+        })
+        if (metricsTimeline.value.length > MAX_METRICS_TIMELINE) {
+            metricsTimeline.value = metricsTimeline.value.slice(-MAX_METRICS_TIMELINE)
+        }
     }
 
-    // 【优化】重置/清空 Monitor 状态
+    /**
+     * 开始新运行
+     */
+    function startRun(meta = {}) {
+        runId.value = meta.runId || `run_${Date.now()}`
+        runStartTime.value = new Date().toISOString()
+        runMeta.value = meta
+        metricsTimeline.value = []
+    }
+
+    /**
+     * 构造 RAG 上下文 — 从已有数据生成
+     */
+    function buildRAGContext(currentState = null) {
+        const recentMetrics = metricsTimeline.value.slice(-20)
+
+        // metrics 统计
+        const metricStats = {}
+        if (recentMetrics.length > 0) {
+            const effs = recentMetrics.map(m => m.efficiency).filter(v => v != null && v !== '--')
+            const utils = recentMetrics.map(m => m.utilization).filter(v => v != null && v !== '--')
+            if (effs.length > 0) {
+                const numEffs = effs.map(Number)
+                metricStats.efficiency = {
+                    current: numEffs[numEffs.length - 1],
+                    avg: +(numEffs.reduce((a, b) => a + b, 0) / numEffs.length).toFixed(2),
+                    min: Math.min(...numEffs),
+                    max: Math.max(...numEffs),
+                }
+            }
+            if (utils.length > 0) {
+                const numUtils = utils.map(Number)
+                metricStats.utilization = {
+                    current: numUtils[numUtils.length - 1],
+                    avg: +(numUtils.reduce((a, b) => a + b, 0) / numUtils.length).toFixed(2),
+                    min: Math.min(...numUtils),
+                    max: Math.max(...numUtils),
+                }
+            }
+        }
+
+        // 事件统计
+        const eventStats = {}
+        eventQueue.value.forEach(e => {
+            eventStats[e.type] = (eventStats[e.type] || 0) + 1
+        })
+
+        return {
+            run: {
+                id: runId.value,
+                start_time: runStartTime.value,
+                meta: runMeta.value,
+                duration: runStartTime.value
+                    ? `${((Date.now() - new Date(runStartTime.value).getTime()) / 1000).toFixed(0)}s`
+                    : '0s',
+            },
+            metric_stats: metricStats,
+            event_stats: eventStats,
+            total_events: totalEventCount.value,
+            recent_metrics: recentMetrics.slice(-10),
+            recent_events: eventQueue.value.slice(-20),
+            current_state: currentState,
+        }
+    }
+
+    // 重置/清空 Monitor 状态
     function clear() {
         eventQueue.value = []
-        // chartData 也可以选择重置，看需求
-        // totalEventCount.value = 0 // 通常不清空历史总数
+        metricsTimeline.value = []
+        runId.value = null
+        runStartTime.value = null
+        runMeta.value = {}
     }
 
     return {
         // State
-        events: eventQueue, // 【关键】为了兼容组件中的 v-for="event in monitorStore.events"，这里别名导出
+        events: eventQueue,
         totalEventCount,
         chartData,
         keyMetrics,
+        // 新增 State
+        metricsTimeline,
+        runId,
+        runStartTime,
+        runMeta,
 
         // Actions
         pushEvent,
         pushMetrics,
-        clear
+        startRun,
+        buildRAGContext,
+        clear,
     }
 })

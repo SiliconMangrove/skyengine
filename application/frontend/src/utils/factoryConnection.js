@@ -5,6 +5,7 @@
 
 import { sseManager } from "./sse";
 import { apiGet, apiPost, API_ROUTES, getApiUrl } from "./api";
+import { useMonitorStore } from "@/stores/monitor";
 
 export class FactoryConnectionManager {
   constructor(factoryId) {
@@ -220,6 +221,21 @@ export class FactoryConnectionManager {
         params: { id: this.factoryId },
       });
       console.log(`[Factory] 控制命令 '${command}' 已发送`, response);
+
+      // play 成功后启动 monitorStore 运行记录
+      if (command === 'play' && response?.run_id) {
+        try {
+          const monitorStore = useMonitorStore();
+          monitorStore.startRun({
+            runId: response.run_id,
+            factoryType: this.factoryId,
+          });
+          console.log(`[Factory] 运行记录已启动: ${response.run_id}`);
+        } catch (e) {
+          console.warn('[Factory] monitorStore.startRun 失败:', e);
+        }
+      }
+
       return response;
     } catch (error) {
       console.error(`[Factory] 控制命令失败:`, error);

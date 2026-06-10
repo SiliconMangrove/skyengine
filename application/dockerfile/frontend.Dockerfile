@@ -9,4 +9,9 @@ COPY application/frontend ./
 
 EXPOSE 5173
 
-CMD ["npm", "run", "dev"]
+# 启动时注入 RAG_BACKEND_URL 到 index.html
+CMD RAG_BACKEND_URL="${RAG_BACKEND_URL:-}" && \
+    if [ -f index.html ]; then \
+      sed -i "s|__RAG_BACKEND_URL__|${RAG_BACKEND_URL}|g" index.html; \
+    fi && \
+    npm run dev

@@ -44,7 +44,8 @@ services:
       - /app/node_modules
     environment:
       - PYTHONUNBUFFERED=1
-      - RAG_BACKEND_URL=http://rag-helper:8000
+      # - 若本机则使用 http://rag-helper:8000
+      - RAG_BACKEND_URL=${RAG_BACKEND_URL:-http://114.212.82.168:8000}
     depends_on:
       - backend
       # - rag-helper
@@ -74,7 +75,7 @@ services:
   #     --model /model
   #     --served-model-name ${MODEL_NAME:-qwen3.6-35b}
   #     --dtype ${DTYPE:-auto}
-  #     --max-model-len ${MAX_MODEL_LEN:-1024}
+  #     --max-model-len ${MAX_MODEL_LEN:-4096}
   #     --gpu-memory-utilization ${GPU_MEM_UTIL:-0.75}
   #     --tensor-parallel-size ${TP_SIZE:-4}
   #     --api-key ${API_KEY:-token-local-dev}

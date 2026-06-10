@@ -37,6 +37,14 @@ export const API_ROUTES = {
   // 数据集相关
   DATASET_LIST: "/dataset/list",
   DATASET_GENERATE: "/dataset/generate",
+
+  // 历史记录
+  HISTORY_RUNS: "/history/runs",
+  HISTORY_RUN_DETAIL: "/history/run/:run_id",
+  HISTORY_RUN_LOGS: "/history/run/:run_id/logs",
+  HISTORY_COMPARE: "/history/compare",
+  HISTORY_STATS: "/history/stats",
+  HISTORY_RUN_COMPLETE: "/history/run/:run_id/complete",
 };
 
 /**

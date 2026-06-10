@@ -8,6 +8,10 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- RAG 后端地址，由 Docker entrypoint 通过 sed 注入 -->
+    <script>
+      window.__RAG_BACKEND_URL__ = '__RAG_BACKEND_URL__';
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
