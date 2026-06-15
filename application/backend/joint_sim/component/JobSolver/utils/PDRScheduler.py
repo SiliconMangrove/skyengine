@@ -12,16 +12,17 @@
 @Rules   : SPT, LPT, EDD, FIFO, MWKR, MOPNR, FDD/MWKR
 """
 
-from enum import Enum
-from joint_sim.utils.structure import (
 import logging
-logger = logging.getLogger(__name__)
+from enum import Enum
+from typing import List, Callable
+from joint_sim.utils.structure import (
     Machine,
     Job,
     JobSolverResult,
     DispatchRule,
 )
-from typing import List, Callable
+
+logger = logging.getLogger(__name__)
 
 
 class PDRScheduler:

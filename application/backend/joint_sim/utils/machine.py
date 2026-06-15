@@ -1,12 +1,13 @@
 import random
+import logging
 from typing import List, Tuple
 from collections import deque
 from joint_sim.utils.structure import (
-import logging
-logger = logging.getLogger(__name__)
     Machine,
     MachineConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MachineGenerator:

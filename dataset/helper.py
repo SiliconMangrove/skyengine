@@ -452,11 +452,16 @@ def convert_to_grid_factory(
 
         operations = []
         for op_idx, alternatives in enumerate(job):
-            best = min(alternatives, key=lambda a: a[0])  # 最短加工时间
+            # 保留 op 的全部候选机器与各自处理时间（标准 FJSP）。
+            # 字段格式: List[[machine_id, processing_time]]
+            # 注意数据集内部存的是 (processing_time, machine_id) 元组，
+            # 输出时必须互换顺序，匹配 Operation.machine_options_with_time
+            # 的 List[Tuple[machine_id, proc_time]] 约定。
             operations.append(
                 {
-                    "machine_id": best[1],
-                    "duration": best[0],
+                    "machine_options_with_time": [
+                        [mid, pt] for pt, mid in alternatives
+                    ],
                     "name": _OP_NAMES[op_idx % len(_OP_NAMES)],
                 }
             )

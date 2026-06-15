@@ -22,6 +22,11 @@ class Operation:
     op_id: int
     machine_options: List[int]  # 可选机器列表
     proc_time: float  # 处理时间
+    # 多机器候选 + 各自处理时间（标准 FJSP）。
+    # 优先字段：generate_jobs(strategy="custom_time") 会填充此项；
+    # http_job_solver 序列化时优先读它，丢失则 fallback 到 machine_options + proc_time。
+    # 格式: List[Tuple[machine_id, proc_time]]
+    machine_options_with_time: Optional[List[Tuple[int, int]]] = None
     release: float = 0.0  # 发布时间
     due: Optional[float] = None  # 交期
     # ----------- 调度决策相关属性 -----------

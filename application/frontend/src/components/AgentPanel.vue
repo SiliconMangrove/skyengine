@@ -1,8 +1,15 @@
 <template>
   <div class="agent-panel">
     <!-- ===== 顶部 Agent 状态概览 ===== -->
-    <div class="agent-header">
-      <h3>🤖 异常分析检测 </h3>
+    <div
+      class="agent-header"
+      :class="{ clickable: agvList.length > 0 }"
+      @click="agvList.length > 0 && (agvCollapsed = !agvCollapsed)"
+    >
+      <div class="agent-header-left">
+        <span class="collapse-arrow" v-if="agvList.length > 0">{{ agvCollapsed ? '▶' : '▼' }}</span>
+        <h3>🤖 异常检测</h3>
+      </div>
       <span class="agent-counter" v-if="agvList.length > 0">
         {{ activeCount }}/{{ agvList.length }} 活跃
       </span>
@@ -12,7 +19,7 @@
     <div v-if="agvList.length === 0" class="agent-empty">
       <span>暂无 Agent 数据</span>
     </div>
-    <div v-else class="agent-list">
+    <div v-else v-show="!agvCollapsed" class="agent-list">
       <div
         v-for="agv in agvList"
         :key="agv.id"
@@ -51,7 +58,7 @@
     </div>
 
     <!-- 汇总条 -->
-    <div class="agent-summary" v-if="agvList.length > 0">
+    <div class="agent-summary" v-if="agvList.length > 0" v-show="!agvCollapsed">
       <div class="summary-item">
         <span class="summary-label">总 Agent</span>
         <span class="summary-value">{{ agvList.length }}</span>
@@ -121,7 +128,8 @@
 import { ref, computed } from 'vue'
 import { useFactoryStore } from '@/stores/factory'
 import { useMonitorStore } from '@/stores/monitor'
-import { queryRAG, isRAGAvailable, getRAGInfo } from '@/utils/rag'
+import { queryRAG } from '@/utils/rag'
+import { marked } from 'marked'
 
 const store = useFactoryStore()
 const monitorStore = useMonitorStore()
@@ -143,6 +151,7 @@ const agvList = computed(() => {
 
 const activeCount = computed(() => agvList.value.filter(a => a._active).length)
 const selectedAgvId = ref(null)
+const agvCollapsed = ref(true)  // AGV 状态区默认折叠，把空间让给对话区
 
 // ==================== 分析模板 ====================
 
@@ -219,12 +228,6 @@ function handleCustomQuery() {
 }
 
 async function runAnalysis(type, prompt) {
-  if (!isRAGAvailable()) {
-    analysisResult.value = runLocalAnalysis(type, prompt)
-      + '\n\n<span class="tag-info">ℹ RAG 服务未配置，当前为本地规则分析</span>'
-    return
-  }
-
   isAnalyzing.value = true
   analysisResult.value = ''
 
@@ -237,300 +240,18 @@ async function runAnalysis(type, prompt) {
       analysisResult.value += chunk
     })
   } catch (err) {
-    console.warn('RAG 查询失败，降级到本地分析:', err)
-    analysisResult.value = runLocalAnalysis(type, prompt)
-      + '\n\n<span class="tag-warn">⚠ AI 服务暂不可用，已使用本地规则分析</span>'
+    console.warn('RAG 查询失败:', err)
+    analysisResult.value = '<span class="tag-warn">⚠ AI 服务暂不可用，请检查 RAG 配置或稍后重试</span>'
   } finally {
     isAnalyzing.value = false
   }
 }
 
-function runLocalAnalysis(type, prompt) {
-  switch (type) {
-    case 'hello':
-      return buildHelloAnalysis()
-    case 'efficiency':
-      return buildEfficiencyAnalysis()
-    case 'bottleneck':
-      return buildBottleneckAnalysis()
-    case 'machine_load':
-      return buildMachineLoadAnalysis()
-    case 'transfer_analysis':
-      return buildTransferAnalysis()
-    case 'event_summary':
-      return buildEventSummary()
-    case 'custom':
-      return buildCustomAnalysis(prompt)
-    default:
-      return '未知分析类型'
-  }
-}
-
-// --- 分析生成器 ---
-
-function buildHelloAnalysis() {
-  const info = getRAGInfo()
-  const lines = [
-    `<strong>连通测试 — 本地回退模式</strong>`,
-    ``,
-    `<strong>RAG 状态:</strong> 未配置`,
-    `<strong>RAG URL:</strong> ${info.url || '未设置'}`,
-    `<strong>模型:</strong> ${info.model || '未设置'}`,
-    ``,
-    `请确保:`,
-    `  1. docker-compose.yml 中 frontend 的 RAG_BACKEND_URL 已配置`,
-    `  2. vLLM 服务 (rag-helper) 已启动`,
-    `  3. 前端 entrypoint 正确注入 window.__RAG_BACKEND_URL__`,
-  ]
-  return lines.join('\n')
-}
-
-function buildEfficiencyAnalysis() {
-  const total = agvList.value.length
-  const active = activeCount.value
-  const rate = total > 0 ? ((active / total) * 100).toFixed(1) : 0
-  const machines = store.currentState?.machines || {}
-  const machineList = Object.values(machines)
-  const workingMachines = machineList.filter(m => m.status === 'WORKING').length
-
-  const rating = rate >= 80 ? '🟢 优秀' : rate >= 50 ? '🟡 一般' : '🔴 较低'
-
-  return [
-    `<strong>AGV 效率分析报告</strong>`,
-    ``,
-    `<strong>活跃率:</strong> ${rate}% (${active}/${total}) — ${rating}`,
-    `<strong>机器配合:</strong> ${workingMachines} 台机器正在工作`,
-    `<strong>时间步:</strong> T+${store.currentState?.env_timeline || 0}`,
-    ``,
-    buildRecommendation(rate),
-  ].join('\n')
-}
-
-function buildBottleneckAnalysis() {
-  const machines = store.currentState?.machines || {}
-  const transfers = store.currentState?.active_transfers || []
-  const machineList = Object.entries(machines)
-  const workingMachines = machineList.filter(([, m]) => m.status === 'WORKING')
-  const idleMachines = machineList.filter(([, m]) => m.status === 'IDLE')
-
-  const lines = [
-    `<strong>瓶颈检测报告</strong>`,
-    ``,
-    `<strong>机器状态:</strong> ${workingMachines.length} 工作 / ${idleMachines.length} 空闲 / ${machineList.length} 总计`,
-    `<strong>活跃运输:</strong> ${transfers.length} 个任务`,
-  ]
-
-  // 检测同位置 AGV 堆叠
-  const positions = store.currentState?.grid_state?.positions_xy ?? []
-  const posMap = {}
-  positions.forEach((pos, i) => {
-    const key = `${pos[0]},${pos[1]}`
-    if (!posMap[key]) posMap[key] = []
-    posMap[key].push(i)
-  })
-  const collisions = Object.entries(posMap).filter(([, ids]) => ids.length > 1)
-  if (collisions.length > 0) {
-    lines.push(``)
-    lines.push(`<span class="tag-warn">⚠ 检测到 ${collisions.length} 处 AGV 位置重叠:</span>`)
-    collisions.forEach(([pos, ids]) => {
-      lines.push(`  (${pos}) — AGV: ${ids.join(', ')}`)
-    })
-  }
-
-  if (workingMachines.length > 0 && transfers.length === 0) {
-    lines.push(``)
-    lines.push(`<span class="tag-warn">⚠ 机器工作中但无运输任务，可能存在物流断流</span>`)
-  }
-
-  if (collisions.length === 0 && (workingMachines.length === 0 || transfers.length > 0)) {
-    lines.push(``)
-    lines.push(`<span class="tag-ok">✓ 未检测到明显瓶颈</span>`)
-  }
-
-  return lines.join('\n')
-}
-
-function buildMachineLoadAnalysis() {
-  const machines = store.currentState?.machines || {}
-  const machineList = Object.entries(machines)
-
-  if (machineList.length === 0) {
-    return [`<strong>机器负载分析</strong>`, ``, `暂无机器数据，请加载工厂配置并启动仿真`].join('\n')
-  }
-
-  const working = machineList.filter(([, m]) => m.status === 'WORKING').length
-  const idle = machineList.filter(([, m]) => m.status === 'IDLE').length
-  const loadRate = ((working / machineList.length) * 100).toFixed(1)
-
-  const lines = [
-    `<strong>机器负载均衡报告</strong>`,
-    ``,
-    `<strong>总机器:</strong> ${machineList.length}`,
-    `<strong>负载率:</strong> ${loadRate}% (${working} 工作 / ${idle} 空闲)`,
-    ``,
-    `<strong>各机器状态:</strong>`,
-  ]
-
-  machineList.forEach(([key, m]) => {
-    const statusIcon = m.status === 'WORKING' ? '🔵' : '⚪'
-    const progress = m.progress != null ? ` (${m.progress}%)` : ''
-    lines.push(`  ${statusIcon} ${m.name || key}: ${m.status}${progress}`)
-  })
-
-  const balance = loadRate >= 70 ? '🟢 负载较均衡' : loadRate >= 40 ? '🟡 部分机器空闲' : '🔴 负载偏低'
-  lines.push('')
-  lines.push(`<strong>评估:</strong> ${balance}`)
-
-  return lines.join('\n')
-}
-
-function buildTransferAnalysis() {
-  const transfers = store.currentState?.active_transfers || []
-  const timeline = store.currentState?.env_timeline || '0'
-
-  const lines = [
-    `<strong>运输路径分析</strong>`,
-    ``,
-    `<strong>当前时间:</strong> T+${timeline}`,
-    `<strong>活跃运输:</strong> ${transfers.length} 个`,
-  ]
-
-  if (transfers.length === 0) {
-    lines.push('')
-    lines.push('当前无活跃运输任务')
-    if (activeCount.value > 0) {
-      lines.push(`<span class="tag-warn">⚠ ${activeCount.value} 台 AGV 活跃但无分配任务</span>`)
-    }
-  } else {
-    lines.push('')
-    lines.push('<strong>运输详情:</strong>')
-    transfers.forEach((t, i) => {
-      const from = t.from || '?'
-      const to = t.to || '?'
-      const agv = t.agv || '?'
-      const progress = t.progress != null ? `${t.progress}%` : '--'
-      lines.push(`  ${i + 1}. ${agv}: ${from} → ${to} (${progress})`)
-    })
-
-    // 按 AGV 统计
-    const agvUsage = {}
-    transfers.forEach(t => {
-      const agv = t.agv || 'unknown'
-      agvUsage[agv] = (agvUsage[agv] || 0) + 1
-    })
-    lines.push('')
-    lines.push('<strong>AGV 任务分配:</strong>')
-    Object.entries(agvUsage).forEach(([agv, count]) => {
-      lines.push(`  ${agv}: ${count} 个任务`)
-    })
-  }
-
-  return lines.join('\n')
-}
-
-function buildEventSummary() {
-  const events = monitorStore.events
-  const total = monitorStore.totalEventCount
-
-  if (events.length === 0) {
-    return [`<strong>日志事件摘要</strong>`, ``, `暂无系统日志`].join('\n')
-  }
-
-  // 按类型统计
-  const typeCount = {}
-  events.forEach(e => {
-    typeCount[e.type] = (typeCount[e.type] || 0) + 1
-  })
-
-  const typeLabels = {
-    success: '✅ 成功', warning: '⚠️ 警告', error: '❌ 错误',
-    info: 'ℹ️ 信息', task: '📌 任务', agv: '🚛 AGV', machine: '⚙️ 机器',
-  }
-
-  const lines = [
-    `<strong>日志事件摘要</strong>`,
-    ``,
-    `<strong>总事件:</strong> ${total} (当前缓冲: ${events.length})`,
-    ``,
-    `<strong>分类统计:</strong>`,
-  ]
-
-  Object.entries(typeCount)
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([type, count]) => {
-      lines.push(`  ${typeLabels[type] || type}: ${count}`)
-    })
-
-  // 最近异常
-  const warnings = events.filter(e => e.type === 'warning' || e.type === 'error')
-  if (warnings.length > 0) {
-    lines.push('')
-    lines.push(`<span class="tag-warn">⚠ 近期异常 (${warnings.length}):</span>`)
-    warnings.slice(-3).forEach(w => {
-      lines.push(`  [${w.type}] ${w.title}`)
-    })
-  }
-
-  return lines.join('\n')
-}
-
-function buildCustomAnalysis(query) {
-  const q = query.toLowerCase()
-  const lines = [
-    `<strong>自定义分析</strong>`,
-    ``,
-    `<strong>问题:</strong> ${query}`,
-    ``,
-  ]
-
-  // 简单关键词匹配，给出相关数据
-  if (q.includes('agv') || q.includes('车辆') || q.includes('agent')) {
-    lines.push(`<strong>AGV 数据:</strong>`)
-    lines.push(`  总数: ${agvList.value.length}, 活跃: ${activeCount.value}`)
-    lines.push(`  活跃率: ${agvList.value.length > 0 ? ((activeCount.value / agvList.value.length) * 100).toFixed(1) : 0}%`)
-  }
-
-  if (q.includes('机器') || q.includes('machine') || q.includes('负载')) {
-    const machines = store.currentState?.machines || {}
-    const ml = Object.values(machines)
-    lines.push(`<strong>机器数据:</strong>`)
-    lines.push(`  总数: ${ml.length}, 工作: ${ml.filter(m => m.status === 'WORKING').length}`)
-  }
-
-  if (q.includes('任务') || q.includes('task') || q.includes('运输') || q.includes('transfer')) {
-    const transfers = store.currentState?.active_transfers || []
-    lines.push(`<strong>运输数据:</strong>`)
-    lines.push(`  活跃运输: ${transfers.length}`)
-  }
-
-  if (q.includes('日志') || q.includes('log') || q.includes('event') || q.includes('事件')) {
-    lines.push(`<strong>日志数据:</strong>`)
-    lines.push(`  总事件: ${monitorStore.totalEventCount}, 缓冲: ${monitorStore.events.length}`)
-  }
-
-  if (lines.length <= 4) {
-    lines.push('暂未匹配到相关数据维度，请尝试包含关键词: AGV、机器、任务、日志')
-  }
-
-  lines.push('')
-  lines.push(`<span class="tag-info">ℹ 后续将接入 AI 引擎，提供更智能的分析能力</span>`)
-
-  return lines.join('\n')
-}
-
-function buildRecommendation(rate) {
-  const r = Number(rate)
-  if (r >= 80) return `<span class="tag-ok">✓ 效率良好，AGV 利用充分</span>`
-  if (r >= 50) return `<span class="tag-info">💡 建议: 考虑优化任务分配策略，减少 AGV 空闲</span>`
-  return `<span class="tag-warn">⚠ 效率偏低，大量 AGV 空闲，建议检查调度算法或任务量配置</span>`
-}
-
-// --- 简单渲染: 换行 → <br> ---
+// --- Markdown 渲染 ---
+marked.setOptions({ breaks: true })
 const renderedResult = computed(() => {
   if (!analysisResult.value) return ''
-  return analysisResult.value
-    .replace(/\n/g, '<br>')
-    .replace(/  /g, '&nbsp;&nbsp;')
+  return marked.parse(analysisResult.value)
 })
 </script>
 
@@ -550,6 +271,28 @@ const renderedResult = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px 4px;
+}
+
+.agent-header.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.agent-header.clickable:hover h3 {
+  color: rgba(200, 220, 255, 1);
+}
+
+.agent-header-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.collapse-arrow {
+  font-size: 9px;
+  color: rgba(160, 190, 230, 0.6);
+  width: 10px;
+  text-align: center;
 }
 
 .agent-header h3 {
@@ -857,9 +600,10 @@ const renderedResult = computed(() => {
 /* 分析结果展示框 */
 .analysis-result-box {
   flex: 1;
-  min-height: 80px;
-  max-height: 200px;
+  min-height: 120px;
   overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
   padding: 8px 10px;
   border: 1px solid rgba(100, 180, 255, 0.08);
   border-radius: 8px;
@@ -914,6 +658,86 @@ const renderedResult = computed(() => {
   font-size: 11px;
   color: rgba(200, 220, 255, 0.8);
   word-break: break-word;
+  line-height: 1.6;
+}
+
+/* Markdown 元素样式 */
+.result-content :deep(p) {
+  margin: 4px 0;
+}
+
+.result-content :deep(h1),
+.result-content :deep(h2),
+.result-content :deep(h3),
+.result-content :deep(h4) {
+  margin: 8px 0 4px;
+  color: rgba(200, 220, 255, 0.95);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.result-content :deep(h1) { font-size: 14px; }
+.result-content :deep(h2) { font-size: 13px; }
+.result-content :deep(h3) { font-size: 12px; }
+.result-content :deep(h4) { font-size: 11px; }
+
+.result-content :deep(ul),
+.result-content :deep(ol) {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.result-content :deep(li) {
+  margin: 2px 0;
+}
+
+.result-content :deep(code) {
+  background: rgba(100, 180, 255, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: rgba(180, 220, 255, 0.95);
+}
+
+.result-content :deep(pre) {
+  background: rgba(10, 14, 28, 0.6);
+  border: 1px solid rgba(100, 180, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+}
+
+.result-content :deep(pre code) {
+  background: none;
+  padding: 0;
+  font-size: 10px;
+}
+
+.result-content :deep(blockquote) {
+  border-left: 3px solid rgba(100, 180, 255, 0.3);
+  margin: 6px 0;
+  padding: 2px 10px;
+  color: rgba(160, 190, 230, 0.7);
+}
+
+.result-content :deep(table) {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 10px;
+}
+
+.result-content :deep(th),
+.result-content :deep(td) {
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.result-content :deep(th) {
+  background: rgba(100, 180, 255, 0.08);
+  font-weight: 600;
 }
 
 .result-content :deep(strong) {

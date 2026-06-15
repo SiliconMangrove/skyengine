@@ -116,7 +116,8 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
-import { apiPost, API_ROUTES } from "@/utils/api";
+import { apiPost, API_ROUTES, getApiUrl } from "@/utils/api";
+import { sseManager } from "@/utils/sse";
 import { useSimulationConfig } from "@/composables/useSimulationConfig";
 import { getAlgorithmOptions } from "@/config/algorithms";
 
@@ -141,6 +142,7 @@ const isEditMode = ref(false);
 const isStartingContainer = ref(false);
 const containerStartStatus = ref("");
 const showPanel = ref(true);
+let sseConnectionId = null;
 const activeTab = ref("simulation");
 const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
@@ -226,16 +228,53 @@ const testPlay = async () => {
     const resp = await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 30000 });
     // 启动运行记录
     if (resp?.run_id) {
-      const monitorStore = useMonitorStore();
       monitorStore.startRun({ runId: resp.run_id, factoryType: 'grid_factory' });
     }
     ElMessage.success('✅ 启动执行成功');
+
+    // 建立 SSE 连接接收 frame
+    if (sseConnectionId) {
+      sseManager.disconnect(sseConnectionId);
+    }
+    store.isPlaying = true;
+    const stateUrl = getApiUrl(API_ROUTES.STREAM_STATE);
+    console.log('[DockerFactory] 建立 SSE 连接:', stateUrl);
+    sseConnectionId = sseManager.connect(stateUrl, {
+      eventTypes: ['state'],
+      eventHandlers: {
+        state: (data) => {
+          if (data.status === 'idle' || data.status === 'no_factory' || data.status === 'error') {
+            return;
+          }
+          if (data.status === 'stopped' || data.status === 'finished') {
+            console.log('[DockerFactory] 仿真完成');
+            if (sseConnectionId) {
+              sseManager.disconnect(sseConnectionId);
+              sseConnectionId = null;
+            }
+            store.isPlaying = false;
+            return;
+          }
+          if (data.frame) {
+            store.pushSnapshot(data.frame);
+          }
+        },
+      },
+      onError: (error) => {
+        console.error('[DockerFactory] SSE error:', error);
+      },
+    });
+    console.log('[DockerFactory] SSE 连接已创建:', sseConnectionId);
   } catch (error) {
     ElMessage.error(`❌ 启动执行失败: ${error.message}`);
   }
 };
 
 onUnmounted(() => {
+  if (sseConnectionId) {
+    sseManager.disconnect(sseConnectionId);
+    sseConnectionId = null;
+  }
   sim.cleanup(store);
 });
 </script>

@@ -198,6 +198,10 @@ class DockerProxy:
         # 2. 启动算法容器
         await self._compose("up", "-d", "mapf", "fjsp", env=compose_env)
 
+        # 2.5 等待 fjsp/mapf 的 Flask 就绪（避免 play 时 Connection refused）
+        await self._wait_for_service("fjsp", 8002)
+        await self._wait_for_service("mapf", 8001)
+
         # 3. 发送仿真配置到 engine（前端 JSON 原样转发 + 算法参数）
         sim_config = {
             "config": self._config,
@@ -278,6 +282,26 @@ class DockerProxy:
                     pass
                 await asyncio.sleep(1.0)
         raise TimeoutError(f"Engine not ready within {timeout}s")
+
+    async def _wait_for_service(self, host: str, port: int, timeout: float = 30.0):
+        """等待算法容器（fjsp/mapf）的 Flask 服务 listen 就绪。
+
+        docker compose up -d 是异步的——容器启动了但 Flask 可能还在初始化。
+        如果不等待就 /sim/play，engine 的 _run_loop 第一步 coordinator.decide()
+        会撞上 Connection refused，仿真线程直接崩溃。
+        """
+        logger.info(f"[DockerProxy] 等待 {host}:{port} 就绪 ...")
+        async with httpx.AsyncClient() as client:
+            for i in range(int(timeout)):
+                try:
+                    # 根路径返回 404 也算 ready（只要 TCP 连上了就说明 Flask 在 listen）
+                    resp = await client.get(f"http://{host}:{port}/", timeout=2.0)
+                    logger.info(f"[DockerProxy] {host}:{port} 就绪 (耗时 {i}s, status={resp.status_code})")
+                    return
+                except Exception:
+                    pass
+                await asyncio.sleep(1.0)
+        raise TimeoutError(f"Service {host}:{port} not ready within {timeout}s")
 
     # ==================== SSE 透传 ====================
 

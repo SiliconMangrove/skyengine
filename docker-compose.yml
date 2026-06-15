@@ -27,6 +27,9 @@ services:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
     networks:
       - skyengine-network
+    # 给 uvicorn graceful shutdown + atexit 清理 online 栈留足时间
+    # (compose down online --timeout 8 ≈ 8-10s + 启动开销)
+    stop_grace_period: 30s
     restart: unless-stopped
 
   frontend:

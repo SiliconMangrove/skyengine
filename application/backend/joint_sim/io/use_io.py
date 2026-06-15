@@ -40,6 +40,52 @@ def load_grid_factory_config(config_path: str) -> Dict[str, Any]:
     return config
 
 
+def build_obstacle_map(
+    topology: Dict[str, Any],
+    machine_positions: List[Tuple[int, int]],
+    agent_positions: List[Tuple[int, int]],
+) -> str:
+    """
+    从 topology.zones[type=obstacle] 构建 pogema 字符串障碍图。
+
+    - 方正化为 size×size（size = max(gridWidth, gridHeight)），与 pogema 正方形约束一致。
+    - 机器格、AGV 起点格强制保持可通行（否则 AGV 永远到不了目标，运行期才报错）。
+    - 机器仍作为 possible_targets_xy（在 create_env_from_config 设置），不在此处挡路。
+
+    Returns:
+        多行字符串：行=y, 列=x, '#' 障碍, '.' 自由。
+    """
+    gw = topology.get("gridWidth", 20)
+    gh = topology.get("gridHeight", 20)
+    size = max(gw, gh)
+
+    # 1. 展开 obstacle zone 为格子集合
+    blocked = set()
+    for z in topology.get("zones", []):
+        if z.get("type") != "obstacle":
+            continue
+        area = z.get("area", {})
+        x0 = area.get("x", 0)
+        y0 = area.get("y", 0)
+        w = area.get("w", 0)
+        h = area.get("h", 0)
+        for dy in range(h):
+            for dx in range(w):
+                blocked.add((x0 + dx, y0 + dy))
+
+    # 2. 机器格、AGV 起点格不能是障碍
+    for mx, my in machine_positions:
+        blocked.discard((int(mx), int(my)))
+    for ax, ay in agent_positions:
+        blocked.discard((int(ax), int(ay)))
+
+    # 3. 拼 size×size 字符串
+    rows = []
+    for y in range(size):
+        rows.append("".join("#" if (x, y) in blocked else "." for x in range(size)))
+    return "\n".join(rows)
+
+
 def parse_grid_config(config: Dict[str, Any]) -> GridConfig:
     """
     从 JSON 配置解析 GridConfig
@@ -57,18 +103,25 @@ def parse_grid_config(config: Dict[str, Any]) -> GridConfig:
     grid_height = topology.get("gridHeight", 20)
     grid_size = max(grid_width, grid_height)
 
-    num_agents = len(agvs)
-
     # 获取 AGV 初始位置
     agents_start_xy = [tuple(agv["initialLocation"]) for agv in agvs]
+
+    # 机器位置（仅用于排除：机器格不挡路，AGV 必须能到达）
+    machines = topology.get("machines", {})
+    machine_positions = [tuple(m["location"]) for m in machines.values()]
+
+    # 从 topology.zones[type=obstacle] 构建障碍图；提供 map 后 size/density 由 pogema 推导
+    obstacle_map = build_obstacle_map(topology, machine_positions, agents_start_xy)
 
     # 注意：Grid 类要求 agents_xy 和 targets_xy 同时存在才会使用配置的位置
     # 否则会走到 else 分支随机生成位置，导致 initialLocation 被覆盖
     # 在 LifeLong 模式下，初始目标可以和起始位置相同（后续会被实际任务目标覆盖）
+    # size 显式传入：部分 pogema 版本里 agents_xy 校验先于 map 推导 size 执行，
+    # 不传 size 会用默认值导致 "Position is out of bounds!"。map 校验器仍会把它设为 map 推导值，一致。
     return GridConfig(
         size=grid_size,
-        num_agents=num_agents,
-        density=0.0,  # 无随机障碍物
+        map=obstacle_map,
+        num_agents=len(agvs),
         seed=42,
         max_episode_steps=256,
         obs_radius=5,
@@ -131,16 +184,30 @@ def parse_job_config(config: Dict[str, Any], num_machines: int) -> JobConfig:
     # 解析 custom_jobs 格式: List[List[(machine_options, proc_time)]]
     custom_jobs: List[List[Tuple[List[int], int]]] = []
     all_durations = []
+    # 优先使用 machine_options_with_time 字段（标准 FJSP：每 op 多机器候选 + 各自时间）；
+    # 存在则走 custom_time strategy，generate_jobs 会填 Operation.machine_options_with_time。
+    use_custom_time = False
 
     for job in job_list:
         job_ops: List[Tuple[List[int], int]] = []
         for op in job.get("operations", []):
-            machine_id = op.get("machine_id", 0)
-            duration = op.get("duration", 1)
-            # machine_options 是一个列表（支持多机器选择）
-            machine_options = [machine_id] if isinstance(machine_id, int) else machine_id
-            job_ops.append((machine_options, duration))
-            all_durations.append(duration)
+            if "machine_options_with_time" in op:
+                # 优先字段：List[[machine_id, proc_time]]
+                use_custom_time = True
+                mowt = op["machine_options_with_time"]
+                # custom_time strategy 期望 op_info[0] = List[Tuple[machine_id, proc_time]]
+                job_ops.append(([(m[0], m[1]) for m in mowt], mowt[0][1]))
+                all_durations.extend(m[1] for m in mowt)
+            else:
+                # DEPRECATED: 旧格式 {machine_id, duration}（单机器，丢失 per-machine 时间）
+                # 仅兼容历史配置（northeastFactoryMap.json / grid_factory_example.json 等），
+                # 新数据集走 helper.convert_to_grid_factory 已输出 machine_options_with_time。
+                machine_id = op.get("machine_id", 0)
+                duration = op.get("duration", 1)
+                # machine_options 是一个列表（支持多机器选择）
+                machine_options = [machine_id] if isinstance(machine_id, int) else machine_id
+                job_ops.append((machine_options, duration))
+                all_durations.append(duration)
         custom_jobs.append(job_ops)
 
     # 计算工序数量的范围
@@ -161,7 +228,7 @@ def parse_job_config(config: Dict[str, Any], num_machines: int) -> JobConfig:
         machine_choices=1,  # JSON 中已指定机器
         total_machines=num_machines,
         seed=42,
-        strategy="custom",
+        strategy="custom_time" if use_custom_time else "custom",
         custom_jobs=custom_jobs,
     )
 

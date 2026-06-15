@@ -65,4 +65,20 @@ def generate_jobs(job_config: JobConfig) -> List[Job]:
                 )
                 ops.append(op)
             jobs.append(Job(job_id=j, ops=ops))
+    elif job_config.strategy == "custom_time":
+        # 标准 FJSP：每 op 多机器候选 + 各自处理时间。
+        # op_info[0] = List[Tuple[machine_id, proc_time]]，会被填入 Operation.machine_options_with_time
+        for j, job_info in enumerate(job_config.custom_jobs):
+            ops: List[Operation] = []
+            for op_id, op_info in enumerate(job_info):
+                mowt = op_info[0]
+                op = Operation(
+                    job_id=j,
+                    op_id=op_id,
+                    machine_options=[m[0] for m in mowt],
+                    proc_time=op_info[1],
+                    machine_options_with_time=list(mowt),
+                )
+                ops.append(op)
+            jobs.append(Job(job_id=j, ops=ops))
     return jobs

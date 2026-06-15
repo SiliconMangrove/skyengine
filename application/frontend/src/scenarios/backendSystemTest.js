@@ -52,14 +52,17 @@ export async function backendSystemTest(factoryStore, monitorStore, data, onFini
     // 通过SSE监听数据流，更新store
 
     // 1. 初始化
+    console.log("[backendSystemTest] Step 4: 初始化 store...");
     factoryStore.reset();
     monitorStore.clear();
     factoryStore.isPlaying = true; // 开启播放状态，让 Store 知道我们在进行实时更新
+    console.log("[backendSystemTest] store 初始化完成");
 
     let cnt = 0;
 
     // 通过SSE获得agvFrame和machineFrame
     const stateUrl = getApiUrl(API_ROUTES.STREAM_STATE);
+    console.log("[backendSystemTest] Step 5: 建立 SSE 连接, url=", stateUrl);
     connectionId = sseManager.connect(stateUrl, {
         eventTypes: ['state'],  // 监听的事件类型
         eventHandlers: {
@@ -94,6 +97,7 @@ export async function backendSystemTest(factoryStore, monitorStore, data, onFini
             if (onFinish) onFinish();
         }
     });
+    console.log("[backendSystemTest] SSE 连接已创建, connectionId=", connectionId);
 
     // 返回清理函数，供外部调用
     return cleanup;

@@ -45,9 +45,11 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { ElMessage } from 'element-plus';
 import { useFactoryStore } from '@/stores/factory';
 import ControlPanel from './ControlPanel.vue';
 import FactoryVisualization3D from './FactoryVisualization3D.vue';
+import northeastFactoryMap from '@/configs/northeastFactoryMap.json';
 
 const props = defineProps({
   hideControlPanel: {
@@ -124,6 +126,18 @@ const safetyTestCase = [
 
 function loadSafetyInspection() {
   currentScenario.value = 'safety';
+
+  // 北满（静态工厂）：直接载入内嵌工厂地图配置
+  const fid = store.selectedFactoryId;
+  if (fid === 'northeast_center' || fid === 'static_factory') {
+    store.reset();
+    store.loadConfigFromFile(northeastFactoryMap);
+    store.initializeAGVs();
+    ElMessage.success('已加载北满工厂地图');
+    return;
+  }
+
+  // 其他工厂：保留原有静态巡检航点回放
   store.reset();
   store.loadCommandQueue(safetyTestCase);
 }

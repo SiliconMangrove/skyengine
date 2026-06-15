@@ -156,6 +156,11 @@ const enterFactory = async (factoryId) => {
       factoryStore.setCurrentFactory(factoryId);
       isInFactory.value = true;
 
+      // 预取数据集（已 memo 化，ConfigPanel 挂载时直接命中缓存）
+      factoryStore.fetchDatasets().catch((e) => {
+        console.error("[FactoryView] 加载数据集失败:", e);
+      });
+
       const factory = factories.value.find((f) => f.id === factoryId);
       ElMessage.success({
         message: `已连接: ${factory.name}`,

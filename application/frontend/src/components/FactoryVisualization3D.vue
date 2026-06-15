@@ -63,13 +63,20 @@ const screenLabels = ref([])
 const topology = computed(() => {
   const config = props.staticConfig || {}
   const topoData = config.topology || config
+  // 与后端 use_io.py 的 grid_size = max(grid_width, grid_height) 对齐：
+  // pogema 只支持正方形网格，非正方形地图在后端会被 max 方正化（底部补 padding 行）。
+  // 前端必须同步方正化，否则 gridToWorld 的坐标系与后端仿真空间错位，
+  // 非正方形地图会出现"半格偏移"且 padding 行的 AGV 会渲染错位。
+  const gw = topoData.gridWidth || props.defaultGridWidth
+  const gh = topoData.gridHeight || props.defaultGridHeight
+  const gridSize = Math.max(gw, gh)
   return {
     zones: topoData.zones || [],
     machines: topoData.machines || {},
     waypoints: topoData.waypoints || {},
     edges: topoData.edges || [],
-    gridWidth: topoData.gridWidth || props.defaultGridWidth,
-    gridHeight: topoData.gridHeight || props.defaultGridHeight,
+    gridWidth: gridSize,
+    gridHeight: gridSize,
   }
 })
 

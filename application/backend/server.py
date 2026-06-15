@@ -8,7 +8,46 @@ from fastapi import FastAPI, Body
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
+import atexit
 import json
+import os
+import subprocess
+
+
+def _cleanup_online_stack() -> None:
+    """兜底清理:主栈退出时连带关闭 skyengine-online 栈 (engine/mapf/fjsp),释放 GPU。
+
+    触发机制:uvicorn 收到 SIGTERM(docker compose down) / SIGINT(Ctrl+C)做
+    graceful shutdown,Python 解释器随后正常退出,atexit 钩子按 LIFO 跑到这里。
+
+    幂等 —— online 栈没起时 `docker compose down` 是 no-op,不会报错。
+    """
+    compose_file = os.getenv("SKYENGINE_COMPOSE_PATH")
+    project_dir = os.getenv("SKYENGINE_PROJECT_DIR")
+    if not compose_file or not os.path.exists(compose_file):
+        return  # 没配 / 文件不存在,跳过(不阻塞 backend 退出)
+
+    cmd = ["docker", "compose", "-p", "skyengine-online"]
+    if project_dir:
+        cmd += ["--project-directory", project_dir]
+    cmd += ["-f", compose_file, "down", "--remove-orphans", "--timeout", "8"]
+
+    try:
+        # 用 print 而非 logger:解释器关闭阶段 logging handler 可能已拆卸,
+        # print 直达 stdout,docker logs 可靠捕获
+        print(f"[atexit] 清理 skyengine-online 栈: {' '.join(cmd)}", flush=True)
+        result = subprocess.run(cmd, capture_output=True, timeout=15)
+        if result.returncode == 0:
+            print("[atexit] skyengine-online 栈已清理", flush=True)
+        else:
+            print(f"[atexit] online 栈清理非零退出(rc={result.returncode}): "
+                  f"{result.stderr.decode().strip()}", flush=True)
+    except Exception as e:
+        # 任何失败都不能阻塞 backend 自身退出
+        print(f"[atexit] online 栈清理失败(忽略): {e}", flush=True)
+
+
+atexit.register(_cleanup_online_stack)
 
 # Import factory proxies (must import all to ensure registration)
 from application.backend.core.BaseFactoryProxy import (

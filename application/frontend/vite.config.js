@@ -25,7 +25,7 @@ export default defineConfig({
       },
       // RAG 后端代理 — 从 .env.development 读取 VITE_RAG_URL
       "/rag": {
-        target: process.env.VITE_RAG_URL || 'http://localhost:8000',
+        target: process.env.RAG_BACKEND_URL || process.env.VITE_RAG_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/rag/, ""),
       },
