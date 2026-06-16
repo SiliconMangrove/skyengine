@@ -197,6 +197,50 @@ async def stream_metrics():
     )
 
 
+# 工厂事件流（简化路由，不使用 factory_id）
+@app.get("/stream/events")
+async def stream_events():
+    """
+    工厂事件流 SSE 端点（sim_server 业务事件: machine_start_op / transfer_started 等）
+    """
+
+    async def generate():
+        while True:
+            try:
+                if current_factory_proxy is None:
+                    yield format_sse_message("event", {"status": "no_factory"})
+                    await asyncio.sleep(2.0)
+                    continue
+
+                # DockerProxy 透传
+                if hasattr(current_factory_proxy, "events_stream") and current_factory_proxy.is_running():
+                    async for event_type, data in current_factory_proxy.events_stream():
+                        yield format_sse_message(event_type, data)
+                    continue
+
+                # 其他代理暂无事件源
+                yield format_sse_message(
+                    "event",
+                    {"status": "idle", "message": "No event source"},
+                )
+                await asyncio.sleep(2.0)
+            except Exception as e:
+                yield format_sse_message(
+                    "event", {"status": "error", "message": str(e)}
+                )
+                break
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 # 工厂控制流（简化路由，不使用 factory_id）
 @app.get("/stream/control")
 async def stream_control():

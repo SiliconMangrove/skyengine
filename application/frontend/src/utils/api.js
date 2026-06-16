@@ -29,6 +29,7 @@ export const API_ROUTES = {
   STREAM_STATE: "/stream/state",
   STREAM_METRICS: "/stream/metrics",
   STREAM_CONTROL: "/stream/control",
+  STREAM_EVENTS: "/stream/events",
 
   // 监控相关
   MONITOR_STATUS: "/monitor/status",

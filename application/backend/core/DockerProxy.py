@@ -359,6 +359,26 @@ class DockerProxy:
         except Exception as e:
             logger.error(f"[DockerProxy] metrics_stream 结束: {e}")
 
+    async def events_stream(self):
+        """直接透传 sim_server 的 /stream/events SSE 事件"""
+        if not self._engine_url or not self._streaming:
+            return
+        url = f"{self._engine_url}/stream/events"
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", url) as resp:
+                    async for line in resp.aiter_lines():
+                        if not self._streaming:
+                            break
+                        if line.startswith("data: "):
+                            try:
+                                data = json.loads(line[6:])
+                                yield ("event", data)
+                            except (json.JSONDecodeError, KeyError):
+                                pass
+        except Exception as e:
+            logger.error(f"[DockerProxy] events_stream 结束: {e}")
+
     # ==================== 状态判断 ====================
 
     def is_running(self) -> bool:

@@ -28,6 +28,11 @@ export const useMonitorStore = defineStore('monitor', () => {
     const runStartTime = ref(null)
     const runMeta = ref({})
 
+    // ============ 4. sim_server (DockerFactory) 专用 ============
+    // episode 结束后的汇总 + 热力图
+    const heatmaps = ref(null)
+    const episodeSummary = ref(null)
+
     // ============ 动作 (Actions) ============
 
     /**
@@ -153,6 +158,69 @@ export const useMonitorStore = defineStore('monitor', () => {
         runId.value = null
         runStartTime.value = null
         runMeta.value = {}
+        heatmaps.value = null
+        episodeSummary.value = null
+    }
+
+    /**
+     * 清空 sim_server 专用状态 (DockerFactory 切换场景时调用)
+     */
+    function clearSim() {
+        eventQueue.value = []
+        metricsTimeline.value = []
+        heatmaps.value = null
+        episodeSummary.value = null
+    }
+
+    /**
+     * 推送 sim_server (DockerFactory) 指标更新
+     * - data.status === "running": 增量时序点 {step, metrics:{...}, metrics_reward}
+     * - data.status === "stopped": episode 汇总 + 热力图
+     */
+    function pushSimMetrics(data) {
+        if (!data) return
+        if (data.status === 'stopped') {
+            if (data.episode_summary) episodeSummary.value = data.episode_summary
+            if (data.heatmap) heatmaps.value = data.heatmap
+            pushEvent({
+                title: '仿真完成',
+                message: `makespan=${data.episode_summary?.completed_makespan ?? '--'}`,
+                type: 'success',
+                idx: data.step ?? 0,
+            })
+            return
+        }
+        if (data.status === 'running' && data.metrics) {
+            metricsTimeline.value.push({
+                step: data.step,
+                timestamp: Date.now(),
+                metrics: { ...data.metrics },
+                metrics_reward: data.metrics_reward,
+            })
+            if (metricsTimeline.value.length > MAX_METRICS_TIMELINE) {
+                metricsTimeline.value = metricsTimeline.value.slice(-MAX_METRICS_TIMELINE)
+            }
+        }
+    }
+
+    /**
+     * 推送 sim_server (DockerFactory) 业务事件
+     * data: {timestamp, type, message, level}
+     */
+    function pushSimEvent(data) {
+        if (!data) return
+        const typeMap = {
+            success: 'success',
+            info: 'info',
+            warning: 'warning',
+            error: 'error',
+        }
+        pushEvent({
+            title: data.type || 'event',
+            message: data.message || '',
+            type: typeMap[data.level] || 'info',
+            idx: 0,
+        })
     }
 
     return {
@@ -166,6 +234,9 @@ export const useMonitorStore = defineStore('monitor', () => {
         runId,
         runStartTime,
         runMeta,
+        // sim_server 专用
+        heatmaps,
+        episodeSummary,
 
         // Actions
         pushEvent,
@@ -173,5 +244,9 @@ export const useMonitorStore = defineStore('monitor', () => {
         startRun,
         buildRAGContext,
         clear,
+        // sim_server 专用
+        clearSim,
+        pushSimMetrics,
+        pushSimEvent,
     }
 })

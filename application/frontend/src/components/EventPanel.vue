@@ -7,7 +7,7 @@
                     Total: {{ monitorStore.totalEventCount }}
                 </span>
             </div>
-            <button @click="monitorStore.clearEvents" class="clear-btn" title="清空">×</button>
+            <button @click="monitorStore.clear" class="clear-btn" title="清空">×</button>
         </div>
 
         <div class="event-list" ref="eventListRef">

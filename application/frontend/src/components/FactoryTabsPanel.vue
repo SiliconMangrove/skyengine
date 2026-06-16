@@ -32,7 +32,7 @@
           ref="configPanelRef"
           @edit-mode-change="$emit('edit-mode-change', $event)"
         />
-        <MetricsPanel v-else-if="tab.key === 'metrics'" :show-chart="true" />
+        <MetricsPanel v-else-if="tab.key === 'metrics'" :show-chart="true" :factory-type="factoryType" />
         <EventPanel v-else-if="tab.key === 'events'" title="系统日志" />
         <AgentPanel v-else-if="tab.key === 'agent'" />
       </slot>
@@ -60,6 +60,7 @@ const props = defineProps({
   showPanel: { type: Boolean, default: true },
   isEditMode: { type: Boolean, default: false },
   isRunningTest: { type: Boolean, default: false },
+  factoryType: { type: String, default: '' },
 });
 
 const emit = defineEmits([

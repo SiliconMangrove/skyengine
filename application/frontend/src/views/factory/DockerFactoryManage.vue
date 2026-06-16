@@ -45,6 +45,7 @@
       v-model:show-panel="showPanel"
       :is-edit-mode="isEditMode"
       :is-running-test="sim.isRunningTest.value"
+      factory-type="grid_factory"
       @edit-mode-change="isEditMode = $event"
     >
       <template #tab-simulation>
@@ -143,6 +144,8 @@ const isStartingContainer = ref(false);
 const containerStartStatus = ref("");
 const showPanel = ref(true);
 let sseConnectionId = null;
+let metricsConnectionId = null;
+let eventsConnectionId = null;
 const activeTab = ref("simulation");
 const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
@@ -217,6 +220,8 @@ const testSetAlgorithm = async () => {
 const testReset = async () => {
   try {
     await apiPost(API_ROUTES.FACTORY_CONTROL_RESET, null, { timeout: 15000 });
+    // 清空 sim 专用 monitor 状态
+    monitorStore.clearSim();
     ElMessage.success('✅ 重置工厂成功');
   } catch (error) {
     ElMessage.error(`❌ 重置工厂失败: ${error.message}`);
@@ -232,13 +237,13 @@ const testPlay = async () => {
     }
     ElMessage.success('✅ 启动执行成功');
 
-    // 建立 SSE 连接接收 frame
+    // 建立 state SSE 连接接收 frame
     if (sseConnectionId) {
       sseManager.disconnect(sseConnectionId);
     }
     store.isPlaying = true;
     const stateUrl = getApiUrl(API_ROUTES.STREAM_STATE);
-    console.log('[DockerFactory] 建立 SSE 连接:', stateUrl);
+    console.log('[DockerFactory] 建立 state SSE:', stateUrl);
     sseConnectionId = sseManager.connect(stateUrl, {
       eventTypes: ['state'],
       eventHandlers: {
@@ -261,10 +266,50 @@ const testPlay = async () => {
         },
       },
       onError: (error) => {
-        console.error('[DockerFactory] SSE error:', error);
+        console.error('[DockerFactory] state SSE error:', error);
       },
     });
-    console.log('[DockerFactory] SSE 连接已创建:', sseConnectionId);
+    console.log('[DockerFactory] state SSE 已创建:', sseConnectionId);
+
+    // 建立 metrics SSE 连接
+    if (metricsConnectionId) {
+      sseManager.disconnect(metricsConnectionId);
+    }
+    const metricsUrl = getApiUrl(API_ROUTES.STREAM_METRICS);
+    metricsConnectionId = sseManager.connect(metricsUrl, {
+      eventTypes: ['metrics'],
+      eventHandlers: {
+        metrics: (data) => {
+          monitorStore.pushSimMetrics(data);
+          if (data.status === 'stopped' && metricsConnectionId) {
+            sseManager.disconnect(metricsConnectionId);
+            metricsConnectionId = null;
+          }
+        },
+      },
+      onError: (error) => {
+        console.error('[DockerFactory] metrics SSE error:', error);
+      },
+    });
+    console.log('[DockerFactory] metrics SSE 已创建:', metricsConnectionId);
+
+    // 建立 events SSE 连接
+    if (eventsConnectionId) {
+      sseManager.disconnect(eventsConnectionId);
+    }
+    const eventsUrl = getApiUrl(API_ROUTES.STREAM_EVENTS);
+    eventsConnectionId = sseManager.connect(eventsUrl, {
+      eventTypes: ['event'],
+      eventHandlers: {
+        event: (data) => {
+          monitorStore.pushSimEvent(data);
+        },
+      },
+      onError: (error) => {
+        console.error('[DockerFactory] events SSE error:', error);
+      },
+    });
+    console.log('[DockerFactory] events SSE 已创建:', eventsConnectionId);
   } catch (error) {
     ElMessage.error(`❌ 启动执行失败: ${error.message}`);
   }
@@ -274,6 +319,14 @@ onUnmounted(() => {
   if (sseConnectionId) {
     sseManager.disconnect(sseConnectionId);
     sseConnectionId = null;
+  }
+  if (metricsConnectionId) {
+    sseManager.disconnect(metricsConnectionId);
+    metricsConnectionId = null;
+  }
+  if (eventsConnectionId) {
+    sseManager.disconnect(eventsConnectionId);
+    eventsConnectionId = null;
   }
   sim.cleanup(store);
 });
