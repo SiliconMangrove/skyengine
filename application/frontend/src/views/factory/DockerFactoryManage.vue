@@ -229,89 +229,93 @@ const testReset = async () => {
 };
 
 const testPlay = async () => {
+  // 1. 先建立所有 SSE 连接（不依赖 play 是否成功）
+  //    DockerProxy.start() 首次启动 mapf/fjsp 容器可能 > 30s，
+  //    如果 SSE 放在 await play 之后，play 超时会导致 SSE 永远不建立。
+  if (sseConnectionId) {
+    sseManager.disconnect(sseConnectionId);
+  }
+  if (metricsConnectionId) {
+    sseManager.disconnect(metricsConnectionId);
+  }
+  if (eventsConnectionId) {
+    sseManager.disconnect(eventsConnectionId);
+  }
+
+  store.isPlaying = true;
+
+  const stateUrl = getApiUrl(API_ROUTES.STREAM_STATE);
+  console.log('[DockerFactory] 建立 state SSE:', stateUrl);
+  sseConnectionId = sseManager.connect(stateUrl, {
+    eventTypes: ['state'],
+    eventHandlers: {
+      state: (data) => {
+        if (data.status === 'idle' || data.status === 'no_factory' || data.status === 'error') {
+          return;
+        }
+        if (data.status === 'stopped' || data.status === 'finished') {
+          console.log('[DockerFactory] 仿真完成');
+          if (sseConnectionId) {
+            sseManager.disconnect(sseConnectionId);
+            sseConnectionId = null;
+          }
+          store.isPlaying = false;
+          return;
+        }
+        if (data.frame) {
+          store.pushSnapshot(data.frame);
+        }
+      },
+    },
+    onError: (error) => {
+      console.error('[DockerFactory] state SSE error:', error);
+    },
+  });
+  console.log('[DockerFactory] state SSE 已创建:', sseConnectionId);
+
+  const metricsUrl = getApiUrl(API_ROUTES.STREAM_METRICS);
+  metricsConnectionId = sseManager.connect(metricsUrl, {
+    eventTypes: ['metrics'],
+    eventHandlers: {
+      metrics: (data) => {
+        monitorStore.pushSimMetrics(data);
+        if (data.status === 'stopped' && metricsConnectionId) {
+          sseManager.disconnect(metricsConnectionId);
+          metricsConnectionId = null;
+        }
+      },
+    },
+    onError: (error) => {
+      console.error('[DockerFactory] metrics SSE error:', error);
+    },
+  });
+  console.log('[DockerFactory] metrics SSE 已创建:', metricsConnectionId);
+
+  const eventsUrl = getApiUrl(API_ROUTES.STREAM_EVENTS);
+  eventsConnectionId = sseManager.connect(eventsUrl, {
+    eventTypes: ['event'],
+    eventHandlers: {
+      event: (data) => {
+        monitorStore.pushSimEvent(data);
+      },
+    },
+    onError: (error) => {
+      console.error('[DockerFactory] events SSE error:', error);
+    },
+  });
+  console.log('[DockerFactory] events SSE 已创建:', eventsConnectionId);
+
+  // 2. 发送 play 请求（首次可能 > 30s，用 120s 兜底）
   try {
-    const resp = await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 30000 });
-    // 启动运行记录
+    const resp = await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 120000 });
     if (resp?.run_id) {
       monitorStore.startRun({ runId: resp.run_id, factoryType: 'grid_factory' });
     }
     ElMessage.success('✅ 启动执行成功');
-
-    // 建立 state SSE 连接接收 frame
-    if (sseConnectionId) {
-      sseManager.disconnect(sseConnectionId);
-    }
-    store.isPlaying = true;
-    const stateUrl = getApiUrl(API_ROUTES.STREAM_STATE);
-    console.log('[DockerFactory] 建立 state SSE:', stateUrl);
-    sseConnectionId = sseManager.connect(stateUrl, {
-      eventTypes: ['state'],
-      eventHandlers: {
-        state: (data) => {
-          if (data.status === 'idle' || data.status === 'no_factory' || data.status === 'error') {
-            return;
-          }
-          if (data.status === 'stopped' || data.status === 'finished') {
-            console.log('[DockerFactory] 仿真完成');
-            if (sseConnectionId) {
-              sseManager.disconnect(sseConnectionId);
-              sseConnectionId = null;
-            }
-            store.isPlaying = false;
-            return;
-          }
-          if (data.frame) {
-            store.pushSnapshot(data.frame);
-          }
-        },
-      },
-      onError: (error) => {
-        console.error('[DockerFactory] state SSE error:', error);
-      },
-    });
-    console.log('[DockerFactory] state SSE 已创建:', sseConnectionId);
-
-    // 建立 metrics SSE 连接
-    if (metricsConnectionId) {
-      sseManager.disconnect(metricsConnectionId);
-    }
-    const metricsUrl = getApiUrl(API_ROUTES.STREAM_METRICS);
-    metricsConnectionId = sseManager.connect(metricsUrl, {
-      eventTypes: ['metrics'],
-      eventHandlers: {
-        metrics: (data) => {
-          monitorStore.pushSimMetrics(data);
-          if (data.status === 'stopped' && metricsConnectionId) {
-            sseManager.disconnect(metricsConnectionId);
-            metricsConnectionId = null;
-          }
-        },
-      },
-      onError: (error) => {
-        console.error('[DockerFactory] metrics SSE error:', error);
-      },
-    });
-    console.log('[DockerFactory] metrics SSE 已创建:', metricsConnectionId);
-
-    // 建立 events SSE 连接
-    if (eventsConnectionId) {
-      sseManager.disconnect(eventsConnectionId);
-    }
-    const eventsUrl = getApiUrl(API_ROUTES.STREAM_EVENTS);
-    eventsConnectionId = sseManager.connect(eventsUrl, {
-      eventTypes: ['event'],
-      eventHandlers: {
-        event: (data) => {
-          monitorStore.pushSimEvent(data);
-        },
-      },
-      onError: (error) => {
-        console.error('[DockerFactory] events SSE error:', error);
-      },
-    });
-    console.log('[DockerFactory] events SSE 已创建:', eventsConnectionId);
   } catch (error) {
-    ElMessage.error(`❌ 启动执行失败: ${error.message}`);
+    // play 超时不断开 SSE — DockerProxy 仍在后台跑，engine 最终会产 frame
+    console.warn('[DockerFactory] play 请求超时或失败，SSE 保持连接等待:', error.message);
+    ElMessage.warning(`play 请求超时，SSE 保持连接等待数据...`);
   }
 };
 

@@ -33,6 +33,57 @@ export const useMonitorStore = defineStore('monitor', () => {
     const heatmaps = ref(null)
     const episodeSummary = ref(null)
 
+    // ============ 5. 智能体对话历史 (跨组件持久) ============
+    // 结构: { id, role: 'user'|'assistant', content, timestamp, templateId?, streaming?, error? }
+    const agentHistory = ref([])
+    const MAX_AGENT_HISTORY = 30
+    // 最近选中的模板 id (用于按钮高亮持久)
+    const agentActiveTemplate = ref(null)
+
+    /** 追加一条 Agent 消息 */
+    function pushAgentMessage(msg) {
+        agentHistory.value.push({
+            id: Date.now() + Math.random(),
+            timestamp: new Date(),
+            ...msg,
+        })
+        if (agentHistory.value.length > MAX_AGENT_HISTORY) {
+            agentHistory.value = agentHistory.value.slice(-MAX_AGENT_HISTORY)
+        }
+    }
+
+    /** 流式追加 chunk 到最后一条 assistant(没有则新建) */
+    function appendAgentChunk(chunk) {
+        const last = agentHistory.value[agentHistory.value.length - 1]
+        if (last && last.role === 'assistant' && last.streaming) {
+            last.content += chunk
+        } else {
+            pushAgentMessage({ role: 'assistant', content: chunk, streaming: true })
+        }
+    }
+
+    /** 结束最后一条消息流式状态 */
+    function finalizeAgentMessage() {
+        const last = agentHistory.value[agentHistory.value.length - 1]
+        if (last) last.streaming = false
+    }
+
+    /** 标记最后一条 assistant 失败 */
+    function failAgentMessage(errMsg) {
+        const last = agentHistory.value[agentHistory.value.length - 1]
+        if (last && last.role === 'assistant') {
+            last.streaming = false
+            last.error = true
+            if (!last.content) last.content = errMsg || '⚠ AI 服务暂不可用'
+        }
+    }
+
+    /** 清空 Agent 对话历史 */
+    function clearAgentHistory() {
+        agentHistory.value = []
+        agentActiveTemplate.value = null
+    }
+
     // ============ 动作 (Actions) ============
 
     /**
@@ -237,6 +288,9 @@ export const useMonitorStore = defineStore('monitor', () => {
         // sim_server 专用
         heatmaps,
         episodeSummary,
+        // Agent 对话
+        agentHistory,
+        agentActiveTemplate,
 
         // Actions
         pushEvent,
@@ -248,5 +302,11 @@ export const useMonitorStore = defineStore('monitor', () => {
         clearSim,
         pushSimMetrics,
         pushSimEvent,
+        // Agent 对话
+        pushAgentMessage,
+        appendAgentChunk,
+        finalizeAgentMessage,
+        failAgentMessage,
+        clearAgentHistory,
     }
 })

@@ -77,7 +77,12 @@
     <div class="analysis-section">
       <div class="analysis-header">
         <span class="analysis-title">💡 智能分析</span>
-        <button class="clear-analysis-btn" v-if="analysisResult" @click="analysisResult = ''" title="清除">×</button>
+        <button
+          class="clear-analysis-btn"
+          v-if="monitorStore.agentHistory.length > 0"
+          @click="monitorStore.clearAgentHistory()"
+          title="清空对话"
+        >×</button>
       </div>
 
       <!-- 预设问题模板 -->
@@ -86,7 +91,7 @@
           v-for="tpl in templates"
           :key="tpl.id"
           class="template-btn"
-          :class="{ active: selectedTemplate === tpl.id }"
+          :class="{ active: monitorStore.agentActiveTemplate === tpl.id }"
           @click="handleTemplateClick(tpl)"
           :disabled="tpl.disabled"
           :title="tpl.disabled ? '即将上线' : tpl.prompt"
@@ -109,23 +114,40 @@
         </button>
       </div>
 
-      <!-- 分析结果展示框 -->
-      <div class="analysis-result-box" :class="{ 'has-content': !!analysisResult }">
-        <div v-if="isAnalyzing && !analysisResult" class="result-placeholder">
-          <span class="analyzing-spinner"></span>
-          <span>正在分析中...</span>
+      <!-- 对话历史展示框 (持久,跨组件切换不丢) -->
+      <div ref="resultBoxRef" class="analysis-result-box" :class="{ 'has-content': monitorStore.agentHistory.length > 0 }">
+        <div v-if="monitorStore.agentHistory.length === 0" class="result-placeholder">
+          <span v-if="isAnalyzing" class="analyzing-spinner"></span>
+          <span>{{ isAnalyzing ? '正在分析中...' : '选择上方模板或输入问题，分析结果将在此展示' }}</span>
         </div>
-        <div v-else-if="!analysisResult" class="result-placeholder">
-          <span>选择上方模板或输入问题，分析结果将在此展示</span>
+        <div v-else class="conversation-list">
+          <div
+            v-for="msg in monitorStore.agentHistory"
+            :key="msg.id"
+            class="conversation-msg"
+            :class="msg.role"
+          >
+            <div class="msg-role">{{ msg.role === 'user' ? '🧑 我' : '🤖 助手' }}</div>
+            <div
+              v-if="msg.role === 'assistant'"
+              class="msg-content"
+              :class="{ 'msg-error': msg.error }"
+              v-html="renderMessage(msg)"
+            ></div>
+            <div v-else class="msg-content">{{ msg.content }}</div>
+          </div>
+          <div v-if="isAnalyzing && lastMessage?.streaming" class="streaming-hint">
+            <span class="analyzing-spinner"></span>
+            <span>生成中...</span>
+          </div>
         </div>
-        <div v-else class="result-content" v-html="renderedResult"></div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useFactoryStore } from '@/stores/factory'
 import { useMonitorStore } from '@/stores/monitor'
 import { queryRAG } from '@/utils/rag'
@@ -133,6 +155,19 @@ import { marked } from 'marked'
 
 const store = useFactoryStore()
 const monitorStore = useMonitorStore()
+
+// 对话框 DOM ref (自动滚到底)
+const resultBoxRef = ref(null)
+
+function scrollToBottom() {
+  nextTick(() => {
+    const el = resultBoxRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+// 历史变化时自动滚到底
+watch(() => monitorStore.agentHistory.length, scrollToBottom)
 
 // ==================== Agent 状态 ====================
 
@@ -207,52 +242,66 @@ const templates = [
   },
 ]
 
-const selectedTemplate = ref(null)
 const customQuery = ref('')
-const analysisResult = ref('')
 const isAnalyzing = ref(false)
+
+// 最近一条消息(用于判断 streaming 状态)
+const lastMessage = computed(() => {
+  const h = monitorStore.agentHistory
+  return h.length > 0 ? h[h.length - 1] : null
+})
 
 // ==================== 分析逻辑 ====================
 
 function handleTemplateClick(tpl) {
   if (tpl.disabled) return
-  selectedTemplate.value = tpl.id
+  monitorStore.agentActiveTemplate = tpl.id
   runAnalysis(tpl.id, tpl.prompt)
 }
 
 function handleCustomQuery() {
   const q = customQuery.value.trim()
   if (!q) return
-  selectedTemplate.value = null
+  monitorStore.agentActiveTemplate = null
+  customQuery.value = ''
   runAnalysis('custom', q)
 }
 
 async function runAnalysis(type, prompt) {
+  if (isAnalyzing.value) return  // 防止并发
   isAnalyzing.value = true
-  analysisResult.value = ''
+
+  // 1) 记录用户问题
+  monitorStore.pushAgentMessage({ role: 'user', content: prompt, templateId: type })
+  scrollToBottom()
 
   try {
     const currentState = store.currentState
     // hello 模板不需要上下文
     const context = type === 'hello' ? null : monitorStore.buildRAGContext(currentState)
 
+    // 2) 流式接收 assistant 回复,chunk 直接累积进 store
     await queryRAG(prompt, context, (chunk) => {
-      analysisResult.value += chunk
+      monitorStore.appendAgentChunk(chunk)
+      scrollToBottom()
     })
+    monitorStore.finalizeAgentMessage()
   } catch (err) {
     console.warn('RAG 查询失败:', err)
-    analysisResult.value = '<span class="tag-warn">⚠ AI 服务暂不可用，请检查 RAG 配置或稍后重试</span>'
+    monitorStore.failAgentMessage(
+      '⚠ AI 服务暂不可用，请检查 RAG 配置或稍后重试。'
+    )
   } finally {
     isAnalyzing.value = false
   }
 }
 
-// --- Markdown 渲染 ---
+// --- Markdown 渲染 (单条消息) ---
 marked.setOptions({ breaks: true })
-const renderedResult = computed(() => {
-  if (!analysisResult.value) return ''
-  return marked.parse(analysisResult.value)
-})
+function renderMessage(msg) {
+  if (!msg.content) return ''
+  return marked.parse(msg.content)
+}
 </script>
 
 <style scoped>
@@ -654,7 +703,62 @@ const renderedResult = computed(() => {
   to { transform: rotate(360deg); }
 }
 
-.result-content {
+/* ==================== 对话历史 ==================== */
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px;
+}
+
+.conversation-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.conversation-msg.user {
+  align-items: flex-end;
+}
+
+.conversation-msg.user .msg-content {
+  background: rgba(100, 180, 255, 0.08);
+  border-left: 2px solid rgba(100, 180, 255, 0.4);
+  padding: 5px 8px;
+  border-radius: 6px;
+  max-width: 90%;
+  white-space: pre-wrap;
+}
+
+.conversation-msg.assistant .msg-content {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 2px 0;
+}
+
+.msg-role {
+  font-size: 10px;
+  color: rgba(160, 190, 230, 0.45);
+  font-weight: 500;
+}
+
+.conversation-msg.user .msg-role {
+  text-align: right;
+}
+
+.msg-content.msg-error {
+  color: rgba(255, 150, 150, 0.85);
+}
+
+.streaming-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  color: rgba(160, 190, 230, 0.5);
+  font-size: 10px;
+}
+
+.msg-content {
   font-size: 11px;
   color: rgba(200, 220, 255, 0.8);
   word-break: break-word;
@@ -662,36 +766,36 @@ const renderedResult = computed(() => {
 }
 
 /* Markdown 元素样式 */
-.result-content :deep(p) {
+.msg-content :deep(p) {
   margin: 4px 0;
 }
 
-.result-content :deep(h1),
-.result-content :deep(h2),
-.result-content :deep(h3),
-.result-content :deep(h4) {
+.msg-content :deep(h1),
+.msg-content :deep(h2),
+.msg-content :deep(h3),
+.msg-content :deep(h4) {
   margin: 8px 0 4px;
   color: rgba(200, 220, 255, 0.95);
   font-weight: 600;
   line-height: 1.3;
 }
 
-.result-content :deep(h1) { font-size: 14px; }
-.result-content :deep(h2) { font-size: 13px; }
-.result-content :deep(h3) { font-size: 12px; }
-.result-content :deep(h4) { font-size: 11px; }
+.msg-content :deep(h1) { font-size: 14px; }
+.msg-content :deep(h2) { font-size: 13px; }
+.msg-content :deep(h3) { font-size: 12px; }
+.msg-content :deep(h4) { font-size: 11px; }
 
-.result-content :deep(ul),
-.result-content :deep(ol) {
+.msg-content :deep(ul),
+.msg-content :deep(ol) {
   margin: 4px 0;
   padding-left: 18px;
 }
 
-.result-content :deep(li) {
+.msg-content :deep(li) {
   margin: 2px 0;
 }
 
-.result-content :deep(code) {
+.msg-content :deep(code) {
   background: rgba(100, 180, 255, 0.1);
   padding: 1px 4px;
   border-radius: 3px;
@@ -700,7 +804,7 @@ const renderedResult = computed(() => {
   color: rgba(180, 220, 255, 0.95);
 }
 
-.result-content :deep(pre) {
+.msg-content :deep(pre) {
   background: rgba(10, 14, 28, 0.6);
   border: 1px solid rgba(100, 180, 255, 0.12);
   border-radius: 6px;
@@ -709,51 +813,51 @@ const renderedResult = computed(() => {
   overflow-x: auto;
 }
 
-.result-content :deep(pre code) {
+.msg-content :deep(pre code) {
   background: none;
   padding: 0;
   font-size: 10px;
 }
 
-.result-content :deep(blockquote) {
+.msg-content :deep(blockquote) {
   border-left: 3px solid rgba(100, 180, 255, 0.3);
   margin: 6px 0;
   padding: 2px 10px;
   color: rgba(160, 190, 230, 0.7);
 }
 
-.result-content :deep(table) {
+.msg-content :deep(table) {
   border-collapse: collapse;
   margin: 6px 0;
   font-size: 10px;
 }
 
-.result-content :deep(th),
-.result-content :deep(td) {
+.msg-content :deep(th),
+.msg-content :deep(td) {
   border: 1px solid rgba(100, 180, 255, 0.15);
   padding: 3px 6px;
   text-align: left;
 }
 
-.result-content :deep(th) {
+.msg-content :deep(th) {
   background: rgba(100, 180, 255, 0.08);
   font-weight: 600;
 }
 
-.result-content :deep(strong) {
+.msg-content :deep(strong) {
   color: rgba(200, 220, 255, 0.95);
   font-weight: 600;
 }
 
-.result-content :deep(.tag-ok) {
+.msg-content :deep(.tag-ok) {
   color: rgba(76, 175, 80, 0.9);
 }
 
-.result-content :deep(.tag-warn) {
+.msg-content :deep(.tag-warn) {
   color: rgba(255, 152, 0, 0.9);
 }
 
-.result-content :deep(.tag-info) {
+.msg-content :deep(.tag-info) {
   color: rgba(100, 180, 255, 0.8);
 }
 </style>
