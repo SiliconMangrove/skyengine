@@ -57,8 +57,8 @@ uv --version
 ### 2. 克隆项目
 
 ```bash
-git clone https://github.com/nju-dislab/SkyEngine.git
-cd SkyEngine
+git clone https://github.com/dayu-autostreamer/skyengine.git
+cd skyengine
 ```
 
 ### 3. 安装 Python 依赖
@@ -171,19 +171,35 @@ npm run dev
 
 - **FJSP 数据集**: `dataset/fjsp-instances/`
   - Barnes, Behnke, Brandimarte, Dauzere, Fattahi, Hurink, Kacem
-- **JSP 数据集**: `dataset/JSPLIB-master/instances/`
-- **AGV 数据集**: `dataset/agv-instances/`
-- **地图数据集**: `dataset/map_dataset/pogema-benchmark-main/`
-- **StarJob 数据集**: `dataset/mideavalwisard_Starjob/starjob_130k.json`
+- **MAPF 数据集**:  `dataset/map_dataset/pogema-benchmark-main/`
+  - random / mazes / warehouse / movingai / puzzles / pathfinding 多类场景
 
 ## Docker Compose 部署
 
-使用 Docker Compose 快速部署完整的生产环境。
+使用 Docker Compose 一键部署后端 + 前端 + （可选）算法引擎栈。compose 文件位于项目根目录 `docker-compose.yml`。
 
 ### 前置要求
 
 - **Docker**: >= 20.10
 - **Docker Compose**: >= 2.0
+- （离线/受限网络）已通过 `application/dockerfile/docker-bin/download.sh` 下载 `docker` / `docker-compose` / `uv` 二进制；否则使用系统自带 Docker 即可
+
+### 必需的环境变量
+
+部署前在项目根目录准备 `.env`（参考 `.env.example`）：
+
+```dotenv
+# SkyEngine 算法引擎的 online compose 文件路径（DockerProxy 按需启停）
+SKYENGINE_COMPOSE_PATH=/abs/path/to/skyengine/docker-compose-online.yaml
+# SkyEngine 算法项目根目录
+SKYENGINE_PROJECT_DIR=/abs/path/to/skyengine
+# 可选：RAG 助手后端地址
+RAG_BACKEND_URL=http://backend:8000
+# 可选：GPU 设备
+CUDA_VISIBLE_DEVICES=0
+```
+
+> 未设置 `SKYENGINE_COMPOSE_PATH` / `SKYENGINE_PROJECT_DIR` 时 backend 容器会启动失败（compose 用 `:?` 强校验）。
 
 ### 部署步骤
 
@@ -192,129 +208,56 @@ npm run dev
 在项目根目录下：
 
 ```bash
-cd dockerfiles
-docker-compose -f application.yaml up -d
+docker-compose up -d --build
 ```
 
-**参数说明**：
-
-- `-d`: 后台运行
-- `-f application.yaml`: 指定 compose 文件
+构建上下文为项目根目录，使用 `application/dockerfile/backend.Dockerfile` 与 `application/dockerfile/frontend.Dockerfile`。
 
 #### 2. 查看服务状态
 
 ```bash
-docker-compose -f application.yaml ps
+docker-compose ps
 ```
 
 #### 3. 查看日志
 
 ```bash
-# 查看所有服务日志
-docker-compose -f application.yaml logs -f
-
-# 查看后端日志
-docker-compose -f application.yaml logs -f backend
-
-# 查看前端日志
-docker-compose -f application.yaml logs -f frontend
+docker-compose logs -f             # 全部
+docker-compose logs -f backend     # 仅后端
+docker-compose logs -f frontend    # 仅前端
 ```
 
 #### 4. 停止服务
 
 ```bash
-docker-compose -f application.yaml down
+docker-compose down
 ```
 
 ### 服务端口
 
-- **前端**: `http://localhost:80`
-- **后端**: `http://localhost:8000`
+- **前端**: `http://localhost:5180` （容器 5173 → 宿主 5180）
+- **后端**: `http://localhost:8233` （容器 8000 → 宿主 8233）
 
-### Docker Compose 配置详解
+### 卷挂载（开发模式热更新）
 
-```yaml
-services:
-  backend:
-    build:
-      context: ..                          # 构建上下文为项目根目录
-      dockerfile: dockerfiles/backend.dockerfile
-    container_name: skyengine-backend
-    ports:
-      - "8000:8000"                        # 后端端口映射
-    environment:
-      - PYTHONUNBUFFERED=1                 # Python 输出不缓冲
-    networks:
-      - skyengine-network
-    restart: unless-stopped                # 自动重启策略
+`docker-compose.yml` 已配置源码 bind mount，改源码即生效：
 
-  frontend:
-    build:
-      context: ..
-      dockerfile: dockerfiles/frontend.dockerfile
-    container_name: skyengine-frontend
-    ports:
-      - "80:80"                            # 前端端口映射
-    depends_on:
-      - backend                            # 依赖后端服务
-    networks:
-      - skyengine-network
-    restart: unless-stopped
+- `./application`、`./executor`、`./config`、`./dataset` → 容器 `/app/*`
+- `./application/frontend` → 前端容器 `/app`
+- `/app/.venv`、`/app/node_modules` 用匿名卷隔离，避免被宿主覆盖
+- `/var/run/docker.sock` 挂入 backend，供 DockerProxy 按需启停算法引擎栈
+
+### 新增前端依赖
+
+前端新增 npm 包必须重新 build 镜像，不能只在运行中的容器里 `npm install`：
+
+```bash
+docker-compose build frontend && docker-compose up -d frontend
 ```
 
-### 自定义配置
+### DockerProxy（算法引擎栈联动）
 
-修改端口映射（例如前端改为 8080）：
-
-```yaml
-# dockerfiles/application.yaml
-services:
-  frontend:
-    ports:
-      - "8080:80"  # 宿主机:容器
-```
-
-### 数据持久化
-
-添加卷挂载以保存仿真结果：
-
-```yaml
-services:
-  backend:
-    volumes:
-      - ./logs:/app/logs              # 日志持久化
-      - ./results:/app/results            # 结果持久化
-```
-
-### 生产环境优化
-
-#### 资源限制
-
-```yaml
-services:
-  backend:
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-```
-
-#### 健康检查
-
-```yaml
-services:
-  backend:
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
+backend 通过挂载的 `docker.sock` 与 `SKYENGINE_COMPOSE_PATH` 指向的 `docker-compose-online.yaml`，按需启停独立的算法引擎栈。uvicorn 退出时会自动 `compose down` online 栈，`stop_grace_period: 30s` 留足清理时间。
 
 ---
 
@@ -400,21 +343,21 @@ uv run python -c "from sky_logs.logger import clean_old_logs; clean_old_logs(day
 
 ### 深入学习
 
-- 📖 阅读 [README.md](README.md) 了解系统架构
-- 📖 查看 [docs/](docs/) 目录获取详细文档
-- 🔧 研究 [test/](test/) 目录的示例代码
-- 📊 分析基准数据集 [dataset/](dataset/)
+- 📖 阅读 [README.md](../README.md) 了解系统架构
+- 📖 查看 [docs/](.) 目录获取详细文档
+- 🔧 研究 [test/](../test/) 目录的示例代码
+- 📊 分析基准数据集 [dataset/](../dataset/)
 
 ### 开发指南
 
-- 🏗️ [组件设计文档](https://github.com/dayu-autostreamer/skyengine/blob/17dbd7f8d22523ebc7a304f2886a359b6d8205ea/docs/quick_start/client)
-- 🔄 [事件系统设计](https://github.com/dayu-autostreamer/skyengine/blob/17dbd7f8d22523ebc7a304f2886a359b6d8205ea/docs/quick_start/developer)
-- 📝 [调度算法实现](docs/implement/)
+- 🏗️ [组件设计文档](https://github.com/dayu-autostreamer/skyengine/blob/main/docs/quick_start/client)
+- 🔄 [事件系统设计](https://github.com/dayu-autostreamer/skyengine/blob/main/docs/quick_start/developer)
+- 📝 [调度算法实现](./implement/)
 
 ### 社区与支持
 
-- 🐛 提交 Issue: [GitHub Issues](https://github.com/nju-dislab/SkyEngine/issues)
-- 💬 讨论区: [GitHub Discussions](https://github.com/nju-dislab/SkyEngine/discussions)
+- 🐛 提交 Issue: [GitHub Issues](https://github.com/dayu-autostreamer/skyengine/issues)
+- 💬 讨论区: [GitHub Discussions](https://github.com/dayu-autostreamer/skyengine/discussions)
 - 📧 联系我们: [hitskyrim@qq.com]
 
 
