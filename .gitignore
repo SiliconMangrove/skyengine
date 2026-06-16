@@ -749,3 +749,6 @@ sky_logs/renders/*
 application/frontend/.env.development
 application/frontend/.env.production
 application/dockerfile/docker-bin/
+
+# 归档文档（历史参考，不再跟踪）
+docs/archive/
