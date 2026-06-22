@@ -87,17 +87,66 @@
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent, onBeforeUnmount } from "vue";
+import { ref, computed, defineAsyncComponent, onMounted, onBeforeUnmount } from "vue";
 import { ElMessage } from "element-plus";
-import { useRouter, onBeforeRouteLeave } from "vue-router";
+import { useRouter, useRoute, onBeforeRouteLeave } from "vue-router";
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import { useFactoryStore } from "@/stores/factory";
 import { apiPost, API_ROUTES } from "@/utils/api";
 
 const factoryStore = useFactoryStore();
 const router = useRouter();
-const isInFactory = ref(false);
-const currentFactoryId = ref(null);
+const route = useRoute();
+
+// 用于跨页面回到原工厂：进入工厂时记到 sessionStorage，离开后回来时读出来
+const LAST_FACTORY_KEY = 'skyengine_last_factory'
+// "活动会话"标记 —— 去往 /analysis 时写入，返回 /factory 时读取后清除
+// 用途：跳过 loading + FACTORY_CONTROL_SWITCH，直接恢复 isInFactory=true
+const FACTORY_SESSION_KEY = 'skyengine_factory_active'
+function rememberFactory(id) {
+  if (id) {
+    try {
+      sessionStorage.setItem(LAST_FACTORY_KEY, id)
+    } catch (e) {}
+  }
+}
+function recallFactory() {
+  try { return sessionStorage.getItem(LAST_FACTORY_KEY) || null } catch (e) { return null }
+}
+
+// ⚠️ 关键：在 setup 阶段（首次渲染之前）就读 sessionStorage，
+// 把 isInFactory / currentFactoryId 的初始值设对。
+// 否则初始渲染 isInFactory=false 会先画出选择器，onMounted 再改 true，
+// 视觉上会"先到选择器再跳回工厂"（用户报告的 bug）
+function _readInitialFactoryState() {
+  // 1) 快速恢复路径：刚从 /analysis 回来
+  try {
+    const sid = sessionStorage.getItem(FACTORY_SESSION_KEY)
+    if (sid) {
+      sessionStorage.removeItem(FACTORY_SESSION_KEY)
+      return { factoryId: sid, fast: true }
+    }
+  } catch (e) {}
+  // 2) query 参数深链
+  const q = route.query?.factory
+  if (q && typeof q === 'string') {
+    return { factoryId: q, fast: false }
+  }
+  return { factoryId: null, fast: false }
+}
+
+const _initial = _readInitialFactoryState()
+// 只有 factoryId 在工厂列表里存在时才认
+const _initialValid =
+  _initial.factoryId &&
+  factoryStore.getFactories().some((f) => f.id === _initial.factoryId)
+
+const isInFactory = ref(!!(_initialValid && _initial.fast))
+const currentFactoryId = ref(_initialValid ? _initial.factoryId : null)
+// 标记是否需要在 onMounted 里走"快速恢复"的善后（setCurrentFactory + datasets）
+const _needFastRestore = !!(_initialValid && _initial.fast)
+// 标记是否需要走 enterFactory（query 深链）
+const _needSlowEnter = !!(_initialValid && !_initial.fast)
 
 // 加载过渡状态
 const isLoading = ref(false);
@@ -154,6 +203,7 @@ const enterFactory = async (factoryId) => {
     if (response.status === "ok") {
       currentFactoryId.value = factoryId;
       factoryStore.setCurrentFactory(factoryId);
+      rememberFactory(factoryId);
       isInFactory.value = true;
 
       // 预取数据集（已 memo 化，ConfigPanel 挂载时直接命中缓存）
@@ -209,16 +259,51 @@ const backToHome = async () => {
 };
 
 // 浏览器后退 / 路由跳转时清理
-onBeforeRouteLeave(async () => {
-  await cleanupFactory();
+// 例外：去往 /analysis 时**不清理**，保留后端连接 + historyBuffer，
+// 这样从 /analysis 返回工厂能直接恢复，不必走 loading + switch
+onBeforeRouteLeave(async (to) => {
+  if (to && typeof to.path === 'string' && to.path.startsWith('/analysis')) {
+    try {
+      if (currentFactoryId.value) {
+        sessionStorage.setItem(FACTORY_SESSION_KEY, currentFactoryId.value)
+      }
+    } catch (e) {}
+    return  // 不清理
+  }
+  try { sessionStorage.removeItem(FACTORY_SESSION_KEY) } catch (e) {}
+  await cleanupFactory()
+});
+
+// onMounted 只做"善后"：setCurrentFactory / 拉 datasets / 走 enterFactory（深链）
+// isInFactory / currentFactoryId 的初值已在 setup 阶段算好，避免首帧画选择器再切换
+onMounted(async () => {
+  if (_needFastRestore) {
+    factoryStore.setCurrentFactory(currentFactoryId.value)
+    rememberFactory(currentFactoryId.value)
+    factoryStore.fetchDatasets().catch((e) => {
+      console.error("[FactoryView] 加载数据集失败:", e)
+    })
+    return
+  }
+  if (_needSlowEnter) {
+    await enterFactory(currentFactoryId.value)
+  }
 });
 
 // 组件卸载兜底
+// 如果是去往 /analysis（session 标记已写），则**不清空 store**，保留 historyBuffer 等
+// 这样从 /analysis 返回时数据还在；其他跳转（如回主页）才彻底清理
 onBeforeUnmount(() => {
   stopLoading();
-  factoryStore.clearAll();
-  isInFactory.value = false;
-  currentFactoryId.value = null;
+  let goingToAnalysis = false
+  try {
+    goingToAnalysis = !!sessionStorage.getItem(FACTORY_SESSION_KEY)
+  } catch (e) {}
+  if (!goingToAnalysis) {
+    factoryStore.clearAll()
+    isInFactory.value = false
+    currentFactoryId.value = null
+  }
 });
 
 const currentFactoryComponent = computed(() => {

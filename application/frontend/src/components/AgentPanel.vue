@@ -1,5 +1,67 @@
 <template>
   <div class="agent-panel">
+    <!-- ===== 顶部 Job 状态概览 ===== -->
+    <div
+      class="agent-header"
+      :class="{ clickable: jobList.length > 0 }"
+      @click="jobList.length > 0 && (jobCollapsed = !jobCollapsed)"
+    >
+      <div class="agent-header-left">
+        <span class="collapse-arrow" v-if="jobList.length > 0">{{ jobCollapsed ? '▶' : '▼' }}</span>
+        <h3>📦 Job 状态</h3>
+      </div>
+      <span class="agent-counter" v-if="jobList.length > 0">
+        {{ jobSummary.done }}/{{ jobSummary.total }}
+        <span v-if="jobSummary.overdue > 0" class="counter-overdue">⚠️ {{ jobSummary.overdue }}</span>
+      </span>
+    </div>
+
+    <div v-if="jobList.length === 0" class="agent-empty">
+      <span>暂无 Job 数据</span>
+    </div>
+    <div v-else v-show="!jobCollapsed" class="agent-list">
+      <div
+        v-for="job in jobList"
+        :key="job.job_id"
+        class="agent-card job-card"
+        :class="{ 'job-completed': job.is_completed, 'job-overdue': job.overdue, selected: job.job_id === store.selectedJobId }"
+        @click="store.selectJob(job.job_id)"
+      >
+        <div class="agent-card-header">
+          <span class="agent-icon">📦</span>
+          <span class="agent-name">Job {{ job.job_id }}</span>
+          <span class="job-state-tag" :class="job.stateClass">{{ job.stateLabel }}</span>
+        </div>
+        <div class="agent-card-body">
+          <div class="agent-field">
+            <span class="agent-field-label">进度</span>
+            <span class="agent-field-value">
+              <span class="job-progress-bar">
+                <span class="job-progress-fill" :style="{ width: job.progressPct + '%' }"></span>
+              </span>
+              <span class="job-progress-text">{{ job.progress.done }}/{{ job.progress.total }}</span>
+            </span>
+          </div>
+          <div class="agent-field">
+            <span class="agent-field-label">Op</span>
+            <span class="agent-field-value op-status-row">
+              <span class="op-dot op-pending" :title="`PENDING ${job.opCount.pending}`">{{ job.opCount.pending }}</span>
+              <span class="op-dot op-processing" :title="`PROCESSING ${job.opCount.processing}`">{{ job.opCount.processing }}</span>
+              <span class="op-dot op-finished" :title="`FINISHED ${job.opCount.finished}`">{{ job.opCount.finished }}</span>
+            </span>
+          </div>
+          <div class="agent-field" v-if="job.due != null">
+            <span class="agent-field-label">交期</span>
+            <span class="agent-field-value" :class="{ 'overdue-text': job.overdue }">t{{ job.due }}</span>
+          </div>
+          <div class="agent-field" v-if="job.is_completed">
+            <span class="agent-field-label">完工</span>
+            <span class="agent-field-value">t{{ job.completion_time }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 顶部 Agent 状态概览 ===== -->
     <div
       class="agent-header"
@@ -187,6 +249,84 @@ const agvList = computed(() => {
 const activeCount = computed(() => agvList.value.filter(a => a._active).length)
 const selectedAgvId = ref(null)
 const agvCollapsed = ref(true)  // AGV 状态区默认折叠，把空间让给对话区
+
+// ==================== Job 状态 ====================
+
+// 预览用静态 Job 数据（无仿真运行时展示，便于看效果）
+const JOB_PREVIEW = [
+  {
+    job_id: 1, release: 0, due: 20, is_completed: false, completion_time: -1,
+    progress: { done: 2, total: 3 },
+    ops: [
+      { op_id: 0, status: 'FINISHED',   proc_time: 5, assigned_machine: 1 },
+      { op_id: 1, status: 'FINISHED',   proc_time: 15, assigned_machine: 2 },
+      { op_id: 2, status: 'PROCESSING', proc_time: 4, assigned_machine: 1 },
+    ],
+  },
+  {
+    job_id: 2, release: 0, due: 60, is_completed: false, completion_time: -1,
+    progress: { done: 1, total: 3 },
+    ops: [
+      { op_id: 0, status: 'FINISHED',   proc_time: 5, assigned_machine: 1 },
+      { op_id: 1, status: 'PROCESSING', proc_time: 4, assigned_machine: 2 },
+      { op_id: 2, status: 'PENDING',    proc_time: 3, assigned_machine: 1 },
+    ],
+  },
+  {
+    job_id: 3, release: 0, due: null, is_completed: true, completion_time: 52,
+    progress: { done: 3, total: 3 },
+    ops: [
+      { op_id: 0, status: 'FINISHED', proc_time: 3, assigned_machine: 3 },
+      { op_id: 1, status: 'FINISHED', proc_time: 3, assigned_machine: 3 },
+      { op_id: 2, status: 'FINISHED', proc_time: 2, assigned_machine: 1 },
+    ],
+  },
+]
+
+function envTimelineStep() {
+  const envTl = store.currentState?.env_timeline
+  const m = String(envTl ?? '').match(/(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
+const jobList = computed(() => {
+  // 优先用实时快照；无数据时降级到预览数据（便于看效果）
+  const liveJobs = store.currentState?.jobs || []
+  const rawJobs = liveJobs.length > 0 ? liveJobs : JOB_PREVIEW
+  // stepNum 没有时用一个合理的"当前 step"便于超期判定展示
+  const stepNum = envTimelineStep() ?? 25
+  return rawJobs.map((job) => {
+    const total = job.progress?.total ?? 0
+    const done = job.progress?.done ?? 0
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0
+    const opCount = (job.ops || []).reduce((acc, op) => {
+      const k = (op.status || 'PENDING').toLowerCase()
+      acc[k] = (acc[k] || 0) + 1
+      return acc
+    }, { pending: 0, processing: 0, finished: 0 })
+    const overdue = !job.is_completed && job.due != null && stepNum > job.due
+    return {
+      ...job,
+      progressPct: pct,
+      opCount,
+      overdue,
+      stateLabel: job.is_completed ? '已完成' : `${done}/${total}`,
+      stateClass: job.is_completed ? 'state-completed' : (overdue ? 'state-overdue' : 'state-progress'),
+    }
+  })
+})
+
+const jobSummary = computed(() => {
+  let done = 0, total = 0, overdue = 0
+  jobList.value.forEach((j) => {
+    total += 1
+    if (j.is_completed) done += 1
+    if (j.overdue) overdue += 1
+  })
+  return { done, total, overdue }
+})
+
+const jobCollapsed = ref(true)  // 默认折叠，与 AGV 一致
 
 // ==================== 分析模板 ====================
 
@@ -490,6 +630,81 @@ function renderMessage(msg) {
   background: rgba(100, 180, 255, 0.03);
   flex-shrink: 0;
 }
+
+/* ==================== Job 卡片（沿用 agent-card 风格） ==================== */
+
+.counter-overdue {
+  margin-left: 4px;
+  color: #ff6464;
+}
+
+.job-card.selected {
+  border-color: rgba(102, 208, 106, 0.55);
+  box-shadow: 0 0 0 2px rgba(102, 208, 106, 0.18);
+}
+.job-card.job-completed {
+  opacity: 0.65;
+}
+.job-card.job-overdue {
+  border-left: 3px solid rgba(255, 100, 100, 0.7);
+}
+
+.job-state-tag {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(200, 220, 255, 0.7);
+}
+.job-state-tag.state-completed { background: rgba(102, 208, 106, 0.2); color: #66d06a; }
+.job-state-tag.state-progress  { background: rgba(100, 181, 255, 0.2); color: #64b5ff; }
+.job-state-tag.state-overdue   { background: rgba(255, 100, 100, 0.2); color: #ff6464; }
+
+.job-progress-bar {
+  display: inline-block;
+  width: 42px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.job-progress-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #66d06a, #4CAF50);
+  transition: width 0.2s;
+}
+.job-progress-text {
+  font-size: 9px;
+  color: rgba(200, 220, 255, 0.75);
+  font-variant-numeric: tabular-nums;
+}
+
+.op-status-row {
+  display: inline-flex;
+  gap: 3px;
+}
+.op-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.op-dot.op-pending   { background: rgba(160, 160, 160, 0.18); color: #a0a0a0; }
+.op-dot.op-processing{ background: rgba(100, 181, 255, 0.25); color: #64b5ff; }
+.op-dot.op-finished  { background: rgba(102, 208, 106, 0.22); color: #66d06a; }
+
+.overdue-text { color: #ff6464; }
 
 .summary-item {
   flex: 1;

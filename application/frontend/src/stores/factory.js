@@ -135,15 +135,38 @@ function validateConfig(config) {
 
 /**
  * 规范化快照，填充缺失字段，保证后续消费安全。
+ *
+ * machines 归一化:
+ * - DockerFactory (sim_server) 输出 list[{id:int,...}] → 转 dict keyed by "M{id}"
+ * - StaticFactory 输出 dict{"M1":{...}} → 保持
+ * - 保留所有原字段 (status / current_op / queue_length / load 等)
+ *
+ * jobs 字段透传 (DockerFactory 才有):
+ * - list[{job_id, ops:[...], progress:{done,total}, ...}] → 原样保留
+ * - 缺失时给空 list, 下游消费安全
  */
 function normalizeSnapshot(snapshot, fallbackIndex) {
+  const rawMachines = snapshot.machines ?? {}
+  let machinesDict
+  if (Array.isArray(rawMachines)) {
+    // list → dict keyed by "M{id}"
+    machinesDict = {}
+    rawMachines.forEach((m) => {
+      const key = `M${m.id}`
+      machinesDict[key] = m
+    })
+  } else {
+    machinesDict = rawMachines
+  }
+
   return {
     env_timeline:
       snapshot.timestamp ?? snapshot.env_timeline ?? `T+${fallbackIndex}`,
     grid_state: snapshot.grid_state ?? { positions_xy: [], is_active: [] },
-    machines: snapshot.machines ?? {},
+    machines: machinesDict,
+    jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs : [],
     active_transfers: snapshot.active_transfers ?? [],
-  };
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -665,12 +688,25 @@ export const useFactoryStore = defineStore("factory", () => {
   // 动画动作
   // ──────────────────────────────────────────
 
+  // 模块① machine ↔ Job 双向联动选中态
+  const selectedMachineKey = ref(null) // 形如 "M3"
+  const selectedJobId = ref(null) // 数字 job_id
+
+  function selectMachine(key) {
+    selectedMachineKey.value = selectedMachineKey.value === key ? null : key
+  }
+  function selectJob(jobId) {
+    selectedJobId.value = selectedJobId.value === jobId ? null : jobId
+  }
+
   function reset() {
     isPlaying.value = false;
     currentIndex.value = 0;
     historyBuffer.value = [];
     commandQueue.value = [];
     isLiveMode.value = true;
+    selectedMachineKey.value = null;
+    selectedJobId.value = null;
   }
 
   /**
@@ -864,6 +900,12 @@ export const useFactoryStore = defineStore("factory", () => {
     togglePlay,
     setIndex,
     nextStep,
+
+    // ── 模块① machine ↔ Job 联动 ──
+    selectedMachineKey,
+    selectedJobId,
+    selectMachine,
+    selectJob,
 
     // ── 数据集缓存 ──
     datasetList,

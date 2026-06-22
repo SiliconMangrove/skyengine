@@ -46,6 +46,9 @@ export const API_ROUTES = {
   HISTORY_COMPARE: "/history/compare",
   HISTORY_STATS: "/history/stats",
   HISTORY_RUN_COMPLETE: "/history/run/:run_id/complete",
+
+  // 离线分析 — 服务端下载接口（StaticFactory mock 版：POST JSON 回吐带 attachment 头）
+  ANALYSIS_EXPORT: "/analysis/export",
 };
 
 /**

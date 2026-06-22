@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus';
 import { apiPost, API_ROUTES } from '@/utils/api';
 import { runFullSystemTest } from '@/scenarios/fullSystemTest';
 import { backendSystemTest } from '@/scenarios/backendSystemTest';
+import { useAnalysisLogStore } from '@/stores/analysisLog';
 
 export function useSimulationConfig({
   defaults = {},
@@ -31,6 +32,22 @@ export function useSimulationConfig({
 
   const isRunningTest = ref(false);
   let stopTest = null;
+
+  // ==================== 模块③：episode 结束快照到 analysisLog ====================
+
+  function snapshotToAnalysisLog(store, monitorStore, meta) {
+    try {
+      const analysisLog = useAnalysisLogStore()
+      const run = analysisLog.finalizeFromStores(store, monitorStore, meta)
+      ElMessage.success(
+        `已保存分析样本：${run.total_steps} 步 → [查看分析] /analysis`,
+      )
+      return run
+    } catch (err) {
+      console.warn('[useSimulationConfig] snapshotToAnalysisLog 失败:', err)
+      return null
+    }
+  }
 
   // ==================== 从 API 获取算法选项 ====================
 
@@ -66,6 +83,7 @@ export function useSimulationConfig({
       isRunningTest.value = false;
       stopTest = null;
       ElMessage.success('模拟完成');
+      snapshotToAnalysisLog(store, monitorStore, { factory_id: store.selectedFactoryId, algorithm });
       onFinish?.();
     });
   }
@@ -84,6 +102,7 @@ export function useSimulationConfig({
           isRunningTest.value = false;
           stopTest = null;
           ElMessage.success('仿真执行完成');
+          snapshotToAnalysisLog(store, monitorStore, { factory_id: store.selectedFactoryId, algorithm });
           onFinish?.();
         },
       );
@@ -107,6 +126,7 @@ export function useSimulationConfig({
         isRunningTest.value = false;
         stopTest = null;
         ElMessage.success('容器化仿真执行完成');
+        snapshotToAnalysisLog(store, monitorStore, { factory_id: store.selectedFactoryId, algorithm });
         onFinish?.();
       });
     } catch (error) {

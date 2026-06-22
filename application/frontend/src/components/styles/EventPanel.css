@@ -65,6 +65,171 @@
   border-color: rgba(100, 180, 255, 0.25);
 }
 
+/* 头部操作按钮组 */
+.header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.icon-btn {
+  background: rgba(100, 180, 255, 0.08);
+  border: 1px solid rgba(100, 180, 255, 0.12);
+  color: rgba(160, 190, 230, 0.6);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.icon-btn:hover {
+  background: rgba(100, 180, 255, 0.15);
+  color: rgba(200, 220, 255, 0.9);
+  border-color: rgba(100, 180, 255, 0.25);
+}
+
+/* 嵌入：最近样本区 */
+.recent-runs-wrap {
+  border-top: 1px dashed rgba(100, 180, 255, 0.1);
+  border-bottom: 1px dashed rgba(100, 180, 255, 0.1);
+  margin: 0 6px;
+  background: rgba(100, 180, 255, 0.02);
+}
+
+.recent-runs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.recent-runs-head:hover {
+  background: rgba(100, 180, 255, 0.06);
+}
+
+.recent-title {
+  font-size: 11px;
+  color: rgba(200, 220, 255, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recent-count {
+  font-size: 10px;
+  color: rgba(100, 180, 255, 0.7);
+  background: rgba(100, 180, 255, 0.1);
+  padding: 0 6px;
+  border-radius: 8px;
+}
+
+.recent-toggle {
+  font-size: 10px;
+  color: rgba(160, 190, 230, 0.5);
+}
+
+.recent-runs-list {
+  padding: 4px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.recent-runs-list::-webkit-scrollbar {
+  width: 4px;
+}
+.recent-runs-list::-webkit-scrollbar-thumb {
+  background: rgba(100, 180, 255, 0.2);
+  border-radius: 2px;
+}
+
+.recent-run-item {
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: rgba(20, 26, 48, 0.5);
+  border: 1px solid rgba(100, 180, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.recent-run-item:hover {
+  border-color: rgba(100, 180, 255, 0.3);
+  background: rgba(20, 26, 48, 0.8);
+}
+
+.recent-run-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.recent-run-id {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(220, 230, 245, 0.9);
+  font-family: 'Consolas', monospace;
+}
+
+.recent-run-factory {
+  font-size: 9px;
+  color: rgba(180, 220, 255, 0.7);
+  background: rgba(100, 180, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.recent-run-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 9px;
+  color: rgba(160, 190, 230, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-more {
+  text-align: center;
+  font-size: 10px;
+  color: rgba(100, 180, 255, 0.6);
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.recent-more:hover {
+  color: rgba(100, 180, 255, 0.9);
+  background: rgba(100, 180, 255, 0.06);
+}
+
+.recent-slide-enter-active,
+.recent-slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.recent-slide-enter-from,
+.recent-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.recent-slide-enter-to,
+.recent-slide-leave-from {
+  opacity: 1;
+  max-height: 500px;
+}
+
 /* 列表区域 */
 .event-list {
   flex: 1;

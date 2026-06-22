@@ -478,6 +478,11 @@ async def switch_factory_proxy(factory_id: str = Body(..., embed=True)):
                 RouteRegistry.register_to_app(app)
                 print(f"✅ 已注册 {len(RouteRegistry.get_routes())} 条后端路由")
 
+            elif factory_type in ("static_factory", "northeast_center"):
+                await current_factory_proxy.initialize()
+                RouteRegistry.register_to_app(app)
+                print(f"✅ [StaticFactory] 已注册 {len(RouteRegistry.get_routes())} 条路由")
+
             elif factory_type == "grid_factory_new":
                 # DockerProxy: 进页面时立即启动 engine 容器预热
                 print("[Switch] DockerProxy: 启动 engine 容器预热...")

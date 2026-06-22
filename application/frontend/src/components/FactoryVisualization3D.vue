@@ -10,8 +10,66 @@
         v-for="l in screenLabels"
         :key="l.id"
         class="world-label"
+        :class="[`label-${l.kind}`, { 'label-hoverable': l.kind === 'machine' }]"
         :style="{ left: l.x + 'px', top: l.y + 'px', color: l.color }"
-      >{{ l.text }}</div>
+        @mouseenter="onLabelEnter(l)"
+        @mouseleave="onLabelLeave(l)"
+      >
+        <span class="label-hitbox">
+          <span class="label-name">{{ l.text }}</span>
+          <span v-if="l.kind === 'machine' && l.dotClass" class="status-dot" :class="l.dotClass"></span>
+        </span>
+
+        <!-- machine Hover 富信息 tooltip -->
+        <div
+          v-if="l.kind === 'machine' && l.machineId === hoveredMachineId && l.detail"
+          class="machine-tooltip"
+          :class="`mt-${l.detail.statusClass}`"
+        >
+          <div class="mt-header">
+            <span class="mt-name">{{ l.text }}</span>
+            <span class="mt-status-badge" :class="`tag-${l.detail.statusClass}`">
+              <span class="mt-dot"></span>{{ l.detail.statusLabel }}
+            </span>
+          </div>
+
+          <div class="mt-row" v-if="l.detail.op">
+            <span class="mt-label">当前 Op</span>
+            <span class="mt-value">Job{{ l.detail.op.job_id }} · Op{{ l.detail.op.op_id }}</span>
+          </div>
+          <div class="mt-row" v-else>
+            <span class="mt-label">当前 Op</span>
+            <span class="mt-value mt-idle">— 空闲 —</span>
+          </div>
+
+          <div class="mt-progress-block" v-if="l.detail.op">
+            <div class="mt-progress-head">
+              <span class="mt-label">Op 进度</span>
+              <span class="mt-progress-text">{{ l.detail.op.step_done }} / {{ l.detail.op.proc_time }}</span>
+            </div>
+            <div class="mt-bar-wrap">
+              <div class="mt-bar-fill" :style="{ width: l.detail.opPct + '%' }"></div>
+            </div>
+          </div>
+
+          <div class="mt-divider"></div>
+
+          <div class="mt-stat-row">
+            <div class="mt-stat">
+              <span class="mt-stat-num">{{ l.detail.queueLength }}</span>
+              <span class="mt-stat-label">队列</span>
+            </div>
+            <div class="mt-stat">
+              <span class="mt-stat-num">{{ l.detail.finishedOps }}</span>
+              <span class="mt-stat-label">已完工</span>
+            </div>
+            <div class="mt-stat">
+              <span class="mt-stat-num">{{ l.detail.op?.index_in_job + 1 ?? '-' }}/{{ l.detail.op?.total_in_job ?? '-' }}</span>
+              <span class="mt-stat-label">Job 进度</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -58,6 +116,18 @@ const store = useFactoryStore()
 const containerRef = ref(null)
 const labelsRef = ref(null)
 const screenLabels = ref([])
+const hoveredMachineId = ref(null)
+
+function onLabelEnter(l) {
+  if (l.kind === 'machine' && l.machineId != null) {
+    hoveredMachineId.value = l.machineId
+  }
+}
+function onLabelLeave(l) {
+  if (l.kind === 'machine' && l.machineId === hoveredMachineId.value) {
+    hoveredMachineId.value = null
+  }
+}
 
 // ==================== Topology ====================
 const topology = computed(() => {
@@ -728,8 +798,16 @@ function updateFromStore() {
 }
 
 function updateMachineStates(machineStates) {
+  // 兜底：当 key 对不上时按 mesh 迭代顺序做 index 对齐（StaticFactory 用 M1/M2/M3，
+  // config 用 MACHINE_1_1 之类的 id）
+  const stateList = Object.values(machineStates || {})
+  let idx = 0
   machineMeshMap.forEach(({ group, bodyMat, lightMat }, machineId) => {
-    const dyn = machineStates[machineId] || {}
+    const curIdx = idx++
+    const dyn = machineStates[machineId]
+      || machineStates[`M${machineId}`]
+      || stateList[curIdx]
+      || {}
     const newStatus = dyn.status || null
     if (newStatus && group.userData.status !== newStatus) {
       group.userData.status = newStatus
@@ -750,18 +828,94 @@ function updateScreenLabels() {
   const rect = renderer.domElement.getBoundingClientRect()
   const labels = []
 
-  // 机器标签
+  // 当前机器动态状态 (来自 store 快照)
+  const machineStatesDict = store.currentState?.machines || {}
+  // 兜底：StaticFactory 用 "M1"/"M2"/"M3" 作 key，但 mesh 用 config 的 id (如 MACHINE_1_1)
+  // → 当 key 对不上时，按 mesh 迭代顺序做 index 对齐
+  const machineStateList = Object.values(machineStatesDict)
+
+  // 统计每台机器已完工 Op 数（来自 jobs 反查）
+  const jobs = store.currentState?.jobs || []
+  const machineIdToInt = (v) => {
+    if (v == null) return null
+    if (typeof v === 'number') return v
+    const m = String(v).match(/(\d+)/)
+    return m ? Number(m[1]) : null
+  }
+  // mesh id (config 的字符串) → int 编号（按 mesh 迭代顺序）
+  const meshIntIds = []
+  machineMeshMap.forEach((_, id) => { meshIntIds.push({ id, intId: machineIdToInt(id) }) })
+
+  const finishedOpsByMachine = {}
+  jobs.forEach((job) => {
+    ;(job.ops || []).forEach((op) => {
+      if (op.status !== 'FINISHED' || op.assigned_machine == null) return
+      const key = `M${op.assigned_machine}`
+      finishedOpsByMachine[key] = (finishedOpsByMachine[key] || 0) + 1
+    })
+  })
+
+  // 机器标签 + Hover 富信息 tooltip
+  let meshIndex = 0
   machineMeshMap.forEach(({ group }, id) => {
     const vec = group.position.clone()
     vec.y += GRID_SIZE * 0.7
     vec.project(camera)
+    const curIndex = meshIndex++
+
     if (vec.z > 1) return
+
+    // 三级兜底：精确 id → "M"+id → 按索引对齐
+    const dyn = machineStatesDict[id]
+      || machineStatesDict[`M${id}`]
+      || machineStateList[curIndex]
+      || {}
+
+    let detail = null
+    let dotClass = null
+    if (dyn && Object.keys(dyn).length > 0) {
+      const op = dyn.current_op
+      const status = dyn.status || (op ? 'WORKING' : 'IDLE')
+      const statusClass = String(status).toLowerCase()
+      const opPct = op && op.proc_time > 0
+        ? Math.min(100, Math.round(((op.step_done ?? 0) / op.proc_time) * 100))
+        : 0
+
+      // 找本机已完工 Op 数：优先用 dyn.id 反推，否则按 curIndex+1 当作 machine 编号
+      const dynIdInt = machineIdToInt(dyn.id ?? id)
+      const mKey = dynIdInt != null ? `M${dynIdInt}` : `M${curIndex + 1}`
+      const finishedOps = finishedOpsByMachine[mKey] || 0
+
+      detail = {
+        statusLabel: status,
+        statusClass,
+        op: op
+          ? {
+              job_id: op.job_id,
+              op_id: op.op_id,
+              step_done: op.step_done ?? 0,
+              proc_time: op.proc_time ?? 0,
+              index_in_job: op.index_in_job,
+              total_in_job: op.total_in_job,
+            }
+          : null,
+        opPct,
+        queueLength: dyn.queue_length || 0,
+        finishedOps,
+      }
+      dotClass = `dot-${statusClass}`
+    }
+
     labels.push({
       id: `machine-${id}`,
+      kind: 'machine',
+      machineId: id,
       x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
       y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
       text: group.userData.name || id,
       color: '#445566',
+      detail,
+      dotClass,
     })
   })
 
@@ -773,6 +927,7 @@ function updateScreenLabels() {
     if (vec.z > 1) return
     labels.push({
       id: `agv-${i}`,
+      kind: 'agv',
       x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
       y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
       text: `A${i + 1}`,
@@ -975,5 +1130,191 @@ defineExpose({
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
   pointer-events: none;
+}
+
+.label-name {
+  line-height: 1;
+}
+
+/* Hover 命中区：扩大点击范围 */
+.label-hoverable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.label-hitbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.label-hoverable:hover .label-hitbox {
+  background: rgba(100, 180, 255, 0.12);
+}
+
+/* 状态色点 */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #888;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.status-dot.dot-working { background: #64b5ff; box-shadow: 0 0 6px rgba(100, 181, 255, 0.7); }
+.status-dot.dot-idle    { background: #888; }
+.status-dot.dot-broken  { background: #ff6464; box-shadow: 0 0 6px rgba(255, 100, 100, 0.7); animation: pulse 1.2s infinite; }
+.status-dot.dot-blocked { background: #ffb450; box-shadow: 0 0 6px rgba(255, 180, 80, 0.7); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Hover 富信息 tooltip */
+.machine-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 8px);
+  min-width: 200px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(20, 26, 48, 0.95), rgba(10, 14, 28, 0.95));
+  border: 1px solid rgba(100, 180, 255, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(100, 180, 255, 0.05);
+  backdrop-filter: blur(10px);
+  color: rgba(220, 230, 245, 0.9);
+  font-family: "Inter", "PingFang SC", sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  text-shadow: none;
+  white-space: normal;
+  pointer-events: none;
+  z-index: 100;
+  animation: mtFadeIn 0.12s ease-out;
+}
+.machine-tooltip.mt-broken { border-color: rgba(255, 100, 100, 0.5); box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255, 100, 100, 0.1); }
+.machine-tooltip.mt-blocked { border-color: rgba(255, 180, 80, 0.5); }
+
+@keyframes mtFadeIn {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to   { opacity: 1; transform: translate(-50%, 8px); }
+}
+
+.mt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mt-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(240, 245, 255, 1);
+}
+.mt-status-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(200, 220, 255, 0.7);
+}
+.mt-status-badge .mt-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.mt-status-badge.tag-working { background: rgba(100, 181, 255, 0.22); color: #64b5ff; }
+.mt-status-badge.tag-idle    { background: rgba(160, 160, 160, 0.18); color: #a0a0a0; }
+.mt-status-badge.tag-broken  { background: rgba(255, 100, 100, 0.22); color: #ff6464; }
+.mt-status-badge.tag-blocked { background: rgba(255, 180, 80, 0.22); color: #ffb450; }
+
+.mt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0;
+}
+.mt-label {
+  font-size: 10px;
+  color: rgba(160, 190, 230, 0.55);
+}
+.mt-value {
+  font-size: 11px;
+  color: rgba(220, 230, 245, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+.mt-value.mt-idle {
+  color: rgba(160, 190, 230, 0.4);
+  font-style: italic;
+}
+
+.mt-progress-block {
+  margin: 6px 0 4px;
+}
+.mt-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.mt-progress-text {
+  font-size: 10px;
+  color: #64b5ff;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.mt-bar-wrap {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mt-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #64b5ff, #4a90e2);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.mt-divider {
+  height: 1px;
+  background: rgba(100, 180, 255, 0.1);
+  margin: 8px 0 6px;
+}
+
+.mt-stat-row {
+  display: flex;
+  gap: 8px;
+}
+.mt-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+.mt-stat-num {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(240, 245, 255, 0.95);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.mt-stat-label {
+  font-size: 9px;
+  color: rgba(160, 190, 230, 0.5);
+  margin-top: 2px;
 }
 </style>
