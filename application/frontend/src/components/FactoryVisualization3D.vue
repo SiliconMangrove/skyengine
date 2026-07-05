@@ -247,48 +247,63 @@ function getGroundIntersection(event) {
 }
 
 function findAssetAtPoint(worldPoint) {
-  // 检查机器（优先，因为体积最大）
-  for (const [id, data] of machineMeshMap) {
-    const pos = data.group.position
-    const size = data.group.userData?.size || [2, 2]
-    const halfW = (size[0] || 2) * GRID_SIZE * 0.5
-    const halfH = (size[1] || 2) * GRID_SIZE * 0.5
-    if (Math.abs(worldPoint.x - pos.x) < halfW + 0.1 &&
-        Math.abs(worldPoint.z - pos.z) < halfH + 0.1) {
-      return { type: 'machine', id, group: data.group }
+  // 基于网格格子的命中检测：点击资产占据的任何一格都能选中该资产
+  // 不再依赖 mesh 包围盒，AGV / 路由点这种小部件也能轻松点中
+  const { gx, gy } = snapToGrid(worldPoint)
+  const cfg = store.currentConfig
+  if (!cfg) return null
+
+  // 1) 机器（按 size 占多格，最高优先级）
+  for (const m of Object.values(topology.value.machines || {})) {
+    if (!m.location) continue
+    const [mx, my] = m.location
+    const sw = m.size?.[0] || 1
+    const sh = m.size?.[1] || 1
+    if (gx >= mx && gx < mx + sw && gy >= my && gy < my + sh) {
+      const data = machineMeshMap.get(m.id)
+      if (data) return { type: 'machine', id: m.id, group: data.group }
     }
   }
-  // 检查路由点
-  for (const child of waypointGroup.children) {
-    const pos = child.position
-    if (Math.abs(worldPoint.x - pos.x) < GRID_SIZE * 0.5 &&
-        Math.abs(worldPoint.z - pos.z) < GRID_SIZE * 0.5) {
-      return { type: 'waypoint', id: child.userData.id, group: child }
+
+  // 2) AGV：按 mesh 当前所在格匹配
+  //    AGV 位置是动态的（仿真时由 state.grid_state.positions_xy 驱动，编辑模式下由
+  //    syncAGVsFromConfig 钉在 initialLocation），所以必须按 mesh 实际位置命中，
+  //    否则会出现"看得到 AGV 却点不中"。
+  const agvs = cfg.agvs || []
+  for (let i = 0; i < agvDataList.length; i++) {
+    const ad = agvDataList[i]
+    if (!ad?.group) continue
+    const { gx: ax, gy: ay } = snapToGrid(ad.group.position)
+    if (ax === gx && ay === gy) {
+      return { type: 'agv', id: agvs[i]?.id ?? i, group: ad.group }
     }
   }
-  // 检查区域（支持普通 Mesh 和 THREE.Group 装饰物）
-  for (const child of zoneGroup.children) {
-    const pos = child.position
-    const userData = child.userData || {}
-    if (child.geometry) {
-      child.geometry.computeBoundingBox()
-      const box = child.geometry.boundingBox
-      const hw = (box.max.x - box.min.x) / 2 + 0.1
-      const hh = (box.max.z - box.min.z) / 2 + 0.1
-      if (Math.abs(worldPoint.x - pos.x) < hw &&
-          Math.abs(worldPoint.z - pos.z) < hh) {
-        return { type: 'zone', id: userData.id, group: child }
+
+  // 3) 路由点（占 1 格）
+  for (const wp of Object.values(topology.value.waypoints || {})) {
+    if (!wp.location) continue
+    if (wp.location[0] === gx && wp.location[1] === gy) {
+      for (const child of waypointGroup.children) {
+        if (child.userData.id === wp.id) {
+          return { type: 'waypoint', id: wp.id, group: child }
+        }
       }
-    } else if (child.isGroup || child.children?.length) {
-      // THREE.Group（装饰物）：用 Box3 计算包围盒
-      const box = new THREE.Box3().setFromObject(child)
-      if (box.isEmpty()) continue
-      if (worldPoint.x >= box.min.x && worldPoint.x <= box.max.x &&
-          worldPoint.z >= box.min.z && worldPoint.z <= box.max.z) {
-        return { type: 'zone', id: userData.id, group: child }
+    }
+  }
+
+  // 4) 区域（按 area 占多格）
+  for (const z of (topology.value.zones || [])) {
+    if (!z.area) continue
+    const { x, y, w, h } = z.area
+    if (gx >= x && gx < x + (w || 1) && gy >= y && gy < y + (h || 1)) {
+      for (const child of zoneGroup.children) {
+        if (child.userData.id === z.id) {
+          return { type: 'zone', id: z.id, group: child }
+        }
       }
     }
   }
+
   return null
 }
 
@@ -740,10 +755,29 @@ function rebuildAGVs(count) {
 }
 
 // ==================== 动态更新 ====================
+/**
+ * 编辑模式（或无仿真状态）下，把 AGV mesh 同步到 cfg.agvs[i].initialLocation。
+ * 用于：1) 编辑模式下让 AGV 可见并可拖；2) 拖拽完成后保持 mesh 位置与 store 一致。
+ * 正在拖拽的那个 AGV 跳过，避免覆盖 pointerMove 实时设置的 mesh 位置。
+ */
+function syncAGVsFromConfig() {
+  const cfg = store.currentConfig
+  if (!cfg?.agvs) return
+  if (agvDataList.length !== cfg.agvs.length) rebuildAGVs(cfg.agvs.length)
+  cfg.agvs.forEach((a, i) => {
+    const ad = agvDataList[i]
+    if (!ad || !a.initialLocation) return
+    if (isDragging && draggingAsset?.type === 'agv' && draggingAsset.group === ad.group) return
+    const target = gridToWorld(a.initialLocation[0], a.initialLocation[1])
+    ad.group.position.set(target.x, 0, target.z)
+  })
+}
+
 function updateFromStore() {
   const state = store.currentState
-  if (!state) return
-
+  // 没有真实仿真数据（historyBuffer 为空 → currentState 是 EMPTY_GRID_STATE）
+  // 时直接 return，避免每帧 rebuildAGVs(0) 把 AGV mesh 销毁重建、覆盖拖拽。
+  if (store.totalSteps === 0) return
   const targets = state.grid_state?.positions_xy || []
   const isActive = state.grid_state?.is_active || []
 
@@ -1020,6 +1054,8 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
     nextTick(() => {
       buildStaticElements()
       rebuildAGVs(0)
+      // 新配置加载后，按 cfg.agvs.initialLocation 把 AGV 摆好
+      if (props.editMode) syncAGVsFromConfig()
     })
     return
   }
@@ -1045,7 +1081,8 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
     buildWaypoints()
     buildEdges()
   } else if (hint === 'agv') {
-    // AGV 数据不在 topology 中，由 updateFromStore 自动同步数量
+    // AGV 增删/重命名：重建 mesh 数量并按 initialLocation 重新摆位
+    syncAGVsFromConfig()
   } else if (!hint) {
     // 无 hint（纯数据修正等场景）→ 仅同步重建静态元素
     buildStaticElements()
@@ -1056,6 +1093,8 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
 watch(() => props.editMode, (val) => {
   if (val) {
     setupEditModeListeners()
+    // 进入编辑模式：把 AGV 摆到 cfg.agvs.initialLocation（无仿真时 mesh 默认停在 0,0）
+    syncAGVsFromConfig()
   } else {
     removeEditModeListeners()
   }

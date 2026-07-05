@@ -81,28 +81,36 @@
         <div class="component-wrapper">
           <component :is="currentFactoryComponent" :factory="currentFactory" />
         </div>
+
+        <!-- 离线分析浮层：作为工厂内组件存在，不走路由，避免卸载 FactoryView 打断执行流 -->
+        <AnalysisOverlayPanel
+          v-if="analysisLog.panelOpen"
+          @close="analysisLog.closePanel()"
+        />
       </div>
     </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, defineAsyncComponent, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, defineAsyncComponent, onMounted, onBeforeUnmount, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useRouter, useRoute, onBeforeRouteLeave } from "vue-router";
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
+import AnalysisOverlayPanel from "@/components/AnalysisOverlayPanel.vue";
 import { useFactoryStore } from "@/stores/factory";
+import { useAnalysisLogStore } from "@/stores/analysisLog";
+import { useUiPanelStore } from "@/stores/uiPanel";
 import { apiPost, API_ROUTES } from "@/utils/api";
 
 const factoryStore = useFactoryStore();
+const analysisLog = useAnalysisLogStore();
+const ui = useUiPanelStore();
 const router = useRouter();
 const route = useRoute();
 
 // 用于跨页面回到原工厂：进入工厂时记到 sessionStorage，离开后回来时读出来
 const LAST_FACTORY_KEY = 'skyengine_last_factory'
-// "活动会话"标记 —— 去往 /analysis 时写入，返回 /factory 时读取后清除
-// 用途：跳过 loading + FACTORY_CONTROL_SWITCH，直接恢复 isInFactory=true
-const FACTORY_SESSION_KEY = 'skyengine_factory_active'
 function rememberFactory(id) {
   if (id) {
     try {
@@ -114,39 +122,32 @@ function recallFactory() {
   try { return sessionStorage.getItem(LAST_FACTORY_KEY) || null } catch (e) { return null }
 }
 
-// ⚠️ 关键：在 setup 阶段（首次渲染之前）就读 sessionStorage，
-// 把 isInFactory / currentFactoryId 的初始值设对。
-// 否则初始渲染 isInFactory=false 会先画出选择器，onMounted 再改 true，
-// 视觉上会"先到选择器再跳回工厂"（用户报告的 bug）
+// 在 setup 阶段读 query.factory，把 isInFactory / currentFactoryId 初始值设对，
+// 避免 onMounted 才切换导致"选择器闪一下再进工厂"。
+// （离线分析已改为工厂内浮层组件，不再走路由，无需 session 快速恢复机制）
 function _readInitialFactoryState() {
-  // 1) 快速恢复路径：刚从 /analysis 回来
-  try {
-    const sid = sessionStorage.getItem(FACTORY_SESSION_KEY)
-    if (sid) {
-      sessionStorage.removeItem(FACTORY_SESSION_KEY)
-      return { factoryId: sid, fast: true }
-    }
-  } catch (e) {}
-  // 2) query 参数深链
   const q = route.query?.factory
   if (q && typeof q === 'string') {
-    return { factoryId: q, fast: false }
+    return { factoryId: q }
   }
-  return { factoryId: null, fast: false }
+  return { factoryId: null }
 }
 
 const _initial = _readInitialFactoryState()
-// 只有 factoryId 在工厂列表里存在时才认
 const _initialValid =
   _initial.factoryId &&
   factoryStore.getFactories().some((f) => f.id === _initial.factoryId)
 
-const isInFactory = ref(!!(_initialValid && _initial.fast))
+const isInFactory = ref(false)
 const currentFactoryId = ref(_initialValid ? _initial.factoryId : null)
-// 标记是否需要在 onMounted 里走"快速恢复"的善后（setCurrentFactory + datasets）
-const _needFastRestore = !!(_initialValid && _initial.fast)
 // 标记是否需要走 enterFactory（query 深链）
-const _needSlowEnter = !!(_initialValid && !_initial.fast)
+const _needSlowEnter = !!_initialValid
+
+// 同步导航状态到全局 store：进入工厂前默认是 selector，进入后切到 factory
+// 加载过渡（isLoading=true）期间 ui.factoryLoading=true 会强制隐藏 GlobalTopNav，
+// 所以这里 navState 即使短暂错位也不会闪按钮
+ui.setNavState(_needSlowEnter ? 'factory' : 'selector')
+watch(isInFactory, (v) => ui.setNavState(v ? 'factory' : 'selector'))
 
 // 加载过渡状态
 const isLoading = ref(false);
@@ -157,6 +158,8 @@ let loadingTimer = null;
 
 function startLoading(title, subtitle = "") {
   isLoading.value = true;
+  ui.setFactoryLoading(true);
+  ui.setNavState('loading');
   loadingTitle.value = title;
   loadingSubtitle.value = subtitle;
   loadingElapsed.value = 0;
@@ -167,6 +170,7 @@ function startLoading(title, subtitle = "") {
 
 function stopLoading() {
   isLoading.value = false;
+  ui.setFactoryLoading(false);
   if (loadingTimer) {
     clearInterval(loadingTimer);
     loadingTimer = null;
@@ -188,6 +192,8 @@ async function cleanupFactory() {
     console.warn("[FactoryView] disconnect 失败:", e);
   }
   factoryStore.clearAll();
+  // 关闭浮层面板（算法池 / 批处理实验），避免退出后仍挂在 App.vue 全局层
+  ui.closeAllFloatingPanels();
   isInFactory.value = false;
   currentFactoryId.value = null;
 }
@@ -244,7 +250,7 @@ const backToSelector = async () => {
 
 // 跳转算法池页面
 const goToAlgorithms = () => {
-  router.push("/algorithms");
+  ui.toggleAlgoPool();
 };
 
 // 返回主页 (Router) — 先清理再跳转
@@ -252,58 +258,35 @@ const backToHome = async () => {
   startLoading("正在返回主页", "清理资源中...");
   try {
     await cleanupFactory();
-    router.push("/");
   } finally {
+    // 在 stopLoading 解除 loading 屏蔽之前就把 navState 推到 'home'，
+    // 避免 navState 短暂停在 'selector' 闪一下算法池按钮
+    ui.setNavState('home');
     stopLoading();
+    await router.push("/");
   }
 };
 
-// 浏览器后退 / 路由跳转时清理
-// 例外：去往 /analysis 时**不清理**，保留后端连接 + historyBuffer，
-// 这样从 /analysis 返回工厂能直接恢复，不必走 loading + switch
-onBeforeRouteLeave(async (to) => {
-  if (to && typeof to.path === 'string' && to.path.startsWith('/analysis')) {
-    try {
-      if (currentFactoryId.value) {
-        sessionStorage.setItem(FACTORY_SESSION_KEY, currentFactoryId.value)
-      }
-    } catch (e) {}
-    return  // 不清理
-  }
-  try { sessionStorage.removeItem(FACTORY_SESSION_KEY) } catch (e) {}
+// 浏览器后退 / 路由跳转时清理（离线分析已改为工厂内浮层，不再走路由，无需特殊处理）
+onBeforeRouteLeave(async () => {
+  ui.setFactoryLoading(true)  // 期间隐藏 GlobalTopNav
   await cleanupFactory()
+  ui.setFactoryLoading(false)
 });
 
-// onMounted 只做"善后"：setCurrentFactory / 拉 datasets / 走 enterFactory（深链）
-// isInFactory / currentFactoryId 的初值已在 setup 阶段算好，避免首帧画选择器再切换
+// onMounted 只处理 query 深链进入；isInFactory / currentFactoryId 初值已在 setup 阶段算好
 onMounted(async () => {
-  if (_needFastRestore) {
-    factoryStore.setCurrentFactory(currentFactoryId.value)
-    rememberFactory(currentFactoryId.value)
-    factoryStore.fetchDatasets().catch((e) => {
-      console.error("[FactoryView] 加载数据集失败:", e)
-    })
-    return
-  }
   if (_needSlowEnter) {
     await enterFactory(currentFactoryId.value)
   }
 });
 
-// 组件卸载兜底
-// 如果是去往 /analysis（session 标记已写），则**不清空 store**，保留 historyBuffer 等
-// 这样从 /analysis 返回时数据还在；其他跳转（如回主页）才彻底清理
+// 组件卸载兜底：彻底清理 store
 onBeforeUnmount(() => {
   stopLoading();
-  let goingToAnalysis = false
-  try {
-    goingToAnalysis = !!sessionStorage.getItem(FACTORY_SESSION_KEY)
-  } catch (e) {}
-  if (!goingToAnalysis) {
-    factoryStore.clearAll()
-    isInFactory.value = false
-    currentFactoryId.value = null
-  }
+  factoryStore.clearAll()
+  isInFactory.value = false
+  currentFactoryId.value = null
 });
 
 const currentFactoryComponent = computed(() => {

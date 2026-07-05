@@ -360,6 +360,18 @@ export const useFactoryStore = defineStore("factory", () => {
     );
   }
 
+  // 配置中的静态任务实例（job_list）。当未启动仿真、currentState.jobs 为空时，
+  // UI 仍可基于此展示 Job 列表（与 machines 同样降级到配置）。
+  // 结构：{ job_id, name?, operations:[{machine_id, duration, name?}],
+  //         arrival_time, due_time, priority? }
+  function getJobs() {
+    return currentConfig.value?.jobs?.job_list ?? [];
+  }
+  // machine_id(int) → machine key(string) 映射，便于把工序的 machine_id 翻成 "MACHINE_1_1"
+  function getJobMachineIdMap() {
+    return currentConfig.value?.jobs?._machine_id_map ?? {};
+  }
+
   function getAssetsStats() {
     const { zones = [], machines = {}, waypoints = {} } = getCurrentAssets();
     const agvCount = getAGVs().length;
@@ -451,9 +463,9 @@ export const useFactoryStore = defineStore("factory", () => {
     const topo = cfg.topology;
     const occupied = new Set();
 
-    // 机器占用 location 所在格
-    Object.entries(topo.machines || {}).forEach(([key, m]) => {
-      if (excludeAssetType === 'machine' && key === excludeAssetId) return;
+    // 机器占用 location 所在格（按 m.id 字段匹配，避免字典 key 与 m.id 不一致）
+    Object.values(topo.machines || {}).forEach((m) => {
+      if (excludeAssetType === 'machine' && m.id === excludeAssetId) return;
       if (m.location) {
         const [x, y] = m.location;
         const sw = m.size?.[0] || 1;
@@ -589,19 +601,26 @@ export const useFactoryStore = defineStore("factory", () => {
     // 碰撞校验：排除自身
     if (isCellOccupied(gridX, gridY, assetId, assetType)) return false;
 
-    if (assetType === 'machine' && topo.machines?.[assetId]) {
-      topo.machines[assetId].location = [gridX, gridY];
-    } else if (assetType === 'waypoint' && topo.waypoints?.[assetId]) {
-      topo.waypoints[assetId].location = [gridX, gridY];
+    if (assetType === 'machine' && topo.machines) {
+      // 按 m.id 字段查找（字典 key 可能与 m.id 不一致）
+      const machine = Object.values(topo.machines).find(m => m.id === assetId);
+      if (!machine) return false;
+      machine.location = [gridX, gridY];
+    } else if (assetType === 'waypoint' && topo.waypoints) {
+      const wp = Object.values(topo.waypoints).find(w => w.id === assetId);
+      if (!wp) return false;
+      wp.location = [gridX, gridY];
     } else if (assetType === 'zone' && topo.zones) {
       const zone = topo.zones.find(z => z.id === assetId);
-      if (zone && zone.area) {
-        zone.area.x = gridX;
-        zone.area.y = gridY;
-      }
+      if (!zone || !zone.area) return false;
+      zone.area.x = gridX;
+      zone.area.y = gridY;
     } else if (assetType === 'agv' && cfg.agvs) {
       const agv = cfg.agvs.find(a => String(a.id) === String(assetId));
-      if (agv) agv.initialLocation = [gridX, gridY];
+      if (!agv) return false;
+      agv.initialLocation = [gridX, gridY];
+    } else {
+      return false;
     }
     return true;
   }
@@ -614,10 +633,12 @@ export const useFactoryStore = defineStore("factory", () => {
     if (!cfg) return;
     const topo = cfg.topology;
 
-    if (assetType === 'machine' && topo.machines?.[assetId]) {
-      topo.machines[assetId].name = newName;
-    } else if (assetType === 'waypoint' && topo.waypoints?.[assetId]) {
-      topo.waypoints[assetId].name = newName;
+    if (assetType === 'machine' && topo.machines) {
+      const machine = Object.values(topo.machines).find(m => m.id === assetId);
+      if (machine) machine.name = newName;
+    } else if (assetType === 'waypoint' && topo.waypoints) {
+      const wp = Object.values(topo.waypoints).find(w => w.id === assetId);
+      if (wp) wp.name = newName;
     } else if (assetType === 'zone' && topo.zones) {
       const zone = topo.zones.find(z => z.id === assetId);
       if (zone) zone.name = newName;
@@ -638,9 +659,11 @@ export const useFactoryStore = defineStore("factory", () => {
     rebuildHint.value = assetType;
 
     if (assetType === 'machine' && topo.machines) {
-      delete topo.machines[assetId];
+      const dictKey = Object.keys(topo.machines).find(k => topo.machines[k].id === assetId);
+      if (dictKey) delete topo.machines[dictKey];
     } else if (assetType === 'waypoint' && topo.waypoints) {
-      delete topo.waypoints[assetId];
+      const dictKey = Object.keys(topo.waypoints).find(k => topo.waypoints[k].id === assetId);
+      if (dictKey) delete topo.waypoints[dictKey];
     } else if (assetType === 'zone' && topo.zones) {
       topo.zones = topo.zones.filter(z => z.id !== assetId);
     } else if (assetType === 'agv' && cfg.agvs) {
@@ -691,12 +714,16 @@ export const useFactoryStore = defineStore("factory", () => {
   // 模块① machine ↔ Job 双向联动选中态
   const selectedMachineKey = ref(null) // 形如 "M3"
   const selectedJobId = ref(null) // 数字 job_id
+  const selectedAgvIndex = ref(null) // AGV 在 positions_xy 中的下标
 
   function selectMachine(key) {
     selectedMachineKey.value = selectedMachineKey.value === key ? null : key
   }
   function selectJob(jobId) {
     selectedJobId.value = selectedJobId.value === jobId ? null : jobId
+  }
+  function selectAgv(index) {
+    selectedAgvIndex.value = selectedAgvIndex.value === index ? null : index
   }
 
   function reset() {
@@ -707,6 +734,7 @@ export const useFactoryStore = defineStore("factory", () => {
     isLiveMode.value = true;
     selectedMachineKey.value = null;
     selectedJobId.value = null;
+    selectedAgvIndex.value = null;
   }
 
   /**
@@ -873,6 +901,8 @@ export const useFactoryStore = defineStore("factory", () => {
     getAGVs,
     initializeAGVs,
     getCurrentAssets,
+    getJobs,
+    getJobMachineIdMap,
     getAssetsStats,
     formatAssetsList,
     addAssetFromTemplate,
@@ -904,8 +934,10 @@ export const useFactoryStore = defineStore("factory", () => {
     // ── 模块① machine ↔ Job 联动 ──
     selectedMachineKey,
     selectedJobId,
+    selectedAgvIndex,
     selectMachine,
     selectJob,
+    selectAgv,
 
     // ── 数据集缓存 ──
     datasetList,

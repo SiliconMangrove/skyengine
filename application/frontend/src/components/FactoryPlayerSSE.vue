@@ -38,6 +38,9 @@
             </div>
           </template>
         </FactoryVisualization3D>
+
+        <!-- 焦点面板：选中 machine/job/agv 后在右上角显示详情 -->
+        <FocusPanel />
       </div>
     </div>
   </div>
@@ -49,7 +52,7 @@ import { ElMessage } from 'element-plus';
 import { useFactoryStore } from '@/stores/factory';
 import ControlPanel from './ControlPanel.vue';
 import FactoryVisualization3D from './FactoryVisualization3D.vue';
-import northeastFactoryMap from '@/configs/northeastFactoryMap.json';
+import FocusPanel from './FocusPanel.vue';
 
 const props = defineProps({
   hideControlPanel: {
@@ -124,16 +127,23 @@ const safetyTestCase = [
 
 // --- 3. 业务逻辑方法 ---
 
-function loadSafetyInspection() {
+async function loadSafetyInspection() {
   currentScenario.value = 'safety';
 
-  // 北满（静态工厂）：直接载入内嵌工厂地图配置
+  // 北满（静态工厂）：从 public/ 运行时加载工厂地图配置
   const fid = store.selectedFactoryId;
   if (fid === 'northeast_center' || fid === 'static_factory') {
-    store.reset();
-    store.loadConfigFromFile(northeastFactoryMap);
-    store.initializeAGVs();
-    ElMessage.success('已加载北满工厂地图');
+    try {
+      const resp = await fetch('/northeastFactoryMap.json');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const northeastFactoryMap = await resp.json();
+      store.reset();
+      store.loadConfigFromFile(northeastFactoryMap);
+      store.initializeAGVs();
+      ElMessage.success('已加载北满工厂地图');
+    } catch (e) {
+      ElMessage.error(`加载北满工厂地图失败: ${e.message}`);
+    }
     return;
   }
 

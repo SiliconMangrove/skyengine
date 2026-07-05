@@ -18,6 +18,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # SkyEngine 配置文件 — 需在 .env 中设置 SKYENGINE_COMPOSE_PATH
       - ${SKYENGINE_COMPOSE_PATH:?SKYENGINE_COMPOSE_PATH not set}:/opt/skyengine/docker-compose-online.yaml:ro
+      # SkyEngine 批处理配置文件 — 需在 .env 中设置 SKYENGINE_COMPOSE_PATH
+      - ${SKYENGINE_BATCH_COMPOSE_PATH:?SKYENGINE_BATCH_COMPOSE_PATH not set}:/opt/skyengine/docker-compose-batch.yaml:ro
       # SkyEngine 项目文件 — 整个目录挂进容器同名路径, 供 docker CLI 读 build context
       - ${SKYENGINE_PROJECT_DIR}:${SKYENGINE_PROJECT_DIR}:ro
     environment:

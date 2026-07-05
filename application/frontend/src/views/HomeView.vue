@@ -86,11 +86,16 @@
 import { useRouter } from 'vue-router'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { apiGet, API_ROUTES } from '../utils/api'
+import { useUiPanelStore } from '@/stores/uiPanel'
 import './styles/HomeView.scss'
 
 const router = useRouter()
+const ui = useUiPanelStore()
 const backendStatus = ref(null)
 const scenarioConnected = ref(null)
+
+// 首页：GlobalTopNav 不显示任何按钮
+ui.setNavState('home')
 
 // 重试配置
 const retryConfig = {

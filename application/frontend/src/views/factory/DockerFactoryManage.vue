@@ -75,18 +75,29 @@
             </select>
           </div>
 
+          <div class="sim-btn-row">
+            <button @click="handleExecutePlan" class="launch-btn" :disabled="sim.isRunningTest.value || isStartingContainer" title="一键执行：设定策略→重置→启动">
+              🚀 启动
+            </button>
+            <button @click="handleStop" class="stop-btn" :disabled="!sim.isRunningTest.value" title="停止仿真并断开数据流">
+              ⏹ 停止
+            </button>
+          </div>
+
           <div class="sim-divider"></div>
 
-          <span class="test-label">分步测试:</span>
-          <button @click="testSetAlgorithm" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
-            1️⃣ 设定策略
-          </button>
-          <button @click="testReset" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
-            2️⃣ 重置工厂
-          </button>
-          <button @click="testPlay" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
-            3️⃣ 启动执行
-          </button>
+          <span class="test-label">分步调试</span>
+          <div class="sim-btn-row">
+            <button @click="testSetAlgorithm" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
+              1️⃣ 设定策略
+            </button>
+            <button @click="testReset" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
+              2️⃣ 重置工厂
+            </button>
+            <button @click="testPlay" class="step-btn" :disabled="sim.isRunningTest.value || isStartingContainer">
+              3️⃣ 启动执行
+            </button>
+          </div>
 
           <div class="sim-divider"></div>
 
@@ -108,6 +119,15 @@
           </div>
         </div>
       </template>
+
+      <template #tab-insert>
+        <JobInsertPanel />
+      </template>
+
+      <!-- 指标 tab：配置驱动的 DashboardPanel -->
+      <template #tab-metrics>
+        <DashboardPanel :config="dashboardConfig" />
+      </template>
     </FactoryTabsPanel>
   </div>
 </template>
@@ -117,6 +137,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
+import { useAnalysisLogStore } from "@/stores/analysisLog";
 import { apiPost, API_ROUTES, getApiUrl } from "@/utils/api";
 import { sseManager } from "@/utils/sse";
 import { useSimulationConfig } from "@/composables/useSimulationConfig";
@@ -124,9 +145,13 @@ import { getAlgorithmOptions } from "@/config/algorithms";
 
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import FactoryTabsPanel from "@/components/FactoryTabsPanel.vue";
+import DashboardPanel from "@/components/DashboardPanel.vue";
+import JobInsertPanel from "@/components/JobInsertPanel.vue";
+import dashboardConfig from "@/config/dashboards/docker_factory.json";
 
 const store = useFactoryStore();
 const monitorStore = useMonitorStore();
+const analysisLog = useAnalysisLogStore();
 
 const sim = useSimulationConfig({
   defaults: { fjsp: "pso", mapf: "mapf_gpt", assigner: "nearest" },
@@ -154,6 +179,7 @@ const tabs = [
   { key: "simulation", label: "仿真", icon: "🚀" },
   { key: "control", label: "控制", icon: "⚙️" },
   { key: "config", label: "配置", icon: "🔧" },
+  { key: "insert", label: "插单", icon: "➕" },
   { key: "agent", label: "分析", icon: "🤖" },
   { key: "metrics", label: "指标", icon: "📊" },
   { key: "events", label: "日志", icon: "📋" },
@@ -176,6 +202,38 @@ onMounted(async () => {
   store.reset();
   await sim.fetchAlgoOptions();
 });
+
+// ==================== 停止 ====================
+
+const disconnectAllSSE = () => {
+  if (sseConnectionId) {
+    sseManager.disconnect(sseConnectionId);
+    sseConnectionId = null;
+  }
+  if (metricsConnectionId) {
+    sseManager.disconnect(metricsConnectionId);
+    metricsConnectionId = null;
+  }
+  if (eventsConnectionId) {
+    sseManager.disconnect(eventsConnectionId);
+    eventsConnectionId = null;
+  }
+};
+
+const handleStop = async () => {
+  // 1. 调后端 pause 让引擎停下
+  try {
+    await apiPost(API_ROUTES.FACTORY_CONTROL_PAUSE, null, { timeout: 15000 });
+    ElMessage.success('⏹ 已停止仿真');
+  } catch (error) {
+    console.warn('[DockerFactory] pause 请求失败:', error.message);
+    ElMessage.warning(`停止请求失败：${error.message}（数据流将本地断开）`);
+  }
+  // 2. 本地断 SSE + 重置状态
+  disconnectAllSSE();
+  sim.isRunningTest.value = false;
+  store.isPlaying = false;
+};
 
 // ==================== 执行方案 (Docker 3步模式) ====================
 
@@ -232,15 +290,7 @@ const testPlay = async () => {
   // 1. 先建立所有 SSE 连接（不依赖 play 是否成功）
   //    DockerProxy.start() 首次启动 mapf/fjsp 容器可能 > 30s，
   //    如果 SSE 放在 await play 之后，play 超时会导致 SSE 永远不建立。
-  if (sseConnectionId) {
-    sseManager.disconnect(sseConnectionId);
-  }
-  if (metricsConnectionId) {
-    sseManager.disconnect(metricsConnectionId);
-  }
-  if (eventsConnectionId) {
-    sseManager.disconnect(eventsConnectionId);
-  }
+  disconnectAllSSE();
 
   store.isPlaying = true;
 
@@ -260,6 +310,11 @@ const testPlay = async () => {
             sseConnectionId = null;
           }
           store.isPlaying = false;
+          // episode 闭环：深拷贝三流 → POST /analysis/runs 入库
+          // 失败仅打 log，不阻塞 UI（用户已能看到 episode 完成）
+          analysisLog.finalizeFromStores(store, monitorStore, {
+            factory_id: store.selectedFactoryId,
+          }).catch((e) => console.error('[DockerFactory] finalizeFromStores 失败:', e));
           return;
         }
         if (data.frame) {
@@ -320,18 +375,7 @@ const testPlay = async () => {
 };
 
 onUnmounted(() => {
-  if (sseConnectionId) {
-    sseManager.disconnect(sseConnectionId);
-    sseConnectionId = null;
-  }
-  if (metricsConnectionId) {
-    sseManager.disconnect(metricsConnectionId);
-    metricsConnectionId = null;
-  }
-  if (eventsConnectionId) {
-    sseManager.disconnect(eventsConnectionId);
-    eventsConnectionId = null;
-  }
+  disconnectAllSSE();
   sim.cleanup(store);
 });
 </script>
@@ -369,32 +413,35 @@ onUnmounted(() => {
 }
 
 .simulation-tab .step-btn {
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 13px;
-  border: 1px solid rgba(100, 180, 255, 0.3);
+  flex: 1;
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid rgba(100, 180, 255, 0.25);
   border-radius: 6px;
-  background: rgba(60, 120, 200, 0.2);
-  color: #b0d0ff;
+  background: rgba(60, 120, 200, 0.18);
+  color: rgba(200, 220, 255, 0.9);
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-bottom: 6px;
 }
 
 .simulation-tab .step-btn:hover:not(:disabled) {
-  background: rgba(60, 120, 200, 0.4);
-  border-color: rgba(100, 180, 255, 0.6);
+  background: rgba(60, 120, 200, 0.38);
+  border-color: rgba(100, 180, 255, 0.55);
   color: #ffffff;
+  box-shadow: 0 0 12px rgba(100, 180, 255, 0.18);
 }
 
 .simulation-tab .step-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .simulation-tab .test-label {
-  color: #a0a0a0;
-  font-size: 12px;
+  color: rgba(160, 190, 230, 0.6);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-bottom: 4px;
   display: block;
 }

@@ -17,12 +17,18 @@ import machineUtil from './machine_util.js'
 import agvActivity from './agv_activity.js'
 import jobProgress from './job_progress.js'
 import eventTimeline from './event_timeline.js'
+import machineLoad from './machine_load.js'
+import agvStats from './agv_stats.js'
+import efficiency from './efficiency.js'
 
 export const HOOKS = {
   machine_util: machineUtil,
+  efficiency,
   agv_activity: agvActivity,
+  agv_stats: agvStats,
   job_progress: jobProgress,
   event_timeline: eventTimeline,
+  machine_load: machineLoad,
 }
 
 export function getHook(id) {

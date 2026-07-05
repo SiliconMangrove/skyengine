@@ -752,3 +752,6 @@ application/dockerfile/docker-bin/
 
 # 归档文档（历史参考，不再跟踪）
 docs/archive/
+
+# 运行时落盘的 run 记录（后端容器以 root 写入，本机用户无权读 + 不该入库）
+dataset/run/*.json

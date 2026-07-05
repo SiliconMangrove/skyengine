@@ -62,6 +62,54 @@
       </div>
     </div>
 
+    <!-- ===== 顶部 Machine 状态概览 ===== -->
+    <div
+      class="agent-header"
+      :class="{ clickable: machineList.length > 0 }"
+      @click="machineList.length > 0 && (machineCollapsed = !machineCollapsed)"
+    >
+      <div class="agent-header-left">
+        <span class="collapse-arrow" v-if="machineList.length > 0">{{ machineCollapsed ? '▶' : '▼' }}</span>
+        <h3>⚙️ 机器状态</h3>
+      </div>
+      <span class="agent-counter" v-if="machineList.length > 0">
+        {{ machineSummary.working }}/{{ machineList.length }} 工作
+      </span>
+    </div>
+
+    <div v-if="machineList.length === 0" class="agent-empty">
+      <span>暂无机器数据</span>
+    </div>
+    <div v-else v-show="!machineCollapsed" class="agent-list">
+      <div
+        v-for="m in machineList"
+        :key="m.key"
+        class="agent-card machine-card"
+        :class="{ selected: m.key === store.selectedMachineKey, 'machine-working': m.isWorking, 'machine-idle': !m.isWorking }"
+        @click="store.selectMachine(m.key)"
+      >
+        <div class="agent-card-header">
+          <span class="agent-icon">⚙️</span>
+          <span class="agent-name">{{ m.name || m.key }}</span>
+          <span class="machine-status-tag" :class="m.isWorking ? 'state-working' : 'state-idle'">{{ m.status }}</span>
+        </div>
+        <div class="agent-card-body">
+          <div class="agent-field">
+            <span class="agent-field-label">位置</span>
+            <span class="agent-field-value">{{ formatLoc(m.location) }}</span>
+          </div>
+          <div class="agent-field">
+            <span class="agent-field-label">队列</span>
+            <span class="agent-field-value">{{ m.queue_length ?? 0 }}</span>
+          </div>
+          <div class="agent-field" v-if="m.current_op">
+            <span class="agent-field-label">工序</span>
+            <span class="agent-field-value">J{{ m.current_op.job_id }}-O{{ m.current_op.op_id }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 顶部 Agent 状态概览 ===== -->
     <div
       class="agent-header"
@@ -83,11 +131,11 @@
     </div>
     <div v-else v-show="!agvCollapsed" class="agent-list">
       <div
-        v-for="agv in agvList"
+        v-for="(agv, i) in agvList"
         :key="agv.id"
         class="agent-card"
-        :class="{ active: agv._active, idle: !agv._active }"
-        @click="selectedAgvId = selectedAgvId === agv.id ? null : agv.id"
+        :class="{ active: agv._active, idle: !agv._active, selected: store.selectedAgvIndex === i }"
+        @click="store.selectAgv(i)"
       >
         <div class="agent-card-header">
           <span class="agent-icon">🤖</span>
@@ -247,41 +295,41 @@ const agvList = computed(() => {
 })
 
 const activeCount = computed(() => agvList.value.filter(a => a._active).length)
-const selectedAgvId = ref(null)
 const agvCollapsed = ref(true)  // AGV 状态区默认折叠，把空间让给对话区
 
-// ==================== Job 状态 ====================
+// ==================== Machine 状态 ====================
+// 优先用仿真快照；快照为空（仅上传地图、未启动仿真）时降级到配置中的 machines。
+// 与 AGV 列表一致：始终能展示当前工厂资产，而不被"暂无数据"挡住。
+function formatLoc(loc) {
+  if (loc == null) return '--'
+  if (Array.isArray(loc)) return `(${loc[0]}, ${loc[1]})`
+  return String(loc)
+}
+const machineList = computed(() => {
+  const snapshotMachines = store.currentState?.machines || {}
+  const hasSnapshot = Object.keys(snapshotMachines).length > 0
+  const configMachines = store.getCurrentAssets()?.machines || {}
+  // 快照有数据时只用快照（仿真态权威）；否则降级到配置 machines（拓扑态）
+  const source = hasSnapshot ? snapshotMachines : configMachines
+  return Object.entries(source).map(([key, m]) => {
+    const status = m.status || (m.current_op ? 'WORKING' : 'IDLE')
+    return {
+      key,
+      name: m.name ?? key,
+      status,
+      isWorking: status === 'WORKING',
+      current_op: m.current_op ?? null,
+      queue_length: m.queue_length ?? 0,
+      location: m.location ?? null,
+    }
+  })
+})
+const machineSummary = computed(() => ({
+  working: machineList.value.filter(m => m.isWorking).length,
+}))
+const machineCollapsed = ref(true)
 
-// 预览用静态 Job 数据（无仿真运行时展示，便于看效果）
-const JOB_PREVIEW = [
-  {
-    job_id: 1, release: 0, due: 20, is_completed: false, completion_time: -1,
-    progress: { done: 2, total: 3 },
-    ops: [
-      { op_id: 0, status: 'FINISHED',   proc_time: 5, assigned_machine: 1 },
-      { op_id: 1, status: 'FINISHED',   proc_time: 15, assigned_machine: 2 },
-      { op_id: 2, status: 'PROCESSING', proc_time: 4, assigned_machine: 1 },
-    ],
-  },
-  {
-    job_id: 2, release: 0, due: 60, is_completed: false, completion_time: -1,
-    progress: { done: 1, total: 3 },
-    ops: [
-      { op_id: 0, status: 'FINISHED',   proc_time: 5, assigned_machine: 1 },
-      { op_id: 1, status: 'PROCESSING', proc_time: 4, assigned_machine: 2 },
-      { op_id: 2, status: 'PENDING',    proc_time: 3, assigned_machine: 1 },
-    ],
-  },
-  {
-    job_id: 3, release: 0, due: null, is_completed: true, completion_time: 52,
-    progress: { done: 3, total: 3 },
-    ops: [
-      { op_id: 0, status: 'FINISHED', proc_time: 3, assigned_machine: 3 },
-      { op_id: 1, status: 'FINISHED', proc_time: 3, assigned_machine: 3 },
-      { op_id: 2, status: 'FINISHED', proc_time: 2, assigned_machine: 1 },
-    ],
-  },
-]
+// ==================== Job 状态 ====================
 
 function envTimelineStep() {
   const envTl = store.currentState?.env_timeline
@@ -290,11 +338,12 @@ function envTimelineStep() {
 }
 
 const jobList = computed(() => {
-  // 优先用实时快照；无数据时降级到预览数据（便于看效果）
-  const liveJobs = store.currentState?.jobs || []
-  const rawJobs = liveJobs.length > 0 ? liveJobs : JOB_PREVIEW
-  // stepNum 没有时用一个合理的"当前 step"便于超期判定展示
-  const stepNum = envTimelineStep() ?? 25
+  // 优先用实时快照；快照为空（仅上传配置、未启动仿真）时降级到 config 中的 job_list
+  // 与 machineList 降级到 getCurrentAssets().machines 行为一致
+  const snapshotJobs = store.currentState?.jobs || []
+  const hasSnapshot = snapshotJobs.length > 0
+  const rawJobs = hasSnapshot ? snapshotJobs : jobsFromConfig()
+  const stepNum = envTimelineStep()
   return rawJobs.map((job) => {
     const total = job.progress?.total ?? 0
     const done = job.progress?.done ?? 0
@@ -304,7 +353,7 @@ const jobList = computed(() => {
       acc[k] = (acc[k] || 0) + 1
       return acc
     }, { pending: 0, processing: 0, finished: 0 })
-    const overdue = !job.is_completed && job.due != null && stepNum > job.due
+    const overdue = stepNum != null && !job.is_completed && job.due != null && stepNum > job.due
     return {
       ...job,
       progressPct: pct,
@@ -315,6 +364,33 @@ const jobList = computed(() => {
     }
   })
 })
+
+// 把 config 里的 job_list 转成快照同结构，便于复用上面的渲染逻辑
+// config: { job_id, name?, operations:[{machine_id, duration, name?}], arrival_time, due_time, priority? }
+// → snapshot-like: { job_id, release, due, is_completed, completion_time, progress, ops }
+function jobsFromConfig() {
+  const rawJobs = store.getJobs?.() || []
+  const idMap = store.getJobMachineIdMap?.() || {}
+  return rawJobs.map((j) => {
+    const ops = (j.operations || []).map((op, idx) => ({
+      op_id: idx,
+      status: 'PENDING',
+      proc_time: op.duration ?? 0,
+      assigned_machine: idMap[String(op.machine_id)] ?? op.machine_id,
+    }))
+    const total = ops.length
+    return {
+      job_id: j.job_id,
+      name: j.name,
+      release: j.arrival_time ?? 0,
+      due: j.due_time ?? null,
+      is_completed: false,
+      completion_time: null,
+      progress: { done: 0, total },
+      ops,
+    }
+  })
+}
 
 const jobSummary = computed(() => {
   let done = 0, total = 0, overdue = 0
@@ -647,6 +723,34 @@ function renderMessage(msg) {
 }
 .job-card.job-overdue {
   border-left: 3px solid rgba(255, 100, 100, 0.7);
+}
+
+/* machine card 选中态（与 FocusPanel 高亮色一致） */
+.machine-card.selected {
+  border-color: rgba(100, 181, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(100, 181, 255, 0.2);
+}
+.machine-card.machine-working { border-left: 3px solid rgba(100, 181, 255, 0.6); }
+.machine-card.machine-idle    { border-left: 3px solid rgba(160, 160, 160, 0.25); }
+
+/* machine 状态 pill（风格对齐 job-state-tag，但语义独立） */
+.machine-status-tag {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(200, 220, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.machine-status-tag.state-working { background: rgba(100, 181, 255, 0.2); color: #64b5ff; }
+.machine-status-tag.state-idle    { background: rgba(160, 160, 160, 0.18); color: #a0a0a0; }
+
+/* AGV 卡片选中态（与 machine/job 一致的高亮） */
+.agent-card.selected {
+  border-color: rgba(100, 181, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(100, 181, 255, 0.2);
 }
 
 .job-state-tag {

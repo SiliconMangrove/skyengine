@@ -87,18 +87,30 @@ export const useMonitorStore = defineStore('monitor', () => {
     // ============ 动作 (Actions) ============
 
     /**
-     * 推送事件入队 (Push)
+     * 推送事件入队 (Push) — canonical shape
+     * payload: { type(业务名), level(info|success|warning|error), message, idx, timestamp }
+     *
+     * 内部存储形如：
+     *   { id, timestamp, idx, type, level, message }
+     * 其中 timestamp 优先用 payload 传入的 "T+xs" canonical 字符串；
+     * 未提供时退化为 Date 对象（兼容老调用）。
      */
     function pushEvent(payload) {
-        const { title, message = '', type = 'info', idx = 0 } = payload
+        const {
+            type = 'narrative',
+            level = 'info',
+            message = '',
+            idx = 0,
+            timestamp = null,
+        } = payload
 
         const newEvent = {
             id: Date.now() + Math.random(),
-            timestamp: new Date(),
+            timestamp: timestamp != null ? timestamp : new Date(),
             idx,
-            title,
+            type, // 业务名：machine_start_op / transfer_started / narrative / ...
+            level, // info / success / warning / error
             message,
-            type
         }
 
         eventQueue.value.push(newEvent)
@@ -110,30 +122,72 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
 
     /**
-     * 推送指标更新 (Push) — 同时累积 timeline
+     * 推送指标更新 (Push) — canonical shape
+     * data: { status, step, metrics:{...}, metrics_reward }
+     *
+     * 同时累积到 metricsTimeline（canonical 形态，与 pushSimMetrics 同构），
+     * 并从 metrics 字段 dual-write 派生 chartData / keyMetrics，让旧 MetricsPanel
+     * 继续工作（不破坏 RightSidePanel / FactoryTabsPanel）。
      */
     function pushMetrics(data) {
-        // 更新图表
-        if (data.machine) chartData.value.machine = data.machine
-        if (data.agv) chartData.value.agv = data.agv
-        if (data.job) chartData.value.job = data.job
+        if (!data || !data.metrics) return
 
-        // 更新卡片指标
-        if (data.keyMetrics) {
-            keyMetrics.value = { ...keyMetrics.value, ...data.keyMetrics }
-        }
-
-        // 累积到 timeline
+        // 1) 累积 canonical timeline
         metricsTimeline.value.push({
+            step: data.step,
             timestamp: Date.now(),
-            efficiency: data.keyMetrics?.efficiency?.value,
-            utilization: data.keyMetrics?.utilization?.value,
-            machine: data.machine,
-            agv: data.agv,
-            job: data.job,
+            metrics: { ...data.metrics },
+            metrics_reward: data.metrics_reward ?? 0,
         })
         if (metricsTimeline.value.length > MAX_METRICS_TIMELINE) {
             metricsTimeline.value = metricsTimeline.value.slice(-MAX_METRICS_TIMELINE)
+        }
+
+        // 2) 从 canonical metrics 派生旧 chartData / keyMetrics（兼容老 MetricsPanel）
+        const m = data.metrics
+        const utilPct = Math.round((m.machine_utilization ?? 0) * 100)
+        const effPct = Math.round(((m.efficiency ?? m.agv_loaded_utilization ?? 0)) * 100)
+
+        keyMetrics.value = {
+            ...keyMetrics.value,
+            efficiency: {
+                value: `${effPct}%`,
+                type: effPct >= 80 ? 'success' : effPct > 0 ? 'info' : 'danger',
+            },
+            utilization: {
+                value: `${utilPct}%`,
+                type: utilPct > 80 ? 'warning' : 'success',
+            },
+        }
+
+        // chartData 派生：把 metrics 里的标量塞进 data 数组（labels 占位）
+        // 注：旧 MetricsPanel 直接展示这些数组，保留语义合理即可
+        chartData.value = {
+            machine: {
+                labels: ['M1', 'M2', 'M3'],
+                data: [
+                    Math.round((m.machine_utilization ?? 0) * 100),
+                    Math.round((m.machine_non_processing_time_mean ?? 0) * 100),
+                    Math.round((m.operation_queue_waiting_time_mean ?? 0) * 100),
+                ],
+            },
+            agv: {
+                labels: ['loaded', 'busy', 'travel', 'wait'],
+                data: [
+                    Math.round((m.agv_loaded_utilization ?? 0) * 100),
+                    Math.round((m.agv_busy_utilization ?? 0) * 100),
+                    m.agv_travel_time_total ?? 0,
+                    m.agv_waiting_time_total ?? 0,
+                ],
+            },
+            job: {
+                labels: ['queue_wait', 'load_var', 'swap'],
+                data: [
+                    Math.round((m.operation_queue_waiting_time_mean ?? 0) * 100),
+                    Math.round(m.machine_load_variance ?? 0),
+                    m.swap_conflict_count ?? 0,
+                ],
+            },
         }
     }
 
@@ -153,32 +207,37 @@ export const useMonitorStore = defineStore('monitor', () => {
     function buildRAGContext(currentState = null) {
         const recentMetrics = metricsTimeline.value.slice(-20)
 
-        // metrics 统计
+        // metrics 统计（读 canonical metrics 子字段）
         const metricStats = {}
         if (recentMetrics.length > 0) {
-            const effs = recentMetrics.map(m => m.efficiency).filter(v => v != null && v !== '--')
-            const utils = recentMetrics.map(m => m.utilization).filter(v => v != null && v !== '--')
+            const numOrNone = (v) => (typeof v === 'number' ? v : null)
+            const effs = recentMetrics
+                .map((m) => numOrNone(m.metrics?.efficiency ?? m.metrics?.agv_loaded_utilization))
+                .filter((v) => v != null)
+            const utils = recentMetrics
+                .map((m) => numOrNone(m.metrics?.machine_utilization))
+                .filter((v) => v != null)
             if (effs.length > 0) {
-                const numEffs = effs.map(Number)
+                const pctEffs = effs.map((v) => v * 100)
                 metricStats.efficiency = {
-                    current: numEffs[numEffs.length - 1],
-                    avg: +(numEffs.reduce((a, b) => a + b, 0) / numEffs.length).toFixed(2),
-                    min: Math.min(...numEffs),
-                    max: Math.max(...numEffs),
+                    current: pctEffs[pctEffs.length - 1],
+                    avg: +(pctEffs.reduce((a, b) => a + b, 0) / pctEffs.length).toFixed(2),
+                    min: Math.min(...pctEffs),
+                    max: Math.max(...pctEffs),
                 }
             }
             if (utils.length > 0) {
-                const numUtils = utils.map(Number)
+                const pctUtils = utils.map((v) => v * 100)
                 metricStats.utilization = {
-                    current: numUtils[numUtils.length - 1],
-                    avg: +(numUtils.reduce((a, b) => a + b, 0) / numUtils.length).toFixed(2),
-                    min: Math.min(...numUtils),
-                    max: Math.max(...numUtils),
+                    current: pctUtils[pctUtils.length - 1],
+                    avg: +(pctUtils.reduce((a, b) => a + b, 0) / pctUtils.length).toFixed(2),
+                    min: Math.min(...pctUtils),
+                    max: Math.max(...pctUtils),
                 }
             }
         }
 
-        // 事件统计
+        // 事件统计（按业务 type 计数）
         const eventStats = {}
         eventQueue.value.forEach(e => {
             eventStats[e.type] = (eventStats[e.type] || 0) + 1
@@ -256,21 +315,16 @@ export const useMonitorStore = defineStore('monitor', () => {
 
     /**
      * 推送 sim_server (DockerFactory) 业务事件
-     * data: {timestamp, type, message, level}
+     * data: {timestamp, type, message, level} — 已是 canonical，直接委托 pushEvent
      */
     function pushSimEvent(data) {
         if (!data) return
-        const typeMap = {
-            success: 'success',
-            info: 'info',
-            warning: 'warning',
-            error: 'error',
-        }
         pushEvent({
-            title: data.type || 'event',
+            type: data.type || 'narrative',
+            level: data.level || 'info',
             message: data.message || '',
-            type: typeMap[data.level] || 'info',
             idx: 0,
+            timestamp: data.timestamp,
         })
     }
 

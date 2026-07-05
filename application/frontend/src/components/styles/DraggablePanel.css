@@ -42,9 +42,12 @@
   transition: none;
 }
 
-/* 折叠态 */
+/* 折叠态：覆盖行内 width / height，让面板真正收缩到标题栏 */
 .draggable-panel.collapsed {
+  width: auto !important;
   min-width: auto !important;
+  height: auto !important;
+  max-height: none !important;
 }
 
 /* ============================================================
@@ -185,7 +188,6 @@
 @keyframes dp-fade-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.97);
   }
   to {
     opacity: 1;

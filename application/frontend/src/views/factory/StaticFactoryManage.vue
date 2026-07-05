@@ -70,6 +70,15 @@
           </div>
         </div>
       </template>
+
+      <!-- 模块②：指标 tab 用配置驱动的 DashboardPanel 替代默认 MetricsPanel -->
+      <template #tab-metrics>
+        <DashboardPanel :config="dashboardConfig" />
+      </template>
+
+      <template #tab-insert>
+        <JobInsertPanel />
+      </template>
     </FactoryTabsPanel>
   </div>
 </template>
@@ -81,6 +90,9 @@ import { useMonitorStore } from "@/stores/monitor";
 import { useSimulationConfig } from "@/composables/useSimulationConfig";
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import FactoryTabsPanel from "@/components/FactoryTabsPanel.vue";
+import DashboardPanel from "@/components/DashboardPanel.vue";
+import JobInsertPanel from "@/components/JobInsertPanel.vue";
+import dashboardConfig from "@/config/dashboards/static_factory.json";
 
 const store = useFactoryStore();
 const monitorStore = useMonitorStore();
@@ -122,6 +134,7 @@ const tabs = [
   { key: "simulation", label: "仿真", icon: "🚀" },
   { key: "control", label: "控制", icon: "⚙️" },
   { key: "config", label: "配置", icon: "🔧" },
+  { key: "insert", label: "插单", icon: "➕" },
   { key: "agent", label: "分析", icon: "🤖" },
   { key: "metrics", label: "指标", icon: "📊" },
   { key: "events", label: "日志", icon: "📋" },

@@ -18,8 +18,10 @@ export const API_ROUTES = {
   FACTORY_CONFIG_UPLOAD: "/factory/config/upload",
   FACTORY_CONTROL_RESET: "/factory/control/reset",
   FACTORY_CONTROL_PLAY: "/factory/control/play",
+  FACTORY_CONTROL_PAUSE: "/factory/control/pause",
   FACTORY_CONTROL_SWITCH: "/factory/control/switch",
   FACTORY_CONTROL_DISCONNECT: "/factory/control/disconnect",
+  FACTORY_CONTROL_INSERT_JOBS: "/factory/control/insert_jobs",
 
   // 调度算法相关
   FACTORY_ALGORITHM_SET: "/factory/algorithm/set",
@@ -49,6 +51,22 @@ export const API_ROUTES = {
 
   // 离线分析 — 服务端下载接口（StaticFactory mock 版：POST JSON 回吐带 attachment 头）
   ANALYSIS_EXPORT: "/analysis/export",
+
+  // 离线分析 — Run 持久化仓库（dataset/run/，工厂无关）
+  ANALYSIS_RUNS: "/analysis/runs",
+  ANALYSIS_RUN_DETAIL: "/analysis/runs/:run_id",
+
+  // 批处理实验 — DockerProxy 专用（实验 compose + run.py）
+  // POST /batch/start          body = {experiments: [...], base_env?}
+  // POST /batch/cancel
+  // GET  /batch/status
+  // GET  /batch/stream         SSE: batch_progress/batch_log/batch_metric/batch_done/batch_error
+  // POST /batch/upload_instance  multipart: file + kind=fjsp|mapf
+  BATCH_START: "/batch/start",
+  BATCH_CANCEL: "/batch/cancel",
+  BATCH_STATUS: "/batch/status",
+  BATCH_STREAM: "/batch/stream",
+  BATCH_UPLOAD_INSTANCE: "/batch/upload_instance",
 };
 
 /**

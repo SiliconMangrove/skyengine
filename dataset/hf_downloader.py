@@ -1,16 +1,9 @@
-'''
-@Project ：SkyEngine 
+"""
+@Project ：SkyEngine
 @File    ：hf_downloader.py
 @IDE     ：PyCharm
 @Author  ：Skyrimforest
 @Date    ：2025/11/26 14:09
-'''
-"""
-@Project ：cyber_range_platform_v100
-@File    ：hf_downloader.py
-@IDE     ：PyCharm
-@Author  ：Skyrim
-@Date    ：2025/7/31 15:08
 """
 
 import os
@@ -60,7 +53,9 @@ def download_dataset(dataset_id: str, save_path: str):
                 if config:
                     kwargs["name"] = config
                 dataset = load_dataset(**kwargs)
-                print(f"[SUCCESS] config={config}, split={split}, 样本数={len(dataset)}")
+                print(
+                    f"[SUCCESS] config={config}, split={split}, 样本数={len(dataset)}"
+                )
             except Exception as e:
                 print(f"[ERROR] config={config}, split={split} 失败: {e}")
 
@@ -114,8 +109,10 @@ def download(params: dict):
 # 用例：
 if __name__ == "__main__":
     # 示例调用
-    download({
-        "local_file_path": "D:/Project/finalPro/SkyEngine/dataset",
-        "type": "dataset",
-        "id": "mideavalwisard/Starjob"
-    })
+    download(
+        {
+            "local_file_path": "D:/Project/finalPro/SkyEngine/dataset",
+            "type": "dataset",
+            "id": "mideavalwisard/Starjob",
+        }
+    )

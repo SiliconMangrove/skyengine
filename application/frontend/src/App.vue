@@ -1,9 +1,18 @@
 <script setup>
 import { RouterView } from 'vue-router'
+import GlobalTopNav from '@/components/GlobalTopNav.vue'
+import AlgoPoolPanel from '@/components/AlgoPoolPanel.vue'
+import BatchPanel from '@/components/BatchPanel.vue'
+import { useUiPanelStore } from '@/stores/uiPanel'
+
+const ui = useUiPanelStore()
 </script>
 
 <template>
   <RouterView />
+  <GlobalTopNav />
+  <AlgoPoolPanel v-if="ui.algoPoolOpen" />
+  <BatchPanel v-if="ui.batchOpen" />
 </template>
 
 <style scoped>
