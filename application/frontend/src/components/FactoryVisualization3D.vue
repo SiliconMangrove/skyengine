@@ -15,9 +15,12 @@
         @mouseenter="onLabelEnter(l)"
         @mouseleave="onLabelLeave(l)"
       >
-        <span class="label-hitbox">
-          <span class="label-name">{{ l.text }}</span>
-          <span v-if="l.kind === 'machine' && l.dotClass" class="status-dot" :class="l.dotClass"></span>
+        <span class="label-hitbox" :class="{ 'label-hitbox-alert': l.alert }">
+          <span class="label-main-row">
+            <span class="label-name">{{ l.text }}</span>
+            <span v-if="l.kind === 'machine' && l.dotClass" class="status-dot" :class="l.dotClass"></span>
+          </span>
+          <span v-if="l.badge" class="label-badge">{{ l.badge }}</span>
         </span>
 
         <!-- machine Hover 富信息 tooltip -->
@@ -961,10 +964,13 @@ function updateScreenLabels() {
 
     let detail = null
     let dotClass = null
+    let badge = null
+    let alert = false
     if (dyn && Object.keys(dyn).length > 0) {
       const op = dyn.current_op
       const status = dyn.status || (op ? 'WORKING' : 'IDLE')
       const statusClass = String(status).toLowerCase()
+      const repairRemaining = dyn.repair_remaining || 0
       const opPct = op && op.proc_time > 0
         ? Math.min(100, Math.round(((op.step_done ?? 0) / op.proc_time) * 100))
         : 0
@@ -990,10 +996,14 @@ function updateScreenLabels() {
         opPct,
         queueLength: dyn.queue_length || 0,
         finishedOps,
-        repairRemaining: dyn.repair_remaining || 0,
+        repairRemaining,
         downReason: dyn.down_reason || '',
       }
       dotClass = `dot-${statusClass}`
+      if (status === 'BROKEN') {
+        alert = true
+        badge = repairRemaining > 0 ? `机器故障 · 剩余 ${repairRemaining} 步` : '机器故障'
+      }
     }
 
     labels.push({
@@ -1006,6 +1016,8 @@ function updateScreenLabels() {
       color: '#f4f8ff',
       detail,
       dotClass,
+      badge,
+      alert,
     })
   })
 
@@ -1023,8 +1035,10 @@ function updateScreenLabels() {
       kind: 'agv',
       x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
       y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
-      text: down ? `A${i + 1} DOWN ${repairRemaining}` : `A${i + 1}`,
+      text: `A${i + 1}`,
+      badge: down ? `AGV故障 · 剩余 ${repairRemaining} 步` : null,
       color: down ? '#ffd6d6' : '#e7fbff',
+      alert: down,
     })
   })
 
@@ -1254,6 +1268,25 @@ defineExpose({
   line-height: 1;
 }
 
+.label-main-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.label-badge {
+  display: block;
+  margin-top: 3px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 70, 70, 0.92);
+  color: #fff8f0;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
 /* Hover 命中区：扩大点击范围 */
 .label-hoverable {
   pointer-events: auto;
@@ -1261,6 +1294,7 @@ defineExpose({
 }
 .label-hitbox {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   gap: 4px;
   padding: 5px 8px;
@@ -1271,17 +1305,39 @@ defineExpose({
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
   transition: background 0.15s;
 }
+.label-hitbox-alert {
+  background: rgba(132, 18, 26, 0.88);
+  border-color: rgba(255, 215, 140, 0.75);
+  box-shadow: 0 0 0 1px rgba(255, 95, 95, 0.35), 0 4px 14px rgba(90, 0, 0, 0.38);
+}
 .label-hoverable:hover .label-hitbox {
   background: rgba(100, 180, 255, 0.12);
+}
+.label-hoverable:hover .label-hitbox-alert {
+  background: rgba(158, 28, 38, 0.96);
 }
 
 .label-machine .label-hitbox {
   background: rgba(20, 32, 48, 0.72);
 }
 
+.label-machine .label-hitbox-alert {
+  background: rgba(128, 18, 28, 0.9);
+}
+
 .label-agv .label-hitbox {
   background: rgba(0, 73, 92, 0.76);
   border-color: rgba(151, 232, 255, 0.45);
+}
+
+.label-agv .label-hitbox-alert {
+  background: rgba(152, 24, 32, 0.94);
+  border-color: rgba(255, 225, 150, 0.82);
+}
+
+.label-agv .label-hitbox-alert .label-badge {
+  background: #ff2f3f;
+  color: #fff;
 }
 
 .label-exception-obstacle .label-hitbox {
