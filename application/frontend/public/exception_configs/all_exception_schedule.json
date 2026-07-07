@@ -117,7 +117,7 @@
         "reason": "demo_machine_breakdown"
       },
       {
-        "step": 22,
+        "step": 8,
         "type": "agv_breakdown",
         "agv_id": 0,
         "duration_steps": 11,

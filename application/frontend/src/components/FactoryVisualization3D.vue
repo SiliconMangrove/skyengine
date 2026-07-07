@@ -913,6 +913,7 @@ function updateScreenLabels() {
   const cw = renderer.domElement.clientWidth
   const ch = renderer.domElement.clientHeight
   const rect = renderer.domElement.getBoundingClientRect()
+  const containerRect = containerRef.value?.getBoundingClientRect()
   const labels = []
 
   // 当前机器动态状态 (来自 store 快照)
@@ -999,10 +1000,10 @@ function updateScreenLabels() {
       id: `machine-${id}`,
       kind: 'machine',
       machineId: id,
-      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
-      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
+      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
+      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
       text: group.userData.name || id,
-      color: '#445566',
+      color: '#f4f8ff',
       detail,
       dotClass,
     })
@@ -1020,10 +1021,29 @@ function updateScreenLabels() {
     labels.push({
       id: `agv-${i}`,
       kind: 'agv',
-      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
-      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
+      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
+      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
       text: down ? `A${i + 1} DOWN ${repairRemaining}` : `A${i + 1}`,
-      color: down ? '#ff6464' : '#0088bb',
+      color: down ? '#ffd6d6' : '#e7fbff',
+    })
+  })
+
+  // 临时障碍标签
+  ;(store.currentState?.blocked_cells || []).forEach((cell, idx) => {
+    if (!Array.isArray(cell) || cell.length < 2) return
+    const [gx, gy] = cell
+    const pos = gridToWorld(gx, gy)
+    const vec = new THREE.Vector3(pos.x, GRID_SIZE * 0.38, pos.z)
+    vec.project(camera)
+    if (vec.z > 1) return
+
+    labels.push({
+      id: `exception-obstacle-${gx}-${gy}-${idx}`,
+      kind: 'exception-obstacle',
+      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
+      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
+      text: '临时障碍',
+      color: '#fff4f4',
     })
   })
 
@@ -1220,13 +1240,14 @@ defineExpose({
 
 .world-label {
   position: absolute;
-  font-family: "Consolas", "Monaco", monospace;
-  font-size: 10px;
-  font-weight: bold;
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  font-weight: 800;
   transform: translate(-50%, -50%);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.55);
   white-space: nowrap;
   pointer-events: none;
+  letter-spacing: 0;
 }
 
 .label-name {
@@ -1242,13 +1263,31 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
-  margin: -4px -6px;
+  padding: 5px 8px;
+  margin: -5px -8px;
   border-radius: 4px;
+  background: rgba(11, 18, 28, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
   transition: background 0.15s;
 }
 .label-hoverable:hover .label-hitbox {
   background: rgba(100, 180, 255, 0.12);
+}
+
+.label-machine .label-hitbox {
+  background: rgba(20, 32, 48, 0.72);
+}
+
+.label-agv .label-hitbox {
+  background: rgba(0, 73, 92, 0.76);
+  border-color: rgba(151, 232, 255, 0.45);
+}
+
+.label-exception-obstacle .label-hitbox {
+  background: rgba(178, 28, 36, 0.82);
+  border-color: rgba(255, 222, 160, 0.75);
+  color: #fff4f4;
 }
 
 /* 状态色点 */
