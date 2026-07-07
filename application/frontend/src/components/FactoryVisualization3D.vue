@@ -41,6 +41,14 @@
             <span class="mt-label">当前 Op</span>
             <span class="mt-value mt-idle">— 空闲 —</span>
           </div>
+          <div class="mt-row" v-if="l.detail.repairRemaining > 0">
+            <span class="mt-label">维修剩余</span>
+            <span class="mt-value">{{ l.detail.repairRemaining }} 步</span>
+          </div>
+          <div class="mt-row" v-if="l.detail.downReason">
+            <span class="mt-label">异常原因</span>
+            <span class="mt-value">{{ l.detail.downReason }}</span>
+          </div>
 
           <div class="mt-progress-block" v-if="l.detail.op">
             <div class="mt-progress-head">
@@ -83,7 +91,7 @@ import {
   BG_COLOR, GROUND_COLOR, GRID_COLOR_MAIN, GRID_COLOR_SUB,
   MACHINE_COLORS, STATUS_LIGHT,
   AGV_ACTIVE_COLOR, AGV_IDLE_COLOR,
-  AGV_LIGHT_ACTIVE, AGV_LIGHT_IDLE,
+  AGV_DOWN_COLOR, AGV_LIGHT_ACTIVE, AGV_LIGHT_IDLE, AGV_LIGHT_DOWN,
   ZONE_COLORS,
   EDGE_COLOR, WAYPOINT_DOCK_COLOR, WAYPOINT_DEFAULT_COLOR,
   HIGHLIGHT_COLOR, HIGHLIGHT_COLLISION_COLOR,
@@ -163,12 +171,13 @@ function gridToWorld(gx, gy) {
 let scene, camera, renderer, controls, clock
 let groundPlane, gridHelper, backgroundGroup
 let ambientLight, sunLight
-let machineGroup, agvGroup, zoneGroup, waypointGroup, edgeGroup, decorGroup
+let machineGroup, agvGroup, zoneGroup, waypointGroup, edgeGroup, decorGroup, exceptionObstacleGroup
 
 // 对象映射
 const machineMeshMap = new Map()   // machineId → { group, bodyMat, lightMat }
 const agvDataList = []             // { group, chassisMat, lightMat, targetPos: Vector3 }
 const waypointPosMap = new Map()   // waypointId → { x, z } (world)
+const obstacleMeshMap = new Map()   // "x,y" → Mesh
 
 // 动画状态
 let waitTimeLeft = 0
@@ -488,7 +497,8 @@ function initScene() {
   decorGroup = new THREE.Group()
   machineGroup = new THREE.Group()
   agvGroup = new THREE.Group()
-  scene.add(zoneGroup, edgeGroup, waypointGroup, decorGroup, machineGroup, agvGroup)
+  exceptionObstacleGroup = new THREE.Group()
+  scene.add(zoneGroup, edgeGroup, waypointGroup, decorGroup, exceptionObstacleGroup, machineGroup, agvGroup)
 
   // Clock
   clock = new THREE.Clock()
@@ -780,6 +790,8 @@ function updateFromStore() {
   if (store.totalSteps === 0) return
   const targets = state.grid_state?.positions_xy || []
   const isActive = state.grid_state?.is_active || []
+  const agvStatus = state.grid_state?.agv_status || []
+  const agvRepairRemaining = state.grid_state?.agv_repair_remaining || []
 
   // AGV 数量同步
   if (agvDataList.length !== targets.length) rebuildAGVs(targets.length)
@@ -808,14 +820,18 @@ function updateFromStore() {
     }
 
     // 活跃状态 → 底盘材质
+    const down = agvStatus[i] === 'DOWN'
     const active = isActive[i] !== false
-    agvData.chassisMat.color.set(active ? AGV_ACTIVE_COLOR : AGV_IDLE_COLOR)
+    agvData.group.userData.status = down ? 'DOWN' : (active ? 'ACTIVE' : 'IDLE')
+    agvData.group.userData.repairRemaining = agvRepairRemaining[i] || 0
+    agvData.chassisMat.color.set(down ? AGV_DOWN_COLOR : (active ? AGV_ACTIVE_COLOR : AGV_IDLE_COLOR))
     agvData.chassisMat.needsUpdate = true
-    agvData.lightMat.color.set(active ? AGV_LIGHT_ACTIVE : AGV_LIGHT_IDLE)
+    agvData.lightMat.color.set(down ? AGV_LIGHT_DOWN : (active ? AGV_LIGHT_ACTIVE : AGV_LIGHT_IDLE))
   })
 
   // 机器状态更新
   updateMachineStates(state.machines || {})
+  updateExceptionObstacles(state.blocked_cells || [])
 
   // 自动步进
   const dt = clock.getDelta()
@@ -829,6 +845,43 @@ function updateFromStore() {
   }
 
   updateScreenLabels()
+}
+
+function updateExceptionObstacles(blockedCells) {
+  if (!exceptionObstacleGroup) return
+  const activeKeys = new Set()
+  ;(blockedCells || []).forEach((cell) => {
+    if (!Array.isArray(cell) || cell.length < 2) return
+    const [gx, gy] = cell
+    const key = `${gx},${gy}`
+    activeKeys.add(key)
+    if (obstacleMeshMap.has(key)) return
+
+    const pos = gridToWorld(gx, gy)
+    const geom = new THREE.BoxGeometry(GRID_SIZE * 0.9, GRID_SIZE * 0.16, GRID_SIZE * 0.9)
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xff4d4f,
+      emissive: 0x661111,
+      transparent: true,
+      opacity: 0.62,
+      roughness: 0.45,
+      metalness: 0.15,
+    })
+    const mesh = new THREE.Mesh(geom, mat)
+    mesh.position.set(pos.x, GRID_SIZE * 0.08, pos.z)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    exceptionObstacleGroup.add(mesh)
+    obstacleMeshMap.set(key, mesh)
+  })
+
+  obstacleMeshMap.forEach((mesh, key) => {
+    if (activeKeys.has(key)) return
+    mesh.geometry?.dispose()
+    mesh.material?.dispose()
+    exceptionObstacleGroup.remove(mesh)
+    obstacleMeshMap.delete(key)
+  })
 }
 
 function updateMachineStates(machineStates) {
@@ -936,6 +989,8 @@ function updateScreenLabels() {
         opPct,
         queueLength: dyn.queue_length || 0,
         finishedOps,
+        repairRemaining: dyn.repair_remaining || 0,
+        downReason: dyn.down_reason || '',
       }
       dotClass = `dot-${statusClass}`
     }
@@ -959,13 +1014,16 @@ function updateScreenLabels() {
     vec.y += GRID_SIZE * 0.2
     vec.project(camera)
     if (vec.z > 1) return
+    const status = group.userData.status || 'IDLE'
+    const repairRemaining = group.userData.repairRemaining || 0
+    const down = status === 'DOWN'
     labels.push({
       id: `agv-${i}`,
       kind: 'agv',
       x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
       y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
-      text: `A${i + 1}`,
-      color: '#0088bb',
+      text: down ? `A${i + 1} DOWN ${repairRemaining}` : `A${i + 1}`,
+      color: down ? '#ff6464' : '#0088bb',
     })
   })
 

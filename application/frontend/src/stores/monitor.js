@@ -88,7 +88,7 @@ export const useMonitorStore = defineStore('monitor', () => {
 
     /**
      * 推送事件入队 (Push) — canonical shape
-     * payload: { type(业务名), level(info|success|warning|error), message, idx, timestamp }
+     * payload: { type(业务名), level(info|success|warning|error), message, idx, timestamp, category, title, payload, step }
      *
      * 内部存储形如：
      *   { id, timestamp, idx, type, level, message }
@@ -102,15 +102,23 @@ export const useMonitorStore = defineStore('monitor', () => {
             message = '',
             idx = 0,
             timestamp = null,
+            category = null,
+            title = '',
+            payload: eventPayload = {},
+            step = idx,
         } = payload
 
         const newEvent = {
             id: Date.now() + Math.random(),
             timestamp: timestamp != null ? timestamp : new Date(),
             idx,
+            step,
+            category,
             type, // 业务名：machine_start_op / transfer_started / narrative / ...
             level, // info / success / warning / error
+            title,
             message,
+            payload: eventPayload,
         }
 
         eventQueue.value.push(newEvent)
@@ -315,16 +323,20 @@ export const useMonitorStore = defineStore('monitor', () => {
 
     /**
      * 推送 sim_server (DockerFactory) 业务事件
-     * data: {timestamp, type, message, level} — 已是 canonical，直接委托 pushEvent
+     * data: {step, timestamp, category, type, title, message, level, payload} — 已是 canonical，直接委托 pushEvent
      */
     function pushSimEvent(data) {
         if (!data) return
         pushEvent({
             type: data.type || 'narrative',
             level: data.level || 'info',
+            category: data.category || null,
+            title: data.title || '',
             message: data.message || '',
-            idx: 0,
+            idx: data.step ?? 0,
+            step: data.step ?? 0,
             timestamp: data.timestamp,
+            payload: data.payload || {},
         })
     }
 

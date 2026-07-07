@@ -120,6 +120,24 @@
         </div>
       </template>
 
+      <template #tab-config>
+        <ConfigPanel
+          @edit-mode-change="isEditMode = $event"
+          @config-loaded="handleConfigLoaded"
+        >
+          <template #data-source-extra>
+            <div class="docker-config-event-row">
+              <label>异常场景</label>
+              <select v-model="selectedExceptionPreset" class="plan-select docker-config-select" :disabled="sim.isRunningTest.value">
+                <option v-for="opt in exceptionPresetOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </div>
+          </template>
+        </ConfigPanel>
+      </template>
+
       <template #tab-insert>
         <JobInsertPanel />
       </template>
@@ -145,6 +163,7 @@ import { getAlgorithmOptions } from "@/config/algorithms";
 
 import FactoryPlayerSSE from "@/components/FactoryPlayerSSE.vue";
 import FactoryTabsPanel from "@/components/FactoryTabsPanel.vue";
+import ConfigPanel from "@/components/ConfigPanel.vue";
 import DashboardPanel from "@/components/DashboardPanel.vue";
 import JobInsertPanel from "@/components/JobInsertPanel.vue";
 import dashboardConfig from "@/config/dashboards/docker_factory.json";
@@ -174,6 +193,15 @@ let eventsConnectionId = null;
 const activeTab = ref("simulation");
 const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
+const selectedExceptionPreset = ref("no_event");
+const exceptionPresetOptions = [
+  { value: "no_event", label: "无异常" },
+  { value: "mild_failure", label: "轻度故障" },
+  { value: "moderate_failure", label: "中度故障" },
+  { value: "stress_failure", label: "压力故障" },
+  { value: "routing_disruption", label: "路径扰动" },
+  { value: "custom", label: "自定义" },
+];
 
 const tabs = [
   { key: "simulation", label: "仿真", icon: "🚀" },
@@ -244,6 +272,8 @@ const handleExecutePlan = async () => {
   containerStartStatus.value = '正在设定策略...';
 
   try {
+    await syncExceptionConfigToBackend();
+
     await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
       algorithm: sim.algorithmString.value,
     }, { timeout: 30000 });
@@ -254,7 +284,7 @@ const handleExecutePlan = async () => {
     containerStartStatus.value = '正在启动容器...';
     isStartingContainer.value = false;
 
-    sim.handleExecutePlan(store, monitorStore, { mode: "docker" });
+    await testPlay();
   } catch (error) {
     isStartingContainer.value = false;
     sim.isRunningTest.value = false;
@@ -266,6 +296,7 @@ const handleExecutePlan = async () => {
 
 const testSetAlgorithm = async () => {
   try {
+    await syncExceptionConfigToBackend();
     await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
       algorithm: sim.algorithmString.value,
     }, { timeout: 15000 });
@@ -277,6 +308,7 @@ const testSetAlgorithm = async () => {
 
 const testReset = async () => {
   try {
+    await syncExceptionConfigToBackend();
     await apiPost(API_ROUTES.FACTORY_CONTROL_RESET, null, { timeout: 15000 });
     // 清空 sim 专用 monitor 状态
     monitorStore.clearSim();
@@ -290,8 +322,15 @@ const testPlay = async () => {
   // 1. 先建立所有 SSE 连接（不依赖 play 是否成功）
   //    DockerProxy.start() 首次启动 mapf/fjsp 容器可能 > 30s，
   //    如果 SSE 放在 await play 之后，play 超时会导致 SSE 永远不建立。
+  try {
+    await syncExceptionConfigToBackend();
+  } catch (error) {
+    ElMessage.error(`异常配置同步失败: ${error.message}`);
+    return;
+  }
   disconnectAllSSE();
 
+  sim.isRunningTest.value = true;
   store.isPlaying = true;
 
   const stateUrl = getApiUrl(API_ROUTES.STREAM_STATE);
@@ -310,6 +349,7 @@ const testPlay = async () => {
             sseConnectionId = null;
           }
           store.isPlaying = false;
+          sim.isRunningTest.value = false;
           // episode 闭环：深拷贝三流 → POST /analysis/runs 入库
           // 失败仅打 log，不阻塞 UI（用户已能看到 episode 完成）
           analysisLog.finalizeFromStores(store, monitorStore, {
@@ -373,6 +413,34 @@ const testPlay = async () => {
     ElMessage.warning(`play 请求超时，SSE 保持连接等待数据...`);
   }
 };
+
+function handleConfigLoaded(config) {
+  if (config?.exception_config) {
+    selectedExceptionPreset.value = "custom";
+  }
+}
+
+async function syncExceptionConfigToBackend() {
+  const currentConfig = store.currentConfig;
+  if (!currentConfig) return;
+  const config = JSON.parse(JSON.stringify(currentConfig));
+  config.exception_config = getActiveExceptionConfig();
+  const response = await apiPost(API_ROUTES.FACTORY_CONFIG_UPLOAD, {
+    filename: `${config.name || config.id || "grid_factory_new"}.json`,
+    config,
+  }, { timeout: 30000 });
+  if (response.status !== "ok") {
+    throw new Error(response.message || "异常配置同步失败");
+  }
+}
+
+function getActiveExceptionConfig() {
+  if (selectedExceptionPreset.value === "custom") {
+    const cfg = store.currentConfig?.exception_config;
+    return cfg ? JSON.parse(JSON.stringify(cfg)) : { preset: "no_event" };
+  }
+  return { preset: selectedExceptionPreset.value };
+}
 
 onUnmounted(() => {
   disconnectAllSSE();
@@ -451,4 +519,29 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.1);
   margin: 10px 0;
 }
+
+.simulation-tab .sim-help {
+  display: block;
+  margin-top: 4px;
+  color: rgba(160, 190, 230, 0.58);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.docker-config-event-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docker-config-event-row > label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 190, 230, 0.5);
+}
+
+.docker-config-select {
+  width: 100%;
+}
+
 </style>

@@ -68,6 +68,10 @@
                     <div class="event-content">
                         <span class="event-icon">{{ getEventIcon(event) }}</span>
                         <div class="event-text">
+                            <div class="event-title-row">
+                                <span v-if="event.title" class="event-title">{{ event.title }}</span>
+                                <span v-if="event.category" class="event-category">{{ event.category }}</span>
+                            </div>
                             <div v-if="event.message" class="event-message">{{ event.message }}</div>
                         </div>
                     </div>
@@ -134,6 +138,10 @@ const eventIconMap = {
     transfer_destination_resolved: '📍',
     job_completed: '🎯', job_released: '📤',
     agv_assigned: '🤖', agv_freed: '🟢',
+    machine_breakdown: '🛑', machine_recovery: '🔧',
+    agv_breakdown: '🚨', agv_recovery: '🟢',
+    temporary_obstacle: '⛔', obstacle_clear: '🧹',
+    urgent_job_arrival: '⚡',
 }
 function getEventIcon(ev) {
     if (!ev) return 'ℹ️'

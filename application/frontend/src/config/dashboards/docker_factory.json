@@ -9,6 +9,7 @@
     { "hook": "job_progress",   "template": "line", "title": "Job 完成进度" },
     { "hook": "machine_load",   "template": "bar",  "title": "各机器负载",   "mode": "grouped" },
     { "hook": "agv_stats",      "template": "line", "title": "AGV 综合指标", "multiSeries": true },
+    { "hook": "exception_summary", "template": "line", "title": "异常累计", "multiSeries": true },
     { "hook": "event_timeline", "template": "line", "title": "事件累计",     "multiSeries": true }
   ]
 }

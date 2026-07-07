@@ -106,8 +106,16 @@ export const ASSET_TEMPLATES = Object.freeze({
 
 const EMPTY_GRID_STATE = Object.freeze({
   env_timeline: "0",
-  grid_state: { positions_xy: [], is_active: [] },
+  grid_state: { positions_xy: [], is_active: [], agv_status: [], agv_repair_remaining: [] },
   machines: {},
+  event_epoch: 0,
+  map_epoch: 0,
+  machine_epoch: 0,
+  agv_epoch: 0,
+  job_epoch: 0,
+  event_metrics: {},
+  events: [],
+  blocked_cells: [],
   active_transfers: [],
 });
 
@@ -162,7 +170,16 @@ function normalizeSnapshot(snapshot, fallbackIndex) {
   return {
     env_timeline:
       snapshot.timestamp ?? snapshot.env_timeline ?? `T+${fallbackIndex}`,
-    grid_state: snapshot.grid_state ?? { positions_xy: [], is_active: [] },
+    timestamp: snapshot.timestamp ?? null,
+    grid_state: snapshot.grid_state ?? { positions_xy: [], is_active: [], agv_status: [], agv_repair_remaining: [] },
+    event_epoch: snapshot.event_epoch ?? 0,
+    map_epoch: snapshot.map_epoch ?? 0,
+    machine_epoch: snapshot.machine_epoch ?? 0,
+    agv_epoch: snapshot.agv_epoch ?? 0,
+    job_epoch: snapshot.job_epoch ?? 0,
+    event_metrics: snapshot.event_metrics ?? {},
+    events: Array.isArray(snapshot.events) ? snapshot.events : [],
+    blocked_cells: Array.isArray(snapshot.blocked_cells) ? snapshot.blocked_cells : [],
     machines: machinesDict,
     jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs : [],
     active_transfers: snapshot.active_transfers ?? [],
