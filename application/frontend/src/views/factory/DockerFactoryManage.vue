@@ -126,9 +126,14 @@
           @config-loaded="handleConfigLoaded"
         >
           <template #data-source-extra>
-            <div class="docker-config-event-row">
+            <div class="docker-config-exception-row">
               <label>异常场景</label>
-              <select v-model="selectedExceptionPreset" class="plan-select docker-config-select" :disabled="sim.isRunningTest.value">
+              <select
+                v-model="selectedExceptionPreset"
+                class="plan-select docker-config-select"
+                :disabled="sim.isRunningTest.value || exceptionConfigLocked"
+                :title="exceptionConfigLocked ? '当前配置文件已提供 exception_config，异常场景固定为自定义' : '选择内置异常场景'"
+              >
                 <option v-for="opt in exceptionPresetOptions" :key="opt.value" :value="opt.value">
                   {{ opt.label }}
                 </option>
@@ -151,7 +156,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
@@ -194,6 +199,10 @@ const activeTab = ref("simulation");
 const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
 const selectedExceptionPreset = ref("no_event");
+const exceptionConfigLocked = computed(() => {
+  const cfg = store.currentConfig?.exception_config;
+  return Boolean(cfg && typeof cfg === "object");
+});
 const exceptionPresetOptions = [
   { value: "no_event", label: "无异常" },
   { value: "mild_failure", label: "轻度故障" },
@@ -230,6 +239,17 @@ onMounted(async () => {
   store.reset();
   await sim.fetchAlgoOptions();
 });
+
+watch(
+  () => store.currentConfig?.exception_config,
+  (cfg) => {
+    if (cfg && typeof cfg === "object") {
+      selectedExceptionPreset.value = "custom";
+    } else if (selectedExceptionPreset.value === "custom") {
+      selectedExceptionPreset.value = "no_event";
+    }
+  },
+);
 
 // ==================== 停止 ====================
 
@@ -417,6 +437,8 @@ const testPlay = async () => {
 function handleConfigLoaded(config) {
   if (config?.exception_config) {
     selectedExceptionPreset.value = "custom";
+  } else if (selectedExceptionPreset.value === "custom") {
+    selectedExceptionPreset.value = "no_event";
   }
 }
 
@@ -435,7 +457,7 @@ async function syncExceptionConfigToBackend() {
 }
 
 function getActiveExceptionConfig() {
-  if (selectedExceptionPreset.value === "custom") {
+  if (exceptionConfigLocked.value || selectedExceptionPreset.value === "custom") {
     const cfg = store.currentConfig?.exception_config;
     return cfg ? JSON.parse(JSON.stringify(cfg)) : { preset: "no_event" };
   }
@@ -528,13 +550,13 @@ onUnmounted(() => {
   line-height: 1.35;
 }
 
-.docker-config-event-row {
+.docker-config-exception-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.docker-config-event-row > label {
+.docker-config-exception-row > label {
   font-size: 11px;
   font-weight: 500;
   color: rgba(160, 190, 230, 0.5);
