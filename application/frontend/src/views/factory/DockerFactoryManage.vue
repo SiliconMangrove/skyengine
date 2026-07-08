@@ -268,6 +268,17 @@ const disconnectAllSSE = () => {
   }
 };
 
+const resetLocalRuntimeState = ({ initializeAgvs = true } = {}) => {
+  disconnectAllSSE();
+  sim.isRunningTest.value = false;
+  store.isPlaying = false;
+  store.reset();
+  monitorStore.clearSim();
+  if (initializeAgvs) {
+    store.initializeAGVs();
+  }
+};
+
 const handleStop = async () => {
   // 1. 调后端 pause 让引擎停下
   try {
@@ -278,9 +289,7 @@ const handleStop = async () => {
     ElMessage.warning(`停止请求失败：${error.message}（数据流将本地断开）`);
   }
   // 2. 本地断 SSE + 重置状态
-  disconnectAllSSE();
-  sim.isRunningTest.value = false;
-  store.isPlaying = false;
+  resetLocalRuntimeState({ initializeAgvs: false });
 };
 
 // ==================== 执行方案 (Docker 3步模式) ====================
@@ -328,10 +337,10 @@ const testSetAlgorithm = async () => {
 
 const testReset = async () => {
   try {
+    resetLocalRuntimeState({ initializeAgvs: false });
     await syncExceptionConfigToBackend();
     await apiPost(API_ROUTES.FACTORY_CONTROL_RESET, null, { timeout: 15000 });
-    // 清空 sim 专用 monitor 状态
-    monitorStore.clearSim();
+    store.initializeAGVs();
     ElMessage.success('✅ 重置工厂成功');
   } catch (error) {
     ElMessage.error(`❌ 重置工厂失败: ${error.message}`);
@@ -349,6 +358,8 @@ const testPlay = async () => {
     return;
   }
   disconnectAllSSE();
+  store.reset();
+  monitorStore.clearSim();
 
   sim.isRunningTest.value = true;
   store.isPlaying = true;
@@ -435,6 +446,7 @@ const testPlay = async () => {
 };
 
 function handleConfigLoaded(config) {
+  resetLocalRuntimeState();
   if (config?.exception_config) {
     selectedExceptionPreset.value = "custom";
   } else if (selectedExceptionPreset.value === "custom") {

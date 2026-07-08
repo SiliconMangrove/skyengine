@@ -337,8 +337,8 @@ class DockerProxy:
         }
         logger.info(f"[DockerProxy] mapf={mapf_image}, fjsp={fjsp_image}")
 
-        # 2. 启动算法容器
-        await self._compose("up", "-d", "mapf", "fjsp", env=compose_env)
+        # 2. 启动算法容器。每轮仿真强制重建算法服务，避免上轮 MAPF/FJSP 内部缓存残留。
+        await self._compose("up", "-d", "--force-recreate", "mapf", "fjsp", env=compose_env)
 
         # 2.5 等待 fjsp/mapf 的 Flask 就绪（避免 play 时 Connection refused）
         await self._wait_for_service("fjsp", 8002)
