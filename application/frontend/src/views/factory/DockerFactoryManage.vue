@@ -143,6 +143,15 @@
         </ConfigPanel>
       </template>
 
+      <template #tab-experiment>
+        <ExperimentWorkbenchPanel
+          :is-running="sim.isRunningTest.value"
+          :simulation-meta="currentExperimentMeta"
+          :exception-config="activeExceptionConfig"
+          @load-plan="handleExperimentPlanLoaded"
+        />
+      </template>
+
       <template #tab-insert>
         <JobInsertPanel />
       </template>
@@ -171,6 +180,7 @@ import FactoryTabsPanel from "@/components/FactoryTabsPanel.vue";
 import ConfigPanel from "@/components/ConfigPanel.vue";
 import DashboardPanel from "@/components/DashboardPanel.vue";
 import JobInsertPanel from "@/components/JobInsertPanel.vue";
+import ExperimentWorkbenchPanel from "@/components/ExperimentWorkbenchPanel.vue";
 import dashboardConfig from "@/config/dashboards/docker_factory.json";
 
 const store = useFactoryStore();
@@ -212,10 +222,22 @@ const exceptionPresetOptions = [
   { value: "custom", label: "自定义" },
 ];
 
+const activeExceptionConfig = computed(() => getActiveExceptionConfig());
+const currentExperimentMeta = computed(() => ({
+  factory_id: store.selectedFactoryId,
+  config_id: store.currentConfigId,
+  fjsp: sim.selectedFjsp.value,
+  mapf: sim.selectedMapf.value,
+  assigner: sim.selectedAssigner.value,
+  algorithm: sim.algorithmString.value,
+  exception_preset: selectedExceptionPreset.value,
+}));
+
 const tabs = [
   { key: "simulation", label: "仿真", icon: "🚀" },
   { key: "control", label: "控制", icon: "⚙️" },
   { key: "config", label: "配置", icon: "🔧" },
+  { key: "experiment", label: "实验", icon: "🧪" },
   { key: "insert", label: "插单", icon: "➕" },
   { key: "agent", label: "分析", icon: "🤖" },
   { key: "metrics", label: "指标", icon: "📊" },
@@ -452,6 +474,23 @@ function handleConfigLoaded(config) {
   } else if (selectedExceptionPreset.value === "custom") {
     selectedExceptionPreset.value = "no_event";
   }
+}
+
+function handleExperimentPlanLoaded(plan) {
+  const config = plan?.config ? JSON.parse(JSON.stringify(plan.config)) : null;
+  if (config) {
+    if (plan.exception_config) {
+      config.exception_config = JSON.parse(JSON.stringify(plan.exception_config));
+    }
+    resetLocalRuntimeState();
+    store.loadConfigFromFile(config);
+    store.initializeAGVs();
+    selectedExceptionPreset.value = config.exception_config ? "custom" : "no_event";
+  }
+  const meta = plan?.simulation || {};
+  if (meta.fjsp) sim.selectedFjsp.value = meta.fjsp;
+  if (meta.mapf) sim.selectedMapf.value = meta.mapf;
+  if (meta.assigner) sim.selectedAssigner.value = meta.assigner;
 }
 
 async function syncExceptionConfigToBackend() {

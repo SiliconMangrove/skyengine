@@ -382,6 +382,30 @@ class DockerProxy:
             logger.error(f"[DockerProxy] insert_jobs 失败: {e}")
             return {"status": "error", "message": str(e)}
 
+    async def inject_exception(self, body: dict) -> dict:
+        """转发运行时 Exception 注入请求到 engine。"""
+        if not self._engine_url:
+            return {"status": "error", "message": "engine 未就绪"}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(f"{self._engine_url}/sim/exception/inject", json=body)
+                return resp.json()
+        except Exception as e:
+            logger.error(f"[DockerProxy] inject_exception 失败: {e}")
+            return {"status": "error", "message": str(e)}
+
+    async def clear_exceptions(self, body: dict) -> dict:
+        """转发运行时 Exception 清理请求到 engine。"""
+        if not self._engine_url:
+            return {"status": "error", "message": "engine 未就绪"}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(f"{self._engine_url}/sim/exception/clear", json=body or {})
+                return resp.json()
+        except Exception as e:
+            logger.error(f"[DockerProxy] clear_exceptions 失败: {e}")
+            return {"status": "error", "message": str(e)}
+
     async def reset(self) -> None:
         if self._engine_url:
             async with httpx.AsyncClient(timeout=10.0) as client:

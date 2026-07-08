@@ -272,6 +272,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     // 重置/清空 Monitor 状态
     function clear() {
         eventQueue.value = []
+        totalEventCount.value = 0
         metricsTimeline.value = []
         runId.value = null
         runStartTime.value = null
@@ -285,7 +286,27 @@ export const useMonitorStore = defineStore('monitor', () => {
      */
     function clearSim() {
         eventQueue.value = []
+        totalEventCount.value = 0
         metricsTimeline.value = []
+        heatmaps.value = null
+        episodeSummary.value = null
+    }
+
+    function loadArchiveData(metrics = [], events = []) {
+        metricsTimeline.value = JSON.parse(JSON.stringify(metrics || []))
+        eventQueue.value = JSON.parse(JSON.stringify(events || [])).map((event, idx) => ({
+            id: event.id ?? Date.now() + idx + Math.random(),
+            timestamp: event.timestamp ?? null,
+            idx: event.idx ?? event.step ?? idx,
+            step: event.step ?? event.idx ?? idx,
+            category: event.category ?? null,
+            type: event.type ?? 'narrative',
+            level: event.level ?? 'info',
+            title: event.title ?? '',
+            message: event.message ?? '',
+            payload: event.payload ?? {},
+        }))
+        totalEventCount.value = eventQueue.value.length
         heatmaps.value = null
         episodeSummary.value = null
     }
@@ -366,6 +387,7 @@ export const useMonitorStore = defineStore('monitor', () => {
         clear,
         // sim_server 专用
         clearSim,
+        loadArchiveData,
         pushSimMetrics,
         pushSimEvent,
         // Agent 对话
