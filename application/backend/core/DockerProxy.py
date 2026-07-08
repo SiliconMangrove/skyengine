@@ -389,6 +389,9 @@ class DockerProxy:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(f"{self._engine_url}/sim/exception/inject", json=body)
+                if resp.status_code == 404:
+                    await self._refresh_engine_after_missing_exception_api()
+                    resp = await client.post(f"{self._engine_url}/sim/exception/inject", json=body)
                 return resp.json()
         except Exception as e:
             logger.error(f"[DockerProxy] inject_exception 失败: {e}")
@@ -401,10 +404,22 @@ class DockerProxy:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(f"{self._engine_url}/sim/exception/clear", json=body or {})
+                if resp.status_code == 404:
+                    await self._refresh_engine_after_missing_exception_api()
+                    resp = await client.post(f"{self._engine_url}/sim/exception/clear", json=body or {})
                 return resp.json()
         except Exception as e:
             logger.error(f"[DockerProxy] clear_exceptions 失败: {e}")
             return {"status": "error", "message": str(e)}
+
+    async def _refresh_engine_after_missing_exception_api(self) -> None:
+        """旧 engine 容器不含运行时 Exception API 时，重建 engine 后再重试。"""
+        logger.warning("[DockerProxy] engine 缺少 Exception API，尝试重建 engine 容器")
+        self._streaming = False
+        await self._compose("up", "-d", "--force-recreate", "engine")
+        await self._wait_for_health(timeout=60.0)
+        self.initialized = True
+        self.status = ExecutionStatus.IDLE
 
     async def reset(self) -> None:
         if self._engine_url:

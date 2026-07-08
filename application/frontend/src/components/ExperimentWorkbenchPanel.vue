@@ -31,8 +31,8 @@
         </label>
 
         <label>
-          开始 step
-          <input v-model.number="exceptionForm.start_step" type="number" min="0" />
+          当前 step 后几步触发
+          <input v-model.number="exceptionForm.delay_steps" type="number" min="0" />
         </label>
 
         <label v-if="exceptionForm.type !== 'urgent_job_arrival'">
@@ -328,7 +328,7 @@ const clearing = ref(false)
 const exceptionStatus = ref('准备就绪')
 const exceptionForm = ref({
   type: 'machine_breakdown',
-  start_step: 1,
+  delay_steps: 1,
   duration_steps: 12,
   machine_id: 0,
   agv_id: 0,
@@ -374,7 +374,7 @@ function buildExceptionBody() {
   const form = exceptionForm.value
   const body = {
     type: form.type,
-    start_step: Number(form.start_step) || 0,
+    delay_steps: Math.max(0, Number(form.delay_steps) || 0),
     reason: form.reason || 'manual_exception',
   }
   if (form.type === 'machine_breakdown') {
