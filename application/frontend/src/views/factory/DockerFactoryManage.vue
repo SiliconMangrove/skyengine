@@ -422,6 +422,10 @@ const testPlay = async () => {
         if (data.status === 'idle' || data.status === 'no_factory' || data.status === 'error') {
           return;
         }
+        if (data.frame) {
+          store.pushSnapshot(data.frame);
+          monitorStore.pushSimFrameEvents(data.frame.events, data.frame.env_timeline);
+        }
         if (data.status === 'stopped' || data.status === 'finished') {
           console.log('[DockerFactory] 仿真完成');
           if (sseConnectionId) {
@@ -436,9 +440,6 @@ const testPlay = async () => {
             factory_id: store.selectedFactoryId,
           }).catch((e) => console.error('[DockerFactory] finalizeFromStores 失败:', e));
           return;
-        }
-        if (data.frame) {
-          store.pushSnapshot(data.frame);
         }
       },
     },
