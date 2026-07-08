@@ -303,13 +303,10 @@ const monitorStore = useMonitorStore()
 const analysisLog = useAnalysisLogStore()
 
 const PLAN_KEY = 'skyengine_grid_factory_experiment_plans'
-const exceptionTypes = new Set([
+const exceptionJumpTypes = new Set([
   'machine_breakdown',
-  'machine_recovery',
   'agv_breakdown',
-  'agv_recovery',
   'temporary_obstacle',
-  'obstacle_clear',
   'urgent_job_arrival',
 ])
 
@@ -582,7 +579,7 @@ function jumpToStep(step) {
 }
 
 const exceptionEvents = computed(() =>
-  (monitorStore.events || []).filter((event) => exceptionTypes.has(event.type))
+  (monitorStore.events || []).filter((event) => exceptionJumpTypes.has(event.type))
 )
 
 const filteredRuns = computed(() => {
@@ -650,6 +647,64 @@ function shortId(id) {
   return String(id || '').slice(0, 14)
 }
 
+function eventStep(event) {
+  const step = Number(event?.step ?? event?.idx ?? 0)
+  return Number.isFinite(step) ? step : 0
+}
+
+function enqueueOpen(openMap, key, record) {
+  if (!openMap.has(key)) openMap.set(key, [])
+  openMap.get(key).push(record)
+}
+
+function closeOpen(openMap, key, recoveryStep) {
+  const queue = openMap.get(key)
+  if (!queue || queue.length === 0) return
+  const record = queue.shift()
+  record.recoveryStep = recoveryStep
+}
+
+function pairExceptionDurations(events) {
+  const records = []
+  const openMachines = new Map()
+  const openAgvs = new Map()
+  const openObstacles = new Map()
+  const sorted = [...events].sort((a, b) => eventStep(a) - eventStep(b))
+
+  sorted.forEach((event) => {
+    const step = eventStep(event)
+    if (event.type === 'machine_breakdown') {
+      const machineId = event.payload?.machine_id
+      const record = { type: 'machine', label: `M${machineId}`, startStep: step, recoveryStep: null }
+      records.push(record)
+      enqueueOpen(openMachines, String(machineId), record)
+    } else if (event.type === 'machine_recovery') {
+      closeOpen(openMachines, String(event.payload?.machine_id), step)
+    } else if (event.type === 'agv_breakdown') {
+      const agvId = event.payload?.agv_id
+      const record = { type: 'agv', label: `AGV-${agvId}`, startStep: step, recoveryStep: null }
+      records.push(record)
+      enqueueOpen(openAgvs, String(agvId), record)
+    } else if (event.type === 'agv_recovery') {
+      closeOpen(openAgvs, String(event.payload?.agv_id), step)
+    } else if (event.type === 'temporary_obstacle') {
+      const cellKey = JSON.stringify(event.payload?.cell ?? null)
+      const record = { type: 'obstacle', label: `临时障碍 ${cellKey}`, startStep: step, recoveryStep: null }
+      records.push(record)
+      enqueueOpen(openObstacles, cellKey, record)
+    } else if (event.type === 'obstacle_clear') {
+      closeOpen(openObstacles, JSON.stringify(event.payload?.cell ?? null), step)
+    }
+  })
+
+  return records.map((record) => {
+    if (record.type === 'obstacle') {
+      return `${record.label} step ${record.startStep}，清除 step ${record.recoveryStep ?? '未清除'}`
+    }
+    return `${record.label} 故障 step ${record.startStep}，恢复 step ${record.recoveryStep ?? '未恢复'}`
+  })
+}
+
 const diagnosis = computed(() => {
   const events = monitorStore.events || []
   const metrics = monitorStore.metricsTimeline || []
@@ -662,27 +717,7 @@ const diagnosis = computed(() => {
     agv,
     obstacle,
   }
-  const lines = []
-  const recoveries = new Map()
-  events.forEach((event) => {
-    if (event.type === 'machine_recovery') recoveries.set(`machine-${event.payload?.machine_id}`, event.step ?? event.idx)
-    if (event.type === 'agv_recovery') recoveries.set(`agv-${event.payload?.agv_id}`, event.step ?? event.idx)
-    if (event.type === 'obstacle_clear') recoveries.set(`cell-${event.payload?.cell}`, event.step ?? event.idx)
-  })
-  events.forEach((event) => {
-    if (event.type === 'machine_breakdown') {
-      const key = `machine-${event.payload?.machine_id}`
-      lines.push(`M${event.payload?.machine_id} 故障 step ${event.step ?? event.idx}，恢复 step ${recoveries.get(key) ?? '未恢复'}`)
-    }
-    if (event.type === 'agv_breakdown') {
-      const key = `agv-${event.payload?.agv_id}`
-      lines.push(`AGV-${event.payload?.agv_id} 故障 step ${event.step ?? event.idx}，恢复 step ${recoveries.get(key) ?? '未恢复'}`)
-    }
-    if (event.type === 'temporary_obstacle') {
-      const key = `cell-${event.payload?.cell}`
-      lines.push(`临时障碍 ${JSON.stringify(event.payload?.cell)} step ${event.step ?? event.idx}，清除 step ${recoveries.get(key) ?? '未清除'}`)
-    }
-  })
+  const lines = pairExceptionDurations(events)
   const first = metrics[0]?.metrics || {}
   const last = metrics[metrics.length - 1]?.metrics || {}
   const waitingDelta = Number(last.agv_waiting_time_total || 0) - Number(first.agv_waiting_time_total || 0)
