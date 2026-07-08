@@ -6,8 +6,6 @@ export const useMonitorStore = defineStore('monitor', () => {
     const eventQueue = ref([])
     const totalEventCount = ref(0)
 
-    const MAX_EVENT_BUFFER = 5000
-
     // ============ 2. 图表/指标 State ============
     const chartData = ref({
         machine: { labels: [], data: [] },
@@ -123,10 +121,6 @@ export const useMonitorStore = defineStore('monitor', () => {
 
         eventQueue.value.push(newEvent)
         totalEventCount.value++
-
-        if (eventQueue.value.length > MAX_EVENT_BUFFER) {
-            eventQueue.value.shift()
-        }
     }
 
     /**
