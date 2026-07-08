@@ -477,6 +477,9 @@ function downloadTemplate() {
     exception_config: {
       preset: 'no_event',
     },
+    simulation_control: {
+      max_steps: 1000,
+    },
     renderConfig: {
       baseGridSize: 40,
       colors: {},

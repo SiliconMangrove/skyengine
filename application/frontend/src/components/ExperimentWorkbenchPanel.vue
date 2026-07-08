@@ -244,8 +244,7 @@
 
     <section v-else class="experiment-section">
       <div class="section-head">
-        <h3>异常诊断摘要</h3>
-        <span class="muted">基于规则统计，不引入 AI 判断</span>
+        <h3>异常统计</h3>
       </div>
 
       <div class="diagnosis-grid">
@@ -439,13 +438,19 @@ function persistPlans() {
 
 function savePlan() {
   if (!currentConfig.value) return
+  const planConfig = JSON.parse(JSON.stringify(currentConfig.value))
+  planConfig.exception_config = JSON.parse(JSON.stringify(props.exceptionConfig || { preset: 'no_event' }))
+  planConfig.simulation_control = {
+    ...(planConfig.simulation_control || {}),
+    max_steps: props.simulationMeta?.max_steps ?? 1000,
+  }
   const plan = {
     id: `plan_${Date.now()}`,
     name: planName.value || `实验方案 ${plans.value.length + 1}`,
     created_at: new Date().toISOString(),
     simulation: { ...props.simulationMeta },
     exception_config: JSON.parse(JSON.stringify(props.exceptionConfig || { preset: 'no_event' })),
-    config: JSON.parse(JSON.stringify(currentConfig.value)),
+    config: planConfig,
   }
   plans.value.unshift(plan)
   persistPlans()

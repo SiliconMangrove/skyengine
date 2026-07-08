@@ -139,6 +139,27 @@
                 </option>
               </select>
             </div>
+            <div class="docker-config-exception-row">
+              <label>停止条件</label>
+              <div class="docker-step-limit-row">
+                <input
+                  v-model.number="maxSimulationSteps"
+                  class="docker-step-input"
+                  type="number"
+                  min="1"
+                  step="100"
+                  :disabled="sim.isRunningTest.value || unlimitedSimulationSteps"
+                />
+                <label class="docker-checkbox-label">
+                  <input
+                    v-model="unlimitedSimulationSteps"
+                    type="checkbox"
+                    :disabled="sim.isRunningTest.value"
+                  />
+                  不限制（直到 Job 完成）
+                </label>
+              </div>
+            </div>
           </template>
         </ConfigPanel>
       </template>
@@ -209,6 +230,8 @@ const activeTab = ref("simulation");
 const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
 const selectedExceptionPreset = ref("no_event");
+const maxSimulationSteps = ref(1000);
+const unlimitedSimulationSteps = ref(false);
 const exceptionConfigLocked = computed(() => {
   const cfg = store.currentConfig?.exception_config;
   return Boolean(cfg && typeof cfg === "object");
@@ -223,6 +246,9 @@ const exceptionPresetOptions = [
 ];
 
 const activeExceptionConfig = computed(() => getActiveExceptionConfig());
+const activeSimulationControl = computed(() => ({
+  max_steps: unlimitedSimulationSteps.value ? null : normalizeMaxSimulationSteps(maxSimulationSteps.value),
+}));
 const currentExperimentMeta = computed(() => ({
   factory_id: store.selectedFactoryId,
   config_id: store.currentConfigId,
@@ -231,6 +257,7 @@ const currentExperimentMeta = computed(() => ({
   assigner: sim.selectedAssigner.value,
   algorithm: sim.algorithmString.value,
   exception_preset: selectedExceptionPreset.value,
+  max_steps: activeSimulationControl.value.max_steps,
 }));
 
 const tabs = [
@@ -469,6 +496,7 @@ const testPlay = async () => {
 
 function handleConfigLoaded(config) {
   resetLocalRuntimeState();
+  applySimulationControl(config?.simulation_control);
   if (config?.exception_config) {
     selectedExceptionPreset.value = "custom";
   } else if (selectedExceptionPreset.value === "custom") {
@@ -486,11 +514,13 @@ function handleExperimentPlanLoaded(plan) {
     store.loadConfigFromFile(config);
     store.initializeAGVs();
     selectedExceptionPreset.value = config.exception_config ? "custom" : "no_event";
+    applySimulationControl(config.simulation_control ?? plan?.simulation);
   }
   const meta = plan?.simulation || {};
   if (meta.fjsp) sim.selectedFjsp.value = meta.fjsp;
   if (meta.mapf) sim.selectedMapf.value = meta.mapf;
   if (meta.assigner) sim.selectedAssigner.value = meta.assigner;
+  applySimulationControl(config?.simulation_control ?? meta);
 }
 
 async function syncExceptionConfigToBackend() {
@@ -498,6 +528,10 @@ async function syncExceptionConfigToBackend() {
   if (!currentConfig) return;
   const config = JSON.parse(JSON.stringify(currentConfig));
   config.exception_config = getActiveExceptionConfig();
+  config.simulation_control = {
+    ...(config.simulation_control || {}),
+    ...activeSimulationControl.value,
+  };
   const response = await apiPost(API_ROUTES.FACTORY_CONFIG_UPLOAD, {
     filename: `${config.name || config.id || "grid_factory_new"}.json`,
     config,
@@ -513,6 +547,29 @@ function getActiveExceptionConfig() {
     return cfg ? JSON.parse(JSON.stringify(cfg)) : { preset: "no_event" };
   }
   return { preset: selectedExceptionPreset.value };
+}
+
+function normalizeMaxSimulationSteps(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1000;
+  return Math.max(1, Math.floor(n));
+}
+
+function applySimulationControl(control) {
+  if (!control || typeof control !== "object") {
+    unlimitedSimulationSteps.value = false;
+    maxSimulationSteps.value = 1000;
+    return;
+  }
+  const raw = control?.max_steps;
+  if (raw === null || raw === "unlimited" || raw === "infinite") {
+    unlimitedSimulationSteps.value = true;
+    return;
+  }
+  unlimitedSimulationSteps.value = false;
+  if (raw !== undefined) {
+    maxSimulationSteps.value = normalizeMaxSimulationSteps(raw);
+  }
 }
 
 onUnmounted(() => {
@@ -615,6 +672,43 @@ onUnmounted(() => {
 
 .docker-config-select {
   width: 100%;
+}
+
+.docker-step-limit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.docker-step-input {
+  flex: 0 0 120px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  background: rgba(20, 25, 45, 0.6);
+  border-radius: 6px;
+  color: rgba(200, 220, 255, 0.9);
+  font-size: 12px;
+  outline: none;
+}
+
+.docker-step-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.docker-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(200, 220, 255, 0.82);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.docker-checkbox-label input {
+  margin: 0;
 }
 
 </style>

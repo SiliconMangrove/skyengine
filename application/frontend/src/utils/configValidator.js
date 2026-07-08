@@ -356,6 +356,10 @@ export function normalizeConfig(config) {
     normalized.exception_config = JSON.parse(JSON.stringify(config.exception_config))
   }
 
+  if (config.simulation_control && typeof config.simulation_control === 'object') {
+    normalized.simulation_control = JSON.parse(JSON.stringify(config.simulation_control))
+  }
+
   if (config.metadata && typeof config.metadata === 'object') {
     normalized.metadata = JSON.parse(JSON.stringify(config.metadata))
   }
