@@ -60,7 +60,8 @@
 
             <transition-group name="event-list-anim" tag="div" v-else>
                 <div v-for="event in monitorStore.events" :key="event.id" class="event-item"
-                    :class="['event-' + (event.level || 'info')]">
+                    :class="['event-' + (event.level || 'info'), { expanded: expandedEventId === event.id }]"
+                    @click="toggleEvent(event.id)">
                     <div class="event-meta">
                         <span class="event-time">{{ formatTime(event.timestamp) }}</span>
                         <span class="event-idx">#{{ event.idx }}</span>
@@ -74,6 +75,22 @@
                             </div>
                             <div v-if="event.message" class="event-message">{{ event.message }}</div>
                         </div>
+                    </div>
+                    <div v-if="expandedEventId === event.id" class="event-detail">
+                        <div class="event-detail-row">
+                            <span>type</span>
+                            <code>{{ event.type || 'narrative' }}</code>
+                        </div>
+                        <div class="event-detail-row">
+                            <span>step</span>
+                            <code>{{ event.step ?? event.idx ?? '--' }}</code>
+                        </div>
+                        <div v-if="event.category" class="event-detail-row">
+                            <span>category</span>
+                            <code>{{ event.category }}</code>
+                        </div>
+                        <pre v-if="hasPayload(event)" class="event-payload">{{ formatPayload(event.payload) }}</pre>
+                        <div v-else class="event-payload empty">无附加 payload</div>
                     </div>
                 </div>
             </transition-group>
@@ -96,6 +113,7 @@ const monitorStore = useMonitorStore()
 const analysisLog = useAnalysisLogStore()
 const factoryStore = useFactoryStore()
 const eventListRef = ref(null)
+const expandedEventId = ref(null)
 // 默认展开历史样本列表；用户手动收起后保持收起
 const showRecent = ref(true)
 
@@ -110,6 +128,22 @@ function goToAnalysis() {
 
 function openRun(id) {
     analysisLog.openPanel(id)
+}
+
+function toggleEvent(id) {
+    expandedEventId.value = expandedEventId.value === id ? null : id
+}
+
+function hasPayload(event) {
+    return event?.payload && typeof event.payload === 'object' && Object.keys(event.payload).length > 0
+}
+
+function formatPayload(payload) {
+    try {
+        return JSON.stringify(payload || {}, null, 2)
+    } catch {
+        return String(payload)
+    }
 }
 
 // 导出当前会话日志（不入库，直接序列化当前 store 数据）
