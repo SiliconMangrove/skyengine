@@ -6,7 +6,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     const eventQueue = ref([])
     const totalEventCount = ref(0)
 
-    const MAX_EVENT_BUFFER = 50
+    const MAX_EVENT_BUFFER = 5000
 
     // ============ 2. 图表/指标 State ============
     const chartData = ref({

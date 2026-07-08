@@ -635,9 +635,11 @@ function makeCompareRow(run) {
     makespan: summary.total_steps ?? run.total_steps ?? '--',
     completionRate: totalJobs ? `${((completedJobs / totalJobs) * 100).toFixed(0)}%` : '--',
     utilization,
-    exceptionTotal: counts.machine_breakdown || counts.agv_breakdown || counts.temporary_obstacle || counts.urgent_job_arrival
-      ? (counts.machine_breakdown || 0) + (counts.agv_breakdown || 0) + (counts.temporary_obstacle || 0) + (counts.urgent_job_arrival || 0)
-      : (latestMetrics.event_count_total ?? 0),
+    exceptionTotal: counts.machine_breakdown || counts.agv_breakdown || counts.temporary_obstacle
+      ? (counts.machine_breakdown || 0) + (counts.agv_breakdown || 0) + (counts.temporary_obstacle || 0)
+      : (latestMetrics.machine_failure_count || 0)
+        + (latestMetrics.agv_failure_count || 0)
+        + (latestMetrics.temporary_obstacle_count || 0),
     machineFailures: counts.machine_breakdown || latestMetrics.machine_failure_count || 0,
     agvFailures: counts.agv_breakdown || latestMetrics.agv_failure_count || 0,
     downSteps: (latestMetrics.machine_down_steps_total || 0) + (latestMetrics.agv_down_steps_total || 0),
@@ -651,11 +653,14 @@ function shortId(id) {
 const diagnosis = computed(() => {
   const events = monitorStore.events || []
   const metrics = monitorStore.metricsTimeline || []
+  const machine = events.filter((event) => event.type === 'machine_breakdown').length
+  const agv = events.filter((event) => event.type === 'agv_breakdown').length
+  const obstacle = events.filter((event) => event.type === 'temporary_obstacle').length
   const counts = {
-    total: events.filter((event) => exceptionTypes.has(event.type)).length,
-    machine: events.filter((event) => event.type === 'machine_breakdown').length,
-    agv: events.filter((event) => event.type === 'agv_breakdown').length,
-    obstacle: events.filter((event) => event.type === 'temporary_obstacle').length,
+    total: machine + agv + obstacle,
+    machine,
+    agv,
+    obstacle,
   }
   const lines = []
   const recoveries = new Map()

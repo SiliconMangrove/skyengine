@@ -496,7 +496,9 @@ const testPlay = async () => {
 
 function handleConfigLoaded(config) {
   resetLocalRuntimeState();
-  applySimulationControl(config?.simulation_control);
+  if (config && Object.prototype.hasOwnProperty.call(config, "simulation_control")) {
+    applySimulationControl(config.simulation_control);
+  }
   if (config?.exception_config) {
     selectedExceptionPreset.value = "custom";
   } else if (selectedExceptionPreset.value === "custom") {
