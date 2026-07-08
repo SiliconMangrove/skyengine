@@ -140,6 +140,19 @@
               </select>
             </div>
             <div class="docker-config-exception-row">
+              <label>加工时间波动</label>
+              <select
+                v-model="selectedProcessingTimePreset"
+                class="plan-select docker-config-select"
+                :disabled="sim.isRunningTest.value || processingTimeConfigLocked"
+                :title="processingTimeConfigLocked ? '当前配置文件已提供 processing_time_config，加工时间波动固定为自定义' : '选择内置加工时间波动'"
+              >
+                <option v-for="opt in processingTimePresetOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </div>
+            <div class="docker-config-exception-row">
               <label>停止条件</label>
               <div class="docker-step-limit-row">
                 <input
@@ -169,6 +182,7 @@
           :is-running="sim.isRunningTest.value"
           :simulation-meta="currentExperimentMeta"
           :exception-config="activeExceptionConfig"
+          :processing-time-config="activeProcessingTimeConfig"
           @load-plan="handleExperimentPlanLoaded"
         />
       </template>
@@ -230,10 +244,15 @@ const activeTab = ref("simulation");
 const backgroundTheme = ref("factory");
 const backgroundSize = ref(2);
 const selectedExceptionPreset = ref("no_event");
+const selectedProcessingTimePreset = ref("none");
 const maxSimulationSteps = ref(1000);
 const unlimitedSimulationSteps = ref(false);
 const exceptionConfigLocked = computed(() => {
   const cfg = store.currentConfig?.exception_config;
+  return Boolean(cfg && typeof cfg === "object");
+});
+const processingTimeConfigLocked = computed(() => {
+  const cfg = store.currentConfig?.processing_time_config;
   return Boolean(cfg && typeof cfg === "object");
 });
 const exceptionPresetOptions = [
@@ -244,8 +263,16 @@ const exceptionPresetOptions = [
   { value: "routing_disruption", label: "路径扰动" },
   { value: "custom", label: "自定义" },
 ];
+const processingTimePresetOptions = [
+  { value: "none", label: "无波动" },
+  { value: "mild_variance", label: "轻微波动" },
+  { value: "moderate_variance", label: "中等波动" },
+  { value: "high_variance", label: "高波动" },
+  { value: "custom", label: "自定义" },
+];
 
 const activeExceptionConfig = computed(() => getActiveExceptionConfig());
+const activeProcessingTimeConfig = computed(() => getActiveProcessingTimeConfig());
 const activeSimulationControl = computed(() => ({
   max_steps: unlimitedSimulationSteps.value ? null : normalizeMaxSimulationSteps(maxSimulationSteps.value),
 }));
@@ -257,6 +284,7 @@ const currentExperimentMeta = computed(() => ({
   assigner: sim.selectedAssigner.value,
   algorithm: sim.algorithmString.value,
   exception_preset: selectedExceptionPreset.value,
+  processing_time_preset: selectedProcessingTimePreset.value,
   max_steps: activeSimulationControl.value.max_steps,
 }));
 
@@ -296,6 +324,17 @@ watch(
       selectedExceptionPreset.value = "custom";
     } else if (selectedExceptionPreset.value === "custom") {
       selectedExceptionPreset.value = "no_event";
+    }
+  },
+);
+
+watch(
+  () => store.currentConfig?.processing_time_config,
+  (cfg) => {
+    if (cfg && typeof cfg === "object") {
+      selectedProcessingTimePreset.value = "custom";
+    } else if (selectedProcessingTimePreset.value === "custom") {
+      selectedProcessingTimePreset.value = "none";
     }
   },
 );
@@ -350,7 +389,7 @@ const handleExecutePlan = async () => {
   containerStartStatus.value = '正在设定策略...';
 
   try {
-    await syncExceptionConfigToBackend();
+    await syncRunConfigToBackend();
 
     await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
       algorithm: sim.algorithmString.value,
@@ -374,7 +413,7 @@ const handleExecutePlan = async () => {
 
 const testSetAlgorithm = async () => {
   try {
-    await syncExceptionConfigToBackend();
+    await syncRunConfigToBackend();
     await apiPost(API_ROUTES.FACTORY_ALGORITHM_SET, {
       algorithm: sim.algorithmString.value,
     }, { timeout: 15000 });
@@ -387,7 +426,7 @@ const testSetAlgorithm = async () => {
 const testReset = async () => {
   try {
     resetLocalRuntimeState({ initializeAgvs: false });
-    await syncExceptionConfigToBackend();
+    await syncRunConfigToBackend();
     await apiPost(API_ROUTES.FACTORY_CONTROL_RESET, null, { timeout: 15000 });
     store.initializeAGVs();
     ElMessage.success('✅ 重置工厂成功');
@@ -401,9 +440,9 @@ const testPlay = async () => {
   //    DockerProxy.start() 首次启动 mapf/fjsp 容器可能 > 30s，
   //    如果 SSE 放在 await play 之后，play 超时会导致 SSE 永远不建立。
   try {
-    await syncExceptionConfigToBackend();
+    await syncRunConfigToBackend();
   } catch (error) {
-    ElMessage.error(`异常配置同步失败: ${error.message}`);
+    ElMessage.error(`运行配置同步失败: ${error.message}`);
     return;
   }
   disconnectAllSSE();
@@ -505,6 +544,11 @@ function handleConfigLoaded(config) {
   } else if (selectedExceptionPreset.value === "custom") {
     selectedExceptionPreset.value = "no_event";
   }
+  if (config?.processing_time_config) {
+    selectedProcessingTimePreset.value = "custom";
+  } else if (selectedProcessingTimePreset.value === "custom") {
+    selectedProcessingTimePreset.value = "none";
+  }
 }
 
 function handleExperimentPlanLoaded(plan) {
@@ -513,10 +557,14 @@ function handleExperimentPlanLoaded(plan) {
     if (plan.exception_config) {
       config.exception_config = JSON.parse(JSON.stringify(plan.exception_config));
     }
+    if (plan.processing_time_config) {
+      config.processing_time_config = JSON.parse(JSON.stringify(plan.processing_time_config));
+    }
     resetLocalRuntimeState();
     store.loadConfigFromFile(config);
     store.initializeAGVs();
     selectedExceptionPreset.value = config.exception_config ? "custom" : "no_event";
+    selectedProcessingTimePreset.value = config.processing_time_config ? "custom" : "none";
     applySimulationControl(config.simulation_control ?? plan?.simulation);
   }
   const meta = plan?.simulation || {};
@@ -526,11 +574,12 @@ function handleExperimentPlanLoaded(plan) {
   applySimulationControl(config?.simulation_control ?? meta);
 }
 
-async function syncExceptionConfigToBackend() {
+async function syncRunConfigToBackend() {
   const currentConfig = store.currentConfig;
   if (!currentConfig) return;
   const config = JSON.parse(JSON.stringify(currentConfig));
   config.exception_config = getActiveExceptionConfig();
+  config.processing_time_config = getActiveProcessingTimeConfig();
   config.simulation_control = {
     ...(config.simulation_control || {}),
     ...activeSimulationControl.value,
@@ -540,7 +589,7 @@ async function syncExceptionConfigToBackend() {
     config,
   }, { timeout: 30000 });
   if (response.status !== "ok") {
-    throw new Error(response.message || "异常配置同步失败");
+    throw new Error(response.message || "运行配置同步失败");
   }
 }
 
@@ -550,6 +599,14 @@ function getActiveExceptionConfig() {
     return cfg ? JSON.parse(JSON.stringify(cfg)) : { preset: "no_event" };
   }
   return { preset: selectedExceptionPreset.value };
+}
+
+function getActiveProcessingTimeConfig() {
+  if (processingTimeConfigLocked.value || selectedProcessingTimePreset.value === "custom") {
+    const cfg = store.currentConfig?.processing_time_config;
+    return cfg ? JSON.parse(JSON.stringify(cfg)) : { preset: "none" };
+  }
+  return { preset: selectedProcessingTimePreset.value };
 }
 
 function normalizeMaxSimulationSteps(value) {

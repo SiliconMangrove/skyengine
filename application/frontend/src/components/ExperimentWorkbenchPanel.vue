@@ -95,7 +95,7 @@
     <section v-else-if="activeTab === 'plans'" class="experiment-section">
       <div class="section-head">
         <h3>实验方案</h3>
-        <span class="muted">保存算法、配置和 exception_config</span>
+        <span class="muted">保存算法、配置、exception_config 和 processing_time_config</span>
       </div>
 
       <div class="plan-save-row">
@@ -294,6 +294,7 @@ const props = defineProps({
   isRunning: { type: Boolean, default: false },
   simulationMeta: { type: Object, default: () => ({}) },
   exceptionConfig: { type: Object, default: () => ({ preset: 'no_event' }) },
+  processingTimeConfig: { type: Object, default: () => ({ preset: 'none' }) },
 })
 
 const emit = defineEmits(['load-plan'])
@@ -437,6 +438,7 @@ function savePlan() {
   if (!currentConfig.value) return
   const planConfig = JSON.parse(JSON.stringify(currentConfig.value))
   planConfig.exception_config = JSON.parse(JSON.stringify(props.exceptionConfig || { preset: 'no_event' }))
+  planConfig.processing_time_config = JSON.parse(JSON.stringify(props.processingTimeConfig || { preset: 'none' }))
   planConfig.simulation_control = {
     ...(planConfig.simulation_control || {}),
     max_steps: props.simulationMeta?.max_steps ?? 1000,
@@ -447,6 +449,7 @@ function savePlan() {
     created_at: new Date().toISOString(),
     simulation: { ...props.simulationMeta },
     exception_config: JSON.parse(JSON.stringify(props.exceptionConfig || { preset: 'no_event' })),
+    processing_time_config: JSON.parse(JSON.stringify(props.processingTimeConfig || { preset: 'none' })),
     config: planConfig,
   }
   plans.value.unshift(plan)

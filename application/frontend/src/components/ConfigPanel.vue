@@ -477,6 +477,10 @@ function downloadTemplate() {
     exception_config: {
       preset: 'no_event',
     },
+    // 加工时间波动配置。不是 Exception；用于工序开始加工时采样实际加工时长。
+    processing_time_config: {
+      preset: 'none',
+    },
     simulation_control: {
       max_steps: 1000,
     },
