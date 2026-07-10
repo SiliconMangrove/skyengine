@@ -580,6 +580,10 @@ async function syncRunConfigToBackend() {
   const config = JSON.parse(JSON.stringify(currentConfig));
   config.exception_config = getActiveExceptionConfig();
   config.processing_time_config = getActiveProcessingTimeConfig();
+  store.setRuntimeProfiles({
+    exceptionConfig: config.exception_config,
+    processingTimeConfig: config.processing_time_config,
+  });
   config.simulation_control = {
     ...(config.simulation_control || {}),
     ...activeSimulationControl.value,

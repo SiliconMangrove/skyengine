@@ -678,7 +678,12 @@ function pairExceptionDurations(events) {
     const step = eventStep(event)
     if (event.type === 'machine_breakdown') {
       const machineId = event.payload?.machine_id
-      const record = { type: 'machine', label: `M${machineId}`, startStep: step, recoveryStep: null }
+      const record = {
+        type: 'machine',
+        label: event.payload?.display_name || factoryStore.getMachineDisplayName(machineId),
+        startStep: step,
+        recoveryStep: null,
+      }
       records.push(record)
       enqueueOpen(openMachines, String(machineId), record)
     } else if (event.type === 'machine_recovery') {
