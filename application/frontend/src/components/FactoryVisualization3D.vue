@@ -10,10 +10,17 @@
         v-for="l in screenLabels"
         :key="l.id"
         class="world-label"
-        :class="[`label-${l.kind}`, { 'label-hoverable': l.kind === 'machine' }]"
+        :class="[
+          `label-${l.kind}`,
+          {
+            'label-hoverable': l.kind === 'machine' || l.kind === 'agv',
+            'label-selected': isLabelSelected(l),
+          },
+        ]"
         :style="{ left: l.x + 'px', top: l.y + 'px', color: l.color }"
         @mouseenter="onLabelEnter(l)"
         @mouseleave="onLabelLeave(l)"
+        @click.stop="selectLabel(l)"
       >
         <span class="label-hitbox" :class="{ 'label-hitbox-alert': l.alert }">
           <span class="label-main-row">
@@ -140,6 +147,33 @@ function onLabelLeave(l) {
   }
 }
 
+function isLabelSelected(label) {
+  if (label.kind === 'machine') return store.selectedMachineKey === label.runtimeMachineKey
+  if (label.kind === 'agv') return store.selectedAgvIndex === label.agvIndex
+  return false
+}
+
+function runtimeKeyForMachineId(machineId) {
+  const stateMachines = store.currentState?.machines || {}
+  const metadataEntry = Object.entries(stateMachines).find(([, machine]) =>
+    [machine?.config_id, machine?.config_key].some((value) => String(value) === String(machineId)),
+  )
+  if (metadataEntry) return metadataEntry[0]
+
+  const machineIndex = Array.from(machineMeshMap.keys()).indexOf(machineId)
+  return Object.keys(stateMachines)[machineIndex] || machineId
+}
+
+function selectAsset(asset) {
+  if (asset?.type === 'machine') store.selectMachine(runtimeKeyForMachineId(asset.id))
+  if (asset?.type === 'agv') store.selectAgv(asset.index)
+}
+
+function selectLabel(label) {
+  if (label.kind === 'machine') store.selectMachine(label.runtimeMachineKey)
+  if (label.kind === 'agv') store.selectAgv(label.agvIndex)
+}
+
 // ==================== Topology ====================
 const topology = computed(() => {
   const config = props.staticConfig || {}
@@ -192,6 +226,7 @@ const mouse = new THREE.Vector2()
 let highlightMesh = null
 let draggingAsset = null        // { type, id, group }
 let isDragging = false
+let selectionPointerStart = null
 let dragStartMouseWorld = null
 let dragStartGridX = 0
 let dragStartGridY = 0
@@ -287,7 +322,7 @@ function findAssetAtPoint(worldPoint) {
     if (!ad?.group) continue
     const { gx: ax, gy: ay } = snapToGrid(ad.group.position)
     if (ax === gx && ay === gy) {
-      return { type: 'agv', id: agvs[i]?.id ?? i, group: ad.group }
+      return { type: 'agv', id: agvs[i]?.id ?? i, index: i, group: ad.group }
     }
   }
 
@@ -320,7 +355,10 @@ function findAssetAtPoint(worldPoint) {
 }
 
 function onCanvasPointerDown(event) {
-  if (!props.editMode) return
+  if (!props.editMode) {
+    selectionPointerStart = { x: event.clientX, y: event.clientY }
+    return
+  }
   const point = getGroundIntersection(event)
   if (!point) return
 
@@ -379,7 +417,14 @@ function onCanvasPointerMove(event) {
 }
 
 function onCanvasPointerUp(event) {
-  if (!props.editMode) return
+  if (!props.editMode) {
+    const start = selectionPointerStart
+    selectionPointerStart = null
+    if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return
+    const point = getGroundIntersection(event)
+    if (point) selectAsset(findAssetAtPoint(point))
+    return
+  }
 
   if (isDragging && draggingAsset) {
     // 用 lastDragGridX/Y（pointerMove 已实时记录），不依赖 pointerUp 的射线检测
@@ -425,6 +470,7 @@ function removeEditModeListeners() {
   }
   isDragging = false
   draggingAsset = null
+  selectionPointerStart = null
   dragStartMouseWorld = null
   controls.enabled = true
   renderer.domElement.style.cursor = ''
@@ -924,6 +970,7 @@ function updateScreenLabels() {
   // 兜底：StaticFactory 用 "M1"/"M2"/"M3" 作 key，但 mesh 用 config 的 id (如 MACHINE_1_1)
   // → 当 key 对不上时，按 mesh 迭代顺序做 index 对齐
   const machineStateList = Object.values(machineStatesDict)
+  const machineStateKeys = Object.keys(machineStatesDict)
 
   // 统计每台机器已完工 Op 数（来自 jobs 反查）
   const jobs = store.currentState?.jobs || []
@@ -1010,6 +1057,7 @@ function updateScreenLabels() {
       id: `machine-${id}`,
       kind: 'machine',
       machineId: id,
+      runtimeMachineKey: machineStateKeys[curIndex] || id,
       x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
       y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
       text: group.userData.name || id,
@@ -1033,6 +1081,7 @@ function updateScreenLabels() {
     labels.push({
       id: `agv-${i}`,
       kind: 'agv',
+      agvIndex: i,
       x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
       y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
       text: `A${i + 1}`,
@@ -1103,10 +1152,8 @@ onMounted(async () => {
   resizeObserver = new ResizeObserver(onResize)
   resizeObserver.observe(containerRef.value)
 
-  // 编辑模式：初始化监听器
-  if (props.editMode) {
-    setupEditModeListeners()
-  }
+  // 选择与编辑共用同一套画布事件；具体行为由 editMode 决定。
+  setupEditModeListeners()
 })
 
 onBeforeUnmount(() => {
@@ -1184,11 +1231,11 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
 // ==================== 监听编辑模式切换 ====================
 watch(() => props.editMode, (val) => {
   if (val) {
-    setupEditModeListeners()
     // 进入编辑模式：把 AGV 摆到 cfg.agvs.initialLocation（无仿真时 mesh 默认停在 0,0）
     syncAGVsFromConfig()
   } else {
-    removeEditModeListeners()
+    hideHighlight()
+    selectionPointerStart = null
   }
 })
 
@@ -1315,6 +1362,11 @@ defineExpose({
 }
 .label-hoverable:hover .label-hitbox-alert {
   background: rgba(158, 28, 38, 0.96);
+}
+.label-selected .label-hitbox {
+  background: rgba(70, 145, 220, 0.32);
+  border-color: rgba(148, 215, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(100, 181, 255, 0.35), 0 4px 14px rgba(0, 0, 0, 0.32);
 }
 
 .label-machine .label-hitbox {

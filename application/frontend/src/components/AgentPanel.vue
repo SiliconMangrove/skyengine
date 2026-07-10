@@ -315,7 +315,7 @@ const machineList = computed(() => {
     const status = m.status || (m.current_op ? 'WORKING' : 'IDLE')
     return {
       key,
-      name: m.name ?? key,
+      name: m.name ?? store.getMachineDisplayName(m.id ?? key, store.currentState),
       status,
       isWorking: status === 'WORKING',
       current_op: m.current_op ?? null,
