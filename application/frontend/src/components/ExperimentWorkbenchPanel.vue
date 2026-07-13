@@ -26,7 +26,6 @@
             <option value="machine_breakdown">机器故障</option>
             <option value="agv_breakdown">AGV 故障</option>
             <option value="temporary_obstacle">临时障碍</option>
-            <option value="urgent_job_arrival">紧急 Job</option>
           </select>
         </label>
 
@@ -35,7 +34,7 @@
           <input v-model.number="exceptionForm.delay_steps" type="number" min="0" />
         </label>
 
-        <label v-if="exceptionForm.type !== 'urgent_job_arrival'">
+        <label>
           持续步数
           <input v-model.number="exceptionForm.duration_steps" type="number" min="1" />
         </label>
@@ -58,17 +57,6 @@
           <label>
             障碍 Y
             <input v-model.number="exceptionForm.cell_y" type="number" min="0" />
-          </label>
-        </template>
-
-        <template v-if="exceptionForm.type === 'urgent_job_arrival'">
-          <label>
-            候选机器
-            <input v-model.number="exceptionForm.urgent_machine_id" type="number" min="0" />
-          </label>
-          <label>
-            加工时间
-            <input v-model.number="exceptionForm.urgent_proc_time" type="number" min="1" />
           </label>
         </template>
 
@@ -135,7 +123,7 @@
         <select v-model="selectedRunId">
           <option value="">当前会话</option>
           <option v-for="run in analysisLog.runs" :key="run.id" :value="run.id">
-            {{ run.id }} · {{ run.summary?.total_steps ?? 0 }} steps
+            {{ run.id }} · {{ run.summary?.total_steps ?? 0 }} steps · {{ run.summary?.insertion_count ?? 0 }} 插单
           </option>
         </select>
         <button class="ghost" @click="analysisLog.listRuns()">刷新</button>
@@ -183,6 +171,19 @@
         </button>
         <span v-if="exceptionEvents.length === 0" class="muted">暂无异常事件</span>
       </div>
+
+      <div class="exception-jumps">
+        <div class="mini-title">插单跳转</div>
+        <button
+          v-for="event in insertionEvents"
+          :key="event.id"
+          class="jump-chip"
+          @click="jumpToStep(event.step ?? event.idx ?? 0)"
+        >
+          #{{ event.step ?? event.idx ?? 0 }} {{ insertionEventLabel(event) }}
+        </button>
+        <span v-if="insertionEvents.length === 0" class="muted">暂无插单记录</span>
+      </div>
     </section>
 
     <section v-else-if="activeTab === 'compare'" class="experiment-section">
@@ -208,7 +209,7 @@
             @change="toggleCompareRun(run.id)"
           />
           <span>{{ run.id }}</span>
-          <small>{{ run.algorithm || 'no-algorithm' }} · {{ run.summary?.event_total ?? 0 }} events</small>
+          <small>{{ run.algorithm || 'no-algorithm' }} · {{ run.summary?.event_total ?? 0 }} events · {{ run.summary?.insertion_count ?? 0 }} 插单</small>
         </label>
       </div>
 
@@ -308,7 +309,11 @@ const exceptionJumpTypes = new Set([
   'machine_breakdown',
   'agv_breakdown',
   'temporary_obstacle',
+])
+const insertionJumpTypes = new Set([
+  'job_insertion_phase_changed',
   'urgent_job_arrival',
+  'job_replan_failed',
 ])
 
 const tabs = [
@@ -331,8 +336,6 @@ const exceptionForm = ref({
   agv_id: 0,
   cell_x: 1,
   cell_y: 1,
-  urgent_machine_id: 0,
-  urgent_proc_time: 3,
   reason: 'manual_exception',
 })
 
@@ -383,10 +386,6 @@ function buildExceptionBody() {
   } else if (form.type === 'temporary_obstacle') {
     body.cell = [Number(form.cell_x) || 0, Number(form.cell_y) || 0]
     body.duration_steps = Math.max(1, Number(form.duration_steps) || 1)
-  } else if (form.type === 'urgent_job_arrival') {
-    body.template = [{
-      machine_options_with_time: [[Number(form.urgent_machine_id) || 0, Math.max(1, Number(form.urgent_proc_time) || 1)]],
-    }]
   }
   return body
 }
@@ -530,7 +529,12 @@ async function loadSelectedRun() {
   try {
     const run = await analysisLog.loadRun(selectedRunId.value)
     if (!run) throw new Error(analysisLog.error || '归档不存在')
-    factoryStore.loadData(run.frames || [])
+    const frames = JSON.parse(JSON.stringify(run.frames || []))
+    if (frames.length && Array.isArray(run.insertionRequests)) {
+      const hasFrameRecords = frames.some((frame) => Array.isArray(frame.insertion_requests))
+      if (!hasFrameRecords) frames[frames.length - 1].insertion_requests = run.insertionRequests
+    }
+    factoryStore.loadData(frames)
     monitorStore.loadArchiveData(run.metricsTimeline || [], run.events || [])
     stopReplay()
     activeTab.value = 'replay'
@@ -584,6 +588,20 @@ function jumpToStep(step) {
 const exceptionEvents = computed(() =>
   (monitorStore.events || []).filter((event) => exceptionJumpTypes.has(event.type))
 )
+
+const insertionEvents = computed(() =>
+  (monitorStore.events || []).filter((event) => insertionJumpTypes.has(event.type))
+)
+
+function insertionEventLabel(event) {
+  const phase = event.payload?.phase
+  const phaseLabels = {
+    queued: '排队', replanning: '重规划', scheduled: '已排程',
+    transporting: '运输中', processing: '加工中', completed: '已完成', failed: '失败',
+  }
+  const requestId = event.payload?.request_id || '插单'
+  return `${requestId} ${phaseLabels[phase] || event.title || event.type}`
+}
 
 const filteredRuns = computed(() => {
   const q = runFilter.value.toLowerCase()

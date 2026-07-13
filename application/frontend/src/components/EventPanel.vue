@@ -176,6 +176,9 @@ const eventIconMap = {
     agv_breakdown: '🚨', agv_recovery: '🟢',
     temporary_obstacle: '⛔', obstacle_clear: '🧹',
     urgent_job_arrival: '⚡',
+    job_replan_started: '↻', job_replan_completed: '✓', job_replan_failed: '✕',
+    job_insertion_phase_changed: '▸',
+    job_preempted: 'Ⅱ', job_resumed: '▶',
 }
 function getEventIcon(ev) {
     if (!ev) return 'ℹ️'

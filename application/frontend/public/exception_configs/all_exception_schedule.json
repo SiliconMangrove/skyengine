@@ -129,17 +129,6 @@
         "cell": [3, 3],
         "duration_steps": 14,
         "reason": "demo_temporary_obstacle"
-      },
-      {
-        "step": 60,
-        "type": "urgent_job_arrival",
-        "template": [
-          {
-            "machine_options_with_time": [[0, 8]]
-          }
-        ],
-        "create_initial_transfer": true,
-        "reason": "demo_urgent_job_arrival"
       }
     ],
     "temporary_obstacle": {

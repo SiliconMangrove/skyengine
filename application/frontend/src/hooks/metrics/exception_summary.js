@@ -7,7 +7,6 @@ const SERIES = [
   { key: 'machine_failure_count', name: '机器故障', color: '#ff8a65' },
   { key: 'agv_failure_count', name: 'AGV 故障', color: '#ffb450' },
   { key: 'temporary_obstacle_count', name: '临时障碍', color: '#ba68c8' },
-  { key: 'urgent_job_count', name: '紧急插单', color: '#64b5ff' },
 ]
 
 export default {

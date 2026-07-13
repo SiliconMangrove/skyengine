@@ -188,7 +188,11 @@
       </template>
 
       <template #tab-insert>
-        <JobInsertPanel />
+        <JobInsertPanel
+          :is-running="sim.isRunningTest.value"
+          :algorithm="sim.algorithmString.value"
+          supports-insertion
+        />
       </template>
 
       <!-- 指标 tab：配置驱动的 DashboardPanel -->
@@ -376,7 +380,19 @@ const handleStop = async () => {
     console.warn('[DockerFactory] pause 请求失败:', error.message);
     ElMessage.warning(`停止请求失败：${error.message}（数据流将本地断开）`);
   }
-  // 2. 本地断 SSE + 重置状态
+  // 2. 手动停止也先归档三流，避免插单记录随本地 reset 丢失。
+  if (store.historyBuffer.length > 0) {
+    try {
+      await analysisLog.finalizeFromStores(store, monitorStore, {
+        factory_id: store.selectedFactoryId,
+        algorithm: sim.algorithmString.value,
+      });
+    } catch (error) {
+      console.error('[DockerFactory] 手动停止归档失败:', error);
+      ElMessage.warning(`运行日志保存失败：${error.message}`);
+    }
+  }
+  // 3. 本地断 SSE + 重置状态
   resetLocalRuntimeState({ initializeAgvs: false });
 };
 

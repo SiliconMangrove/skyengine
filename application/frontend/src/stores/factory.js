@@ -183,6 +183,7 @@ function normalizeSnapshot(snapshot, fallbackIndex) {
     machines: machinesDict,
     jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs : [],
     active_transfers: snapshot.active_transfers ?? [],
+    insertion_requests: Array.isArray(snapshot.insertion_requests) ? snapshot.insertion_requests : [],
   }
 }
 
