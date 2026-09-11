@@ -24,49 +24,21 @@ cd /path/to/skyengine
 
 后续命令都在 `skyengine` 根目录或对应的算法仓库目录中执行。
 
-## 3. 构建 FJSP 算子仓库
+## 3. 构建 FJSP 与 MAPF 算子仓库
 
-在与 `skyengine` 同级的目录中克隆并按仓库说明构建 [SkyEngine-FJSP](https://github.com/skyrimforest/SkyEngine-FJSP)：
+在与 `skyengine` 同级的目录中克隆两个算法仓库，并分别使用 Docker Compose 构建全部镜像：
 
 ```bash
 cd ..
 git clone https://github.com/skyrimforest/SkyEngine-FJSP.git
-cd SkyEngine-FJSP
-./build.sh
-```
-
-`./build.sh` 会按该仓库的默认流程构建基础镜像和可用算子镜像。也可以按需构建单个算子，例如：
-
-```bash
-./build.sh de
-./build.sh pso
-./build.sh best
-```
-
-需要使用深度学习算子时，再按该仓库说明构建 `drl`，并准备对应的 GPU 环境和模型权重。
-
-## 4. 构建 MAPF 算子仓库
-
-继续在与 `skyengine` 同级的目录中克隆并按仓库说明构建 [SkyEngine-MAPF](https://github.com/skyrimforest/SkyEngine-MAPF)：
-
-```bash
-cd ..
 git clone https://github.com/skyrimforest/SkyEngine-MAPF.git
-cd SkyEngine-MAPF
-./build.sh
+cd SkyEngine-FJSP
+docker compose build
+cd ../SkyEngine-MAPF
+docker compose build
 ```
 
-也可以按需构建单个算子，例如：
-
-```bash
-./build.sh astar
-./build.sh flow-rl
-./build.sh mapf-gpt
-```
-
-部分 MAPF 算子需要 GPU 或额外模型权重，具体以该仓库的说明为准。
-
-> 两个外部仓库的镜像名称必须与其说明一致。若平台配置选择了某个算子，而对应镜像尚未构建，平台在启动该算子时会找不到镜像。
+两个外部仓库的镜像名称必须与其说明一致。部分算法需要 GPU 或额外模型权重，具体以对应仓库 README 为准。
 
 ## 5. 安装 SkyEngine
 
@@ -112,27 +84,10 @@ docker compose -p skyengine-online -f docker-compose-online.yaml logs -f engine
 
 该脚本会停止平台、在线引擎和批处理引擎 Compose 项目，但不会删除镜像、数据集或日志。
 
-## Windows 开发入口
-
-Windows 使用 Docker Desktop、Python 3.11、Node.js 20 或更高版本，并在项目根目录运行：
-
-```powershell
-.\启动SkyEngine开发服务.ps1
-```
-
-停止服务：
-
-```powershell
-.\停止SkyEngine开发服务.ps1
-```
-
-Windows 启动脚本同样会在默认端口被占用时自动选择可用端口，并在输出中显示实际地址。
-
 ## 可选配置
 
 - `.env` 中的 `FJSP_IMAGE` 和 `MAPF_IMAGE` 可用于选择已构建的默认算法镜像。
 - 使用 GPU 算子时，按需设置 `CUDA_VISIBLE_DEVICES`，并确保 Docker 能访问 GPU。
-- RAG 助手需要单独的模型服务和地址配置，不是 SkyEngine 基础网页启动的必需项。
 - 数据集位于 `dataset/`，批处理和在线引擎会使用项目配置的挂载目录。
 
 ## 常见问题
@@ -143,7 +98,7 @@ Windows 启动脚本同样会在默认端口被占用时自动选择可用端口
 
 ### 算法服务启动时找不到镜像
 
-确认已经分别进入 `SkyEngine-FJSP` 和 `SkyEngine-MAPF`，并按它们各自的说明成功执行过 `./build.sh`。选择了特定算子时，还要确认对应的镜像标签与平台配置一致。
+确认已经分别进入 `SkyEngine-FJSP` 和 `SkyEngine-MAPF`，并按它们各自的说明成功执行过 `docker compose build`。选择了特定算子时，还要确认对应的镜像标签与平台配置一致。
 
 ### 服务启动失败
 
