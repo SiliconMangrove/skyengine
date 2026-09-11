@@ -5,16 +5,16 @@
       <span class="hint" v-if="!hasData">等待 frame 数据...</span>
     </div>
 
-    <div v-if="hasData" class="machine-list">
+    <div class="machine-list">
       <div
-        v-for="m in machineList"
+        v-for="m in displayList"
         :key="m.key"
         class="machine-card"
         :class="[
           `status-${m.statusClass}`,
-          { selected: m.key === store.selectedMachineKey }
+          { selected: !m.placeholder && m.key === store.selectedMachineKey, placeholder: m.placeholder }
         ]"
-        @click="store.selectMachine(m.key)"
+        @click="!m.placeholder && store.selectMachine(m.key)"
       >
         <div class="card-head">
           <span class="m-id">{{ m.key }}</span>
@@ -78,6 +78,16 @@ const machineList = computed(() => {
 })
 
 const hasData = computed(() => machineList.value.length > 0)
+
+// 占位数据：无 frame 数据时也渲染卡片，保证面板始终可见。
+// 形状与 machineList 归一化后的条目一致；placeholder: true 用于降级样式 + 屏蔽点击。
+const PLACEHOLDER_MACHINES = [
+  { key: 'M1', statusLabel: 'IDLE', statusClass: 'idle', current_op: null, queueLength: 0, opStepPct: 0, opJobPct: 0, placeholder: true },
+  { key: 'M2', statusLabel: 'IDLE', statusClass: 'idle', current_op: null, queueLength: 0, opStepPct: 0, opJobPct: 0, placeholder: true },
+  { key: 'M3', statusLabel: 'IDLE', statusClass: 'idle', current_op: null, queueLength: 0, opStepPct: 0, opJobPct: 0, placeholder: true },
+]
+
+const displayList = computed(() => hasData.value ? machineList.value : PLACEHOLDER_MACHINES)
 </script>
 
 <style scoped>
@@ -111,6 +121,12 @@ const hasData = computed(() => machineList.value.length > 0)
 }
 .machine-card.status-broken { border-color: rgba(255,100,100,0.4); }
 .machine-card.status-blocked { border-color: rgba(255,180,80,0.4); }
+.machine-card.placeholder {
+  border-style: dashed;
+  border-color: rgba(255,255,255,0.12);
+  opacity: 0.55;
+  cursor: default;
+}
 
 .card-head {
   display: flex;

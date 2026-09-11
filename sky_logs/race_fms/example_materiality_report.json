@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "regimes": {
+    "high": {
+      "paired_runs": 2,
+      "separated_mean_cost": 4.5150500000000005,
+      "joint_mean_cost": 2.4955999999999996,
+      "absolute_gap_mean": 2.01945,
+      "relative_gap_mean": 0.43382038697382136,
+      "relative_gap_ci95": [
+        0.35930595532492804,
+        0.5083348186227147
+      ],
+      "separated_cvar90": 5.33005,
+      "joint_cvar90": 2.6205999999999996,
+      "material_coupling": true,
+      "race_gap_closed_mean": 0.860149857194838,
+      "coupling_feature_means": {
+        "transport_processing_ratio": 0.6849999999999999,
+        "agv_load": 0.875,
+        "starvation_risk": 0.785,
+        "due_pressure": 0.84,
+        "queue_pressure": 0.7299999999999999,
+        "congestion_pressure": 0.785,
+        "disturbance_pressure": 0.7400000000000001,
+        "processing_uncertainty": 0.5,
+        "affected_fraction": 0.6849999999999999
+      }
+    },
+    "low": {
+      "paired_runs": 2,
+      "separated_mean_cost": 1.2000500000000003,
+      "joint_mean_cost": 1.1904,
+      "absolute_gap_mean": 0.00965000000000027,
+      "relative_gap_mean": 0.008046360167232541,
+      "relative_gap_ci95": [
+        0.007845209544327774,
+        0.008247510790137308
+      ],
+      "separated_cvar90": 1.2300500000000003,
+      "joint_cvar90": 1.2204,
+      "material_coupling": false,
+      "race_gap_closed_mean": 1.0259067357512803,
+      "coupling_feature_means": {
+        "transport_processing_ratio": 0.11,
+        "agv_load": 0.325,
+        "starvation_risk": 0.08999999999999998,
+        "due_pressure": 0.21,
+        "queue_pressure": 0.21,
+        "congestion_pressure": 0.055,
+        "disturbance_pressure": 0.11,
+        "processing_uncertainty": 0.055,
+        "affected_fraction": 0.11
+      }
+    }
+  },
+  "unmatched": []
+}

@@ -1,0 +1,26 @@
+config:
+  width: 20
+  height: 30
+  block_count: 0
+  point_count: 0
+  machine_count: 1
+  path_count: 0
+  agv_count: 1
+  blocks: []
+  points: []
+  machines:
+  - machine:
+      id: 1
+      type: packet_factory.Machine
+      coordinate:
+      - 1
+      - 0
+  paths: []
+  agvs:
+  - agv:
+      type: packet_factory.Agv
+      coordinate:
+      - 1
+      - 0
+      velocity: 1
+      capacity: 12

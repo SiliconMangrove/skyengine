@@ -4,7 +4,7 @@ FastAPI SSE 服务器，提供环境状态和性能指标实时推送
 
 # 启动脚本 uv run uvicorn application.backend.server:app --reload --host 0.0.0.0 --port 8000
 
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
@@ -12,6 +12,8 @@ import atexit
 import json
 import os
 import subprocess
+
+from application.backend.core.DockerProxy import _compose_command
 
 
 def _cleanup_online_stack() -> None:
@@ -27,7 +29,7 @@ def _cleanup_online_stack() -> None:
     if not compose_file or not os.path.exists(compose_file):
         return  # 没配 / 文件不存在,跳过(不阻塞 backend 退出)
 
-    cmd = ["docker", "compose", "-p", "skyengine-online"]
+    cmd = [*_compose_command(), "-p", "skyengine-online"]
     if project_dir:
         cmd += ["--project-directory", project_dir]
     cmd += ["-f", compose_file, "down", "--remove-orphans", "--timeout", "8"]
@@ -56,10 +58,27 @@ from application.backend.core.BaseFactoryProxy import (
 )
 from application.backend.core.ProxyFactory import ProxyFactory
 from application.backend.core.RouteRegistry import RouteRegistry
+from application.backend.core.DockerProxy import DockerProxy
+
+# 批处理专用 DockerProxy 实例（与当前工厂 current_factory_proxy 解耦）
+# 这样前端从任何页面（首页、StaticFactory、DockerFactory）都能直接发起批处理
+_batch_proxy: DockerProxy | None = None
+
+
+def _get_batch_proxy() -> DockerProxy:
+    """懒加载批处理专用 DockerProxy 单例。"""
+    global _batch_proxy
+    if _batch_proxy is None:
+        _batch_proxy = DockerProxy()
+        print("[Batch] 批处理专用 DockerProxy 已创建")
+    return _batch_proxy
 
 # History 模块
 from application.backend.history.routes import router as history_router
 from application.backend.history.manager import HistoryManager
+
+# Analysis 模块（工厂无关的 Run 持久化仓库，dataset/run/）
+from application.backend.analysis.routes import router as analysis_router
 
 
 app = FastAPI()
@@ -73,7 +92,7 @@ current_factory_proxy: FactoryProxyProtocol = None
 # 存储当前的工厂类型
 current_factory_type: str = "base_factory"
 
-# 当前运行 ID（由 history 模块分配）
+# 当前运行 ID（旧 history 模块分配；grid_factory_new 使用 analysis 归档）
 current_run_id: str = None
 
 # History 管理器
@@ -81,6 +100,9 @@ history_manager = HistoryManager()
 
 # 注册 history 路由
 app.include_router(history_router)
+
+# 注册 analysis 路由（Run 持久化仓库，工厂无关）
+app.include_router(analysis_router)
 
 # 添加CORS中间件，支持前端跨域请求
 app.add_middleware(
@@ -427,7 +449,7 @@ async def switch_factory_proxy(factory_id: str = Body(..., embed=True)):
     切换工厂代理
 
     Args:
-        factory_id: 工厂ID (packet_factory, grid_factory, huadong_center, southwest_logistics)
+        factory_id: 工厂ID (packet_factory, northeast_center, southwest_logistics, grid_factory_new)
     """
     global current_factory_proxy, current_factory_type, current_config
 
@@ -532,18 +554,21 @@ async def play_factory_control():
             await current_factory_proxy.start()
         print(f"[Play] Factory started, status: {current_factory_proxy.status.value}")
 
-        # 创建历史运行记录
-        algorithm = ''
-        try:
-            algorithm = current_factory_proxy.get_algorithm()
-        except Exception:
-            pass
-        run_record = history_manager.create_run(
-            factory_type=current_factory_type,
-            algorithm=algorithm or '',
-        )
-        current_run_id = run_record.id
-        print(f"[Play] 创建历史记录: {current_run_id}")
+        # grid_factory_new 的完整三流由前端统一写入 /analysis/runs。
+        # 旧 history 只保留给遗留工厂，避免主入口继续产生无详情的空 SQLite 记录。
+        current_run_id = None
+        if current_factory_type != "grid_factory_new":
+            algorithm = ''
+            try:
+                algorithm = current_factory_proxy.get_algorithm()
+            except Exception:
+                pass
+            run_record = history_manager.create_run(
+                factory_type=current_factory_type,
+                algorithm=algorithm or '',
+            )
+            current_run_id = run_record.id
+            print(f"[Play] 创建历史记录: {current_run_id}")
 
         return {
             "status": "ok",
@@ -573,6 +598,136 @@ async def pause_factory_control():
     except Exception as e:
         print(f"❌ 暂停失败: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+
+@app.post("/factory/control/insert_jobs")
+async def insert_jobs_control(body: dict = Body(...)):
+    """运行时批量插单（v2 FJSP 格式）。
+    body = {machines?, jobs: [[[{machine, processing}]]], extensions?}
+    透传 DockerProxy → engine /sim/insert_jobs。
+    非 Docker 工厂返回 unsupported。"""
+    if current_factory_proxy is None:
+        return {"status": "error", "message": "No factory loaded"}
+    if not hasattr(current_factory_proxy, "insert_jobs"):
+        return {"status": "error", "message": "Current factory does not support insert_jobs"}
+    try:
+        return await current_factory_proxy.insert_jobs(body)
+    except Exception as e:
+        print(f"❌ 插单失败: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/factory/exception/inject")
+async def inject_exception_control(body: dict = Body(...)):
+    """运行时手动注入 Exception。
+    Exception 是环境动力学扰动；前端日志仍通过 /stream/events 展示。"""
+    if current_factory_proxy is None:
+        return {"status": "error", "message": "No factory loaded"}
+    if not hasattr(current_factory_proxy, "inject_exception"):
+        return {"status": "error", "message": "Current factory does not support runtime Exception injection"}
+    try:
+        return await current_factory_proxy.inject_exception(body)
+    except Exception as e:
+        print(f"❌ Exception 注入失败: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/factory/exception/clear")
+async def clear_exception_control(body: dict | None = Body(default=None)):
+    """清理运行时手动或仍活跃的 Exception 效果。"""
+    if current_factory_proxy is None:
+        return {"status": "error", "message": "No factory loaded"}
+    if not hasattr(current_factory_proxy, "clear_exceptions"):
+        return {"status": "error", "message": "Current factory does not support runtime Exception clearing"}
+    try:
+        return await current_factory_proxy.clear_exceptions(body or {})
+    except Exception as e:
+        print(f"❌ Exception 清理失败: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+# ==================== 批处理（DockerProxy 专用）====================
+# 设计见 finalpro/SkyEngine/explore/0704批处理前端调用设计.md
+# 4 个端点：start / cancel / status / stream
+# 非 DockerProxy 工厂（如 StaticFactoryProxy）返回 unsupported
+
+@app.post("/batch/start")
+async def batch_start(body: dict = Body(...)):
+    """启动批处理。body = {experiments: [...], base_env?: {...}}
+    experiments 每项 = {solver_job, solver_route, fjsp_image, mapf_image, mapf_obs_type, seed}
+    （参考 experiment/exp0503/run_experiments.py）。
+    使用与工厂解耦的批处理专用 DockerProxy 单例，任何页面都可调用。
+    """
+    proxy = _get_batch_proxy()
+    experiments = body.get("experiments")
+    if not isinstance(experiments, list) or not experiments:
+        return {"status": "error", "message": "experiments 必须是非空数组"}
+    base_env = body.get("base_env") or {}
+    try:
+        return await proxy.start_batch(experiments, base_env)
+    except Exception as e:
+        print(f"❌ 批处理启动失败: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/batch/cancel")
+async def batch_cancel():
+    """取消批处理：docker compose down + 停 worker。"""
+    proxy = _get_batch_proxy()
+    try:
+        return await proxy.cancel_batch()
+    except Exception as e:
+        print(f"❌ 批处理取消失败: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/batch/upload_instance")
+async def batch_upload_instance(
+    file: UploadFile = File(...),
+    kind: str = Form(...),
+):
+    """上传 FJSP/MAPF 实例文件到宿主机 dataset/{kind}/ 下。
+    返回 {status, filename}。批处理 start 时把这个 filename 放到
+    experiments[].fjsp_instance / mapf_instance 字段即可让容器使用。
+    """
+    proxy = _get_batch_proxy()
+    try:
+        content = await file.read()
+        filename = proxy.save_batch_instance(file.filename, content, kind)
+        return {"status": "ok", "filename": filename, "size": len(content)}
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        print(f"❌ 实例上传失败: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/batch/status")
+async def batch_status():
+    """查询批处理状态。"""
+    proxy = _get_batch_proxy()
+    return proxy.get_batch_status()
+
+
+@app.get("/batch/stream")
+async def batch_stream():
+    """SSE 流：batch_progress / batch_log / batch_metric / batch_done / batch_error。
+    断开连接时自动取消订阅（与 /stream/events 同模式）。"""
+    proxy = _get_batch_proxy()
+
+    async def generate():
+        try:
+            async for event_type, data in proxy.batch_stream():
+                yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            # 客户端断开
+            pass
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/factory/algorithm/set")

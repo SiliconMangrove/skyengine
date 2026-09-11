@@ -7,7 +7,7 @@ services:
       network: host
     container_name: skyengine-backend
     ports:
-      - "8233:8000"
+      - "${BACKEND_PORT:-8233}:8000"
     volumes:
       - ./application:/app/application
       - ./executor:/app/executor
@@ -18,13 +18,17 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # SkyEngine 配置文件 — 需在 .env 中设置 SKYENGINE_COMPOSE_PATH
       - ${SKYENGINE_COMPOSE_PATH:?SKYENGINE_COMPOSE_PATH not set}:/opt/skyengine/docker-compose-online.yaml:ro
+      # SkyEngine 批处理配置文件 — 需在 .env 中设置 SKYENGINE_BATCH_COMPOSE_PATH
+      - ${SKYENGINE_BATCH_COMPOSE_PATH:?SKYENGINE_BATCH_COMPOSE_PATH not set}:/opt/skyengine/docker-compose-batch.yaml:ro
       # SkyEngine 项目文件 — 整个目录挂进容器同名路径, 供 docker CLI 读 build context
       - ${SKYENGINE_PROJECT_DIR}:${SKYENGINE_PROJECT_DIR}:ro
     environment:
       - PYTHONUNBUFFERED=1
       - SKYENGINE_COMPOSE_PATH=/opt/skyengine/docker-compose-online.yaml
+      - SKYENGINE_BATCH_COMPOSE_PATH=/opt/skyengine/docker-compose-batch.yaml
       # SkyEngine 项目根目录 — 需在 .env 中设置 SKYENGINE_PROJECT_DIR
       - SKYENGINE_PROJECT_DIR=${SKYENGINE_PROJECT_DIR:?SKYENGINE_PROJECT_DIR not set}
+      - SKYENGINE_BATCH_DATASET_HOST_DIR=${SKYENGINE_BATCH_DATASET_HOST_DIR:?SKYENGINE_BATCH_DATASET_HOST_DIR not set}
       - ENGINE_URL=http://engine:8080
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
     networks:
@@ -42,12 +46,14 @@ services:
       network: host
     container_name: skyengine-frontend
     ports:
-      - "5180:5173"
+      - "${FRONTEND_PORT:-5180}:5173"
     volumes:
       - ./application/frontend:/app
-      - /app/node_modules
+      - skyengine-frontend-node-modules:/app/node_modules
     environment:
       - PYTHONUNBUFFERED=1
+      # SkyEngine application backend 地址；容器内使用 Compose 服务名
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
       # RAG 后端地址 — 需在 .env 中设置 RAG_BACKEND_URL
       - RAG_BACKEND_URL=${RAG_BACKEND_URL:-http://backend:8000}
     depends_on:
@@ -87,9 +93,9 @@ services:
 
 networks:
   skyengine-network:
+    external: true
     name: skyengine-net
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/16
-          gateway: 172.30.0.1
+
+volumes:
+  skyengine-frontend-node-modules:
+    name: skyengine-frontend-node-modules

@@ -1,0 +1,47 @@
+job_config:
+  job_count: 1
+  machine_count: 6
+  jobs:
+  - job:
+      id: 0
+      operations:
+      - id: 0
+        candidates:
+        - machine: 0
+          duration: 5
+        - machine: 2
+          duration: 4
+      - id: 1
+        candidates:
+        - machine: 4
+          duration: 3
+        - machine: 2
+          duration: 5
+        - machine: 1
+          duration: 1
+      - id: 2
+        candidates:
+        - machine: 2
+          duration: 4
+        - machine: 5
+          duration: 2
+      - id: 3
+        candidates:
+        - machine: 5
+          duration: 5
+        - machine: 1
+          duration: 6
+        - machine: 0
+          duration: 1
+      - id: 4
+        candidates:
+        - machine: 2
+          duration: 1
+      - id: 5
+        candidates:
+        - machine: 5
+          duration: 6
+        - machine: 2
+          duration: 6
+        - machine: 3
+          duration: 3

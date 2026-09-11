@@ -205,6 +205,47 @@ export function validateTopologyConfig(topology) {
   return true
 }
 
+function validateJobsConfig(jobs) {
+  if (!jobs || typeof jobs !== 'object') {
+    throw new Error('Jobs must be an object')
+  }
+
+  if (!Array.isArray(jobs.job_list)) {
+    throw new Error('jobs.job_list must be an array')
+  }
+
+  jobs.job_list.forEach((job, jobIdx) => {
+    if (!Array.isArray(job.operations)) {
+      throw new Error(`jobs.job_list[${jobIdx}].operations must be an array`)
+    }
+
+    job.operations.forEach((op, opIdx) => {
+      const options = op.machine_options_with_time
+      if (!Array.isArray(options) || options.length === 0) {
+        throw new Error(
+          `jobs.job_list[${jobIdx}].operations[${opIdx}] must define machine_options_with_time`
+        )
+      }
+
+      options.forEach((item, optIdx) => {
+        if (!Array.isArray(item) || item.length !== 2) {
+          throw new Error(
+            `jobs.job_list[${jobIdx}].operations[${opIdx}].machine_options_with_time[${optIdx}] must be [machine_id, proc_time]`
+          )
+        }
+        const [machineId, procTime] = item
+        if (!Number.isInteger(machineId) || typeof procTime !== 'number' || procTime <= 0) {
+          throw new Error(
+            `jobs.job_list[${jobIdx}].operations[${opIdx}].machine_options_with_time[${optIdx}] must contain integer machine_id and positive proc_time`
+          )
+        }
+      })
+    })
+  })
+
+  return true
+}
+
 /**
  * 验证完整的工厂配置文件
  */
@@ -237,6 +278,32 @@ export function validateFactoryConfig(config) {
   if (config.description && typeof config.description !== 'string') {
     throw new Error('Description must be a string if provided')
   }
+
+  if (config.jobs) {
+    validateJobsConfig(config.jobs)
+  }
+
+  if (config.material_handling_config !== undefined) {
+    const handling = config.material_handling_config
+    if (!handling || typeof handling !== 'object' || Array.isArray(handling)) {
+      throw new Error('material_handling_config must be an object')
+    }
+    for (const key of ['pickup_dwell_steps', 'dropoff_dwell_steps']) {
+      if (handling[key] !== undefined && (!Number.isInteger(handling[key]) || handling[key] < 0)) {
+        throw new Error(`material_handling_config.${key} must be a non-negative integer`)
+      }
+    }
+    if (handling.raw_material_source !== undefined) {
+      const source = handling.raw_material_source
+      if (!Array.isArray(source) || source.length !== 2 || !source.every(Number.isInteger)) {
+        throw new Error('material_handling_config.raw_material_source must be [x, y] integers')
+      }
+      const [x, y] = source
+      if (x < 0 || y < 0 || x >= config.topology.gridWidth || y >= config.topology.gridHeight) {
+        throw new Error('material_handling_config.raw_material_source must be inside the map')
+      }
+    }
+  }
   
   // renderConfig 是可选的，但如果提供必须是对象
   if (config.renderConfig && typeof config.renderConfig !== 'object') {
@@ -263,7 +330,7 @@ export function validateFactoryConfig(config) {
  * 规范化配置 (填充默认值)
  */
 export function normalizeConfig(config) {
-  return {
+  const normalized = {
     id: config.id,
     name: config.name,
     version: config.version || '1.0.0',
@@ -306,6 +373,33 @@ export function normalizeConfig(config) {
       }
     }
   }
+
+  if (config.exception_config && typeof config.exception_config === 'object') {
+    normalized.exception_config = JSON.parse(JSON.stringify(config.exception_config))
+  }
+
+  if (config.processing_time_config && typeof config.processing_time_config === 'object') {
+    normalized.processing_time_config = JSON.parse(JSON.stringify(config.processing_time_config))
+  }
+
+  if (config.simulation_control && typeof config.simulation_control === 'object') {
+    normalized.simulation_control = JSON.parse(JSON.stringify(config.simulation_control))
+  }
+
+  const handling = config.material_handling_config || {}
+  normalized.material_handling_config = {
+    pickup_dwell_steps: handling.pickup_dwell_steps ?? 2,
+    dropoff_dwell_steps: handling.dropoff_dwell_steps ?? 2,
+  }
+  if (handling.raw_material_source !== undefined) {
+    normalized.material_handling_config.raw_material_source = [...handling.raw_material_source]
+  }
+
+  if (config.metadata && typeof config.metadata === 'object') {
+    normalized.metadata = JSON.parse(JSON.stringify(config.metadata))
+  }
+
+  return normalized
 }
 
 /**

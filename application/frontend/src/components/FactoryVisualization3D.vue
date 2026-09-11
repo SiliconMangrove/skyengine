@@ -10,14 +10,24 @@
         v-for="l in screenLabels"
         :key="l.id"
         class="world-label"
-        :class="[`label-${l.kind}`, { 'label-hoverable': l.kind === 'machine' }]"
+        :class="[
+          `label-${l.kind}`,
+          {
+            'label-hoverable': l.kind === 'machine' || l.kind === 'agv',
+            'label-selected': isLabelSelected(l),
+          },
+        ]"
         :style="{ left: l.x + 'px', top: l.y + 'px', color: l.color }"
         @mouseenter="onLabelEnter(l)"
         @mouseleave="onLabelLeave(l)"
+        @click.stop="selectLabel(l)"
       >
-        <span class="label-hitbox">
-          <span class="label-name">{{ l.text }}</span>
-          <span v-if="l.kind === 'machine' && l.dotClass" class="status-dot" :class="l.dotClass"></span>
+        <span class="label-hitbox" :class="{ 'label-hitbox-alert': l.alert }">
+          <span class="label-main-row">
+            <span class="label-name">{{ l.text }}</span>
+            <span v-if="l.kind === 'machine' && l.dotClass" class="status-dot" :class="l.dotClass"></span>
+          </span>
+          <span v-if="l.badge" class="label-badge">{{ l.badge }}</span>
         </span>
 
         <!-- machine Hover 富信息 tooltip -->
@@ -40,6 +50,14 @@
           <div class="mt-row" v-else>
             <span class="mt-label">当前 Op</span>
             <span class="mt-value mt-idle">— 空闲 —</span>
+          </div>
+          <div class="mt-row" v-if="l.detail.repairRemaining > 0">
+            <span class="mt-label">维修剩余</span>
+            <span class="mt-value">{{ l.detail.repairRemaining }} 步</span>
+          </div>
+          <div class="mt-row" v-if="l.detail.downReason">
+            <span class="mt-label">异常原因</span>
+            <span class="mt-value">{{ l.detail.downReason }}</span>
           </div>
 
           <div class="mt-progress-block" v-if="l.detail.op">
@@ -83,7 +101,7 @@ import {
   BG_COLOR, GROUND_COLOR, GRID_COLOR_MAIN, GRID_COLOR_SUB,
   MACHINE_COLORS, STATUS_LIGHT,
   AGV_ACTIVE_COLOR, AGV_IDLE_COLOR,
-  AGV_LIGHT_ACTIVE, AGV_LIGHT_IDLE,
+  AGV_DOWN_COLOR, AGV_LIGHT_ACTIVE, AGV_LIGHT_IDLE, AGV_LIGHT_DOWN,
   ZONE_COLORS,
   EDGE_COLOR, WAYPOINT_DOCK_COLOR, WAYPOINT_DEFAULT_COLOR,
   HIGHLIGHT_COLOR, HIGHLIGHT_COLLISION_COLOR,
@@ -129,6 +147,33 @@ function onLabelLeave(l) {
   }
 }
 
+function isLabelSelected(label) {
+  if (label.kind === 'machine') return store.selectedMachineKey === label.runtimeMachineKey
+  if (label.kind === 'agv') return store.selectedAgvIndex === label.agvIndex
+  return false
+}
+
+function runtimeKeyForMachineId(machineId) {
+  const stateMachines = store.currentState?.machines || {}
+  const metadataEntry = Object.entries(stateMachines).find(([, machine]) =>
+    [machine?.config_id, machine?.config_key].some((value) => String(value) === String(machineId)),
+  )
+  if (metadataEntry) return metadataEntry[0]
+
+  const machineIndex = Array.from(machineMeshMap.keys()).indexOf(machineId)
+  return Object.keys(stateMachines)[machineIndex] || machineId
+}
+
+function selectAsset(asset) {
+  if (asset?.type === 'machine') store.selectMachine(runtimeKeyForMachineId(asset.id))
+  if (asset?.type === 'agv') store.selectAgv(asset.index)
+}
+
+function selectLabel(label) {
+  if (label.kind === 'machine') store.selectMachine(label.runtimeMachineKey)
+  if (label.kind === 'agv') store.selectAgv(label.agvIndex)
+}
+
 // ==================== Topology ====================
 const topology = computed(() => {
   const config = props.staticConfig || {}
@@ -160,15 +205,96 @@ function gridToWorld(gx, gy) {
 }
 
 // ==================== Three.js 对象 ====================
-let scene, camera, renderer, controls, clock
+let scene, camera, renderer, controls, clock, cameraPanClock
 let groundPlane, gridHelper, backgroundGroup
 let ambientLight, sunLight
-let machineGroup, agvGroup, zoneGroup, waypointGroup, edgeGroup, decorGroup
+let machineGroup, agvGroup, zoneGroup, waypointGroup, edgeGroup, decorGroup, exceptionObstacleGroup
 
 // 对象映射
 const machineMeshMap = new Map()   // machineId → { group, bodyMat, lightMat }
 const agvDataList = []             // { group, chassisMat, lightMat, targetPos: Vector3 }
 const waypointPosMap = new Map()   // waypointId → { x, z } (world)
+const obstacleMeshMap = new Map()   // "x,y" → Mesh
+
+// 方向键按当前视角在地面上平移镜头。
+const CAMERA_PAN_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+const pressedCameraPanKeys = new Set()
+const cameraPanForward = new THREE.Vector3()
+const cameraPanRight = new THREE.Vector3()
+const cameraPanDirection = new THREE.Vector3()
+
+function isInteractiveKeyboardTarget(target) {
+  if (!(target instanceof Element)) return false
+  return Boolean(target.closest([
+    'input',
+    'textarea',
+    'select',
+    '[contenteditable="true"]',
+    '[role="textbox"]',
+    '[role="combobox"]',
+    '[role="listbox"]',
+    '[role="option"]',
+    '[role="slider"]',
+    '[role="spinbutton"]',
+    '[role="menu"]',
+    '[role="menuitem"]',
+    '[role="tab"]',
+  ].join(',')))
+}
+
+function onCameraKeyDown(event) {
+  if (!CAMERA_PAN_KEYS.has(event.code) || event.defaultPrevented) return
+  if (event.ctrlKey || event.metaKey || event.altKey || isInteractiveKeyboardTarget(event.target)) return
+  if (!controls?.enabled) return
+
+  pressedCameraPanKeys.add(event.code)
+  event.preventDefault()
+}
+
+function onCameraKeyUp(event) {
+  if (!CAMERA_PAN_KEYS.has(event.code)) return
+  const wasPressed = pressedCameraPanKeys.delete(event.code)
+  if (wasPressed) event.preventDefault()
+}
+
+function clearCameraPanKeys() {
+  pressedCameraPanKeys.clear()
+}
+
+function setupCameraKeyboardListeners() {
+  window.addEventListener('keydown', onCameraKeyDown)
+  window.addEventListener('keyup', onCameraKeyUp)
+  window.addEventListener('blur', clearCameraPanKeys)
+}
+
+function removeCameraKeyboardListeners() {
+  window.removeEventListener('keydown', onCameraKeyDown)
+  window.removeEventListener('keyup', onCameraKeyUp)
+  window.removeEventListener('blur', clearCameraPanKeys)
+  clearCameraPanKeys()
+}
+
+function updateCameraKeyboardPan(deltaSeconds) {
+  if (!camera || !controls?.enabled || pressedCameraPanKeys.size === 0) return
+
+  cameraPanForward.subVectors(controls.target, camera.position)
+  cameraPanForward.y = 0
+  if (cameraPanForward.lengthSq() < 1e-6) return
+  cameraPanForward.normalize()
+  cameraPanRight.crossVectors(cameraPanForward, camera.up).normalize()
+
+  cameraPanDirection.set(0, 0, 0)
+  if (pressedCameraPanKeys.has('ArrowUp')) cameraPanDirection.add(cameraPanForward)
+  if (pressedCameraPanKeys.has('ArrowDown')) cameraPanDirection.sub(cameraPanForward)
+  if (pressedCameraPanKeys.has('ArrowRight')) cameraPanDirection.add(cameraPanRight)
+  if (pressedCameraPanKeys.has('ArrowLeft')) cameraPanDirection.sub(cameraPanRight)
+  if (cameraPanDirection.lengthSq() === 0) return
+
+  const panSpeed = Math.max(2.5, controls.getDistance() * 0.25)
+  cameraPanDirection.normalize().multiplyScalar(panSpeed * deltaSeconds)
+  camera.position.add(cameraPanDirection)
+  controls.target.add(cameraPanDirection)
+}
 
 // 动画状态
 let waitTimeLeft = 0
@@ -180,6 +306,7 @@ const mouse = new THREE.Vector2()
 let highlightMesh = null
 let draggingAsset = null        // { type, id, group }
 let isDragging = false
+let selectionPointerStart = null
 let dragStartMouseWorld = null
 let dragStartGridX = 0
 let dragStartGridY = 0
@@ -247,53 +374,71 @@ function getGroundIntersection(event) {
 }
 
 function findAssetAtPoint(worldPoint) {
-  // 检查机器（优先，因为体积最大）
-  for (const [id, data] of machineMeshMap) {
-    const pos = data.group.position
-    const size = data.group.userData?.size || [2, 2]
-    const halfW = (size[0] || 2) * GRID_SIZE * 0.5
-    const halfH = (size[1] || 2) * GRID_SIZE * 0.5
-    if (Math.abs(worldPoint.x - pos.x) < halfW + 0.1 &&
-        Math.abs(worldPoint.z - pos.z) < halfH + 0.1) {
-      return { type: 'machine', id, group: data.group }
+  // 基于网格格子的命中检测：点击资产占据的任何一格都能选中该资产
+  // 不再依赖 mesh 包围盒，AGV / 路由点这种小部件也能轻松点中
+  const { gx, gy } = snapToGrid(worldPoint)
+  const cfg = store.currentConfig
+  if (!cfg) return null
+
+  // 1) 机器（按 size 占多格，最高优先级）
+  for (const m of Object.values(topology.value.machines || {})) {
+    if (!m.location) continue
+    const [mx, my] = m.location
+    const sw = m.size?.[0] || 1
+    const sh = m.size?.[1] || 1
+    if (gx >= mx && gx < mx + sw && gy >= my && gy < my + sh) {
+      const data = machineMeshMap.get(m.id)
+      if (data) return { type: 'machine', id: m.id, group: data.group }
     }
   }
-  // 检查路由点
-  for (const child of waypointGroup.children) {
-    const pos = child.position
-    if (Math.abs(worldPoint.x - pos.x) < GRID_SIZE * 0.5 &&
-        Math.abs(worldPoint.z - pos.z) < GRID_SIZE * 0.5) {
-      return { type: 'waypoint', id: child.userData.id, group: child }
+
+  // 2) AGV：按 mesh 当前所在格匹配
+  //    AGV 位置是动态的（仿真时由 state.grid_state.positions_xy 驱动，编辑模式下由
+  //    syncAGVsFromConfig 钉在 initialLocation），所以必须按 mesh 实际位置命中，
+  //    否则会出现"看得到 AGV 却点不中"。
+  const agvs = cfg.agvs || []
+  for (let i = 0; i < agvDataList.length; i++) {
+    const ad = agvDataList[i]
+    if (!ad?.group) continue
+    const { gx: ax, gy: ay } = snapToGrid(ad.group.position)
+    if (ax === gx && ay === gy) {
+      return { type: 'agv', id: agvs[i]?.id ?? i, index: i, group: ad.group }
     }
   }
-  // 检查区域（支持普通 Mesh 和 THREE.Group 装饰物）
-  for (const child of zoneGroup.children) {
-    const pos = child.position
-    const userData = child.userData || {}
-    if (child.geometry) {
-      child.geometry.computeBoundingBox()
-      const box = child.geometry.boundingBox
-      const hw = (box.max.x - box.min.x) / 2 + 0.1
-      const hh = (box.max.z - box.min.z) / 2 + 0.1
-      if (Math.abs(worldPoint.x - pos.x) < hw &&
-          Math.abs(worldPoint.z - pos.z) < hh) {
-        return { type: 'zone', id: userData.id, group: child }
+
+  // 3) 路由点（占 1 格）
+  for (const wp of Object.values(topology.value.waypoints || {})) {
+    if (!wp.location) continue
+    if (wp.location[0] === gx && wp.location[1] === gy) {
+      for (const child of waypointGroup.children) {
+        if (child.userData.id === wp.id) {
+          return { type: 'waypoint', id: wp.id, group: child }
+        }
       }
-    } else if (child.isGroup || child.children?.length) {
-      // THREE.Group（装饰物）：用 Box3 计算包围盒
-      const box = new THREE.Box3().setFromObject(child)
-      if (box.isEmpty()) continue
-      if (worldPoint.x >= box.min.x && worldPoint.x <= box.max.x &&
-          worldPoint.z >= box.min.z && worldPoint.z <= box.max.z) {
-        return { type: 'zone', id: userData.id, group: child }
+    }
+  }
+
+  // 4) 区域（按 area 占多格）
+  for (const z of (topology.value.zones || [])) {
+    if (!z.area) continue
+    const { x, y, w, h } = z.area
+    if (gx >= x && gx < x + (w || 1) && gy >= y && gy < y + (h || 1)) {
+      for (const child of zoneGroup.children) {
+        if (child.userData.id === z.id) {
+          return { type: 'zone', id: z.id, group: child }
+        }
       }
     }
   }
+
   return null
 }
 
 function onCanvasPointerDown(event) {
-  if (!props.editMode) return
+  if (!props.editMode) {
+    selectionPointerStart = { x: event.clientX, y: event.clientY }
+    return
+  }
   const point = getGroundIntersection(event)
   if (!point) return
 
@@ -352,7 +497,14 @@ function onCanvasPointerMove(event) {
 }
 
 function onCanvasPointerUp(event) {
-  if (!props.editMode) return
+  if (!props.editMode) {
+    const start = selectionPointerStart
+    selectionPointerStart = null
+    if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return
+    const point = getGroundIntersection(event)
+    if (point) selectAsset(findAssetAtPoint(point))
+    return
+  }
 
   if (isDragging && draggingAsset) {
     // 用 lastDragGridX/Y（pointerMove 已实时记录），不依赖 pointerUp 的射线检测
@@ -398,6 +550,7 @@ function removeEditModeListeners() {
   }
   isDragging = false
   draggingAsset = null
+  selectionPointerStart = null
   dragStartMouseWorld = null
   controls.enabled = true
   renderer.domElement.style.cursor = ''
@@ -473,10 +626,12 @@ function initScene() {
   decorGroup = new THREE.Group()
   machineGroup = new THREE.Group()
   agvGroup = new THREE.Group()
-  scene.add(zoneGroup, edgeGroup, waypointGroup, decorGroup, machineGroup, agvGroup)
+  exceptionObstacleGroup = new THREE.Group()
+  scene.add(zoneGroup, edgeGroup, waypointGroup, decorGroup, exceptionObstacleGroup, machineGroup, agvGroup)
 
   // Clock
   clock = new THREE.Clock()
+  cameraPanClock = new THREE.Clock()
 }
 
 // ==================== 构建静态元素 ====================
@@ -740,12 +895,33 @@ function rebuildAGVs(count) {
 }
 
 // ==================== 动态更新 ====================
+/**
+ * 编辑模式（或无仿真状态）下，把 AGV mesh 同步到 cfg.agvs[i].initialLocation。
+ * 用于：1) 编辑模式下让 AGV 可见并可拖；2) 拖拽完成后保持 mesh 位置与 store 一致。
+ * 正在拖拽的那个 AGV 跳过，避免覆盖 pointerMove 实时设置的 mesh 位置。
+ */
+function syncAGVsFromConfig() {
+  const cfg = store.currentConfig
+  if (!cfg?.agvs) return
+  if (agvDataList.length !== cfg.agvs.length) rebuildAGVs(cfg.agvs.length)
+  cfg.agvs.forEach((a, i) => {
+    const ad = agvDataList[i]
+    if (!ad || !a.initialLocation) return
+    if (isDragging && draggingAsset?.type === 'agv' && draggingAsset.group === ad.group) return
+    const target = gridToWorld(a.initialLocation[0], a.initialLocation[1])
+    ad.group.position.set(target.x, 0, target.z)
+  })
+}
+
 function updateFromStore() {
   const state = store.currentState
-  if (!state) return
-
+  // 没有真实仿真数据（historyBuffer 为空 → currentState 是 EMPTY_GRID_STATE）
+  // 时直接 return，避免每帧 rebuildAGVs(0) 把 AGV mesh 销毁重建、覆盖拖拽。
+  if (store.totalSteps === 0) return
   const targets = state.grid_state?.positions_xy || []
   const isActive = state.grid_state?.is_active || []
+  const agvStatus = state.grid_state?.agv_status || []
+  const agvRepairRemaining = state.grid_state?.agv_repair_remaining || []
 
   // AGV 数量同步
   if (agvDataList.length !== targets.length) rebuildAGVs(targets.length)
@@ -774,14 +950,18 @@ function updateFromStore() {
     }
 
     // 活跃状态 → 底盘材质
+    const down = agvStatus[i] === 'DOWN'
     const active = isActive[i] !== false
-    agvData.chassisMat.color.set(active ? AGV_ACTIVE_COLOR : AGV_IDLE_COLOR)
+    agvData.group.userData.status = down ? 'DOWN' : (active ? 'ACTIVE' : 'IDLE')
+    agvData.group.userData.repairRemaining = agvRepairRemaining[i] || 0
+    agvData.chassisMat.color.set(down ? AGV_DOWN_COLOR : (active ? AGV_ACTIVE_COLOR : AGV_IDLE_COLOR))
     agvData.chassisMat.needsUpdate = true
-    agvData.lightMat.color.set(active ? AGV_LIGHT_ACTIVE : AGV_LIGHT_IDLE)
+    agvData.lightMat.color.set(down ? AGV_LIGHT_DOWN : (active ? AGV_LIGHT_ACTIVE : AGV_LIGHT_IDLE))
   })
 
   // 机器状态更新
   updateMachineStates(state.machines || {})
+  updateExceptionObstacles(state.blocked_cells || [])
 
   // 自动步进
   const dt = clock.getDelta()
@@ -795,6 +975,43 @@ function updateFromStore() {
   }
 
   updateScreenLabels()
+}
+
+function updateExceptionObstacles(blockedCells) {
+  if (!exceptionObstacleGroup) return
+  const activeKeys = new Set()
+  ;(blockedCells || []).forEach((cell) => {
+    if (!Array.isArray(cell) || cell.length < 2) return
+    const [gx, gy] = cell
+    const key = `${gx},${gy}`
+    activeKeys.add(key)
+    if (obstacleMeshMap.has(key)) return
+
+    const pos = gridToWorld(gx, gy)
+    const geom = new THREE.BoxGeometry(GRID_SIZE * 0.9, GRID_SIZE * 0.16, GRID_SIZE * 0.9)
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xff4d4f,
+      emissive: 0x661111,
+      transparent: true,
+      opacity: 0.62,
+      roughness: 0.45,
+      metalness: 0.15,
+    })
+    const mesh = new THREE.Mesh(geom, mat)
+    mesh.position.set(pos.x, GRID_SIZE * 0.08, pos.z)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    exceptionObstacleGroup.add(mesh)
+    obstacleMeshMap.set(key, mesh)
+  })
+
+  obstacleMeshMap.forEach((mesh, key) => {
+    if (activeKeys.has(key)) return
+    mesh.geometry?.dispose()
+    mesh.material?.dispose()
+    exceptionObstacleGroup.remove(mesh)
+    obstacleMeshMap.delete(key)
+  })
 }
 
 function updateMachineStates(machineStates) {
@@ -826,6 +1043,7 @@ function updateScreenLabels() {
   const cw = renderer.domElement.clientWidth
   const ch = renderer.domElement.clientHeight
   const rect = renderer.domElement.getBoundingClientRect()
+  const containerRect = containerRef.value?.getBoundingClientRect()
   const labels = []
 
   // 当前机器动态状态 (来自 store 快照)
@@ -833,6 +1051,7 @@ function updateScreenLabels() {
   // 兜底：StaticFactory 用 "M1"/"M2"/"M3" 作 key，但 mesh 用 config 的 id (如 MACHINE_1_1)
   // → 当 key 对不上时，按 mesh 迭代顺序做 index 对齐
   const machineStateList = Object.values(machineStatesDict)
+  const machineStateKeys = Object.keys(machineStatesDict)
 
   // 统计每台机器已完工 Op 数（来自 jobs 反查）
   const jobs = store.currentState?.jobs || []
@@ -873,10 +1092,13 @@ function updateScreenLabels() {
 
     let detail = null
     let dotClass = null
+    let badge = null
+    let alert = false
     if (dyn && Object.keys(dyn).length > 0) {
       const op = dyn.current_op
       const status = dyn.status || (op ? 'WORKING' : 'IDLE')
       const statusClass = String(status).toLowerCase()
+      const repairRemaining = dyn.repair_remaining || 0
       const opPct = op && op.proc_time > 0
         ? Math.min(100, Math.round(((op.step_done ?? 0) / op.proc_time) * 100))
         : 0
@@ -902,20 +1124,29 @@ function updateScreenLabels() {
         opPct,
         queueLength: dyn.queue_length || 0,
         finishedOps,
+        repairRemaining,
+        downReason: dyn.down_reason || '',
       }
       dotClass = `dot-${statusClass}`
+      if (status === 'BROKEN') {
+        alert = true
+        badge = repairRemaining > 0 ? `机器故障 · 剩余 ${repairRemaining} 步` : '机器故障'
+      }
     }
 
     labels.push({
       id: `machine-${id}`,
       kind: 'machine',
       machineId: id,
-      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
-      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
+      runtimeMachineKey: machineStateKeys[curIndex] || id,
+      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
+      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
       text: group.userData.name || id,
-      color: '#445566',
+      color: '#f4f8ff',
       detail,
       dotClass,
+      badge,
+      alert,
     })
   })
 
@@ -925,13 +1156,38 @@ function updateScreenLabels() {
     vec.y += GRID_SIZE * 0.2
     vec.project(camera)
     if (vec.z > 1) return
+    const status = group.userData.status || 'IDLE'
+    const repairRemaining = group.userData.repairRemaining || 0
+    const down = status === 'DOWN'
     labels.push({
       id: `agv-${i}`,
       kind: 'agv',
-      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRef.value?.getBoundingClientRect().left || 0),
-      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRef.value?.getBoundingClientRect().top || 0),
+      agvIndex: i,
+      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
+      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
       text: `A${i + 1}`,
-      color: '#0088bb',
+      badge: down ? `AGV故障 · 剩余 ${repairRemaining} 步` : null,
+      color: down ? '#ffd6d6' : '#e7fbff',
+      alert: down,
+    })
+  })
+
+  // 临时障碍标签
+  ;(store.currentState?.blocked_cells || []).forEach((cell, idx) => {
+    if (!Array.isArray(cell) || cell.length < 2) return
+    const [gx, gy] = cell
+    const pos = gridToWorld(gx, gy)
+    const vec = new THREE.Vector3(pos.x, GRID_SIZE * 0.38, pos.z)
+    vec.project(camera)
+    if (vec.z > 1) return
+
+    labels.push({
+      id: `exception-obstacle-${gx}-${gy}-${idx}`,
+      kind: 'exception-obstacle',
+      x: (vec.x * 0.5 + 0.5) * cw + rect.left - (containerRect?.left || 0),
+      y: (-vec.y * 0.5 + 0.5) * ch + rect.top - (containerRect?.top || 0),
+      text: '临时障碍',
+      color: '#fff4f4',
     })
   })
 
@@ -946,6 +1202,7 @@ function animate() {
   if (!renderer || !scene || !camera) return
 
   updateFromStore()
+  updateCameraKeyboardPan(Math.min(cameraPanClock?.getDelta() || 0, 0.1))
   controls.update()
   renderer.render(scene, camera)
 }
@@ -977,16 +1234,16 @@ onMounted(async () => {
   resizeObserver = new ResizeObserver(onResize)
   resizeObserver.observe(containerRef.value)
 
-  // 编辑模式：初始化监听器
-  if (props.editMode) {
-    setupEditModeListeners()
-  }
+  // 选择与编辑共用同一套画布事件；具体行为由 editMode 决定。
+  setupEditModeListeners()
+  setupCameraKeyboardListeners()
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(animationId)
   resizeObserver?.disconnect()
   removeEditModeListeners()
+  removeCameraKeyboardListeners()
   controls?.dispose()
 
   // 遍历并清理所有 mesh
@@ -1020,6 +1277,8 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
     nextTick(() => {
       buildStaticElements()
       rebuildAGVs(0)
+      // 新配置加载后，按 cfg.agvs.initialLocation 把 AGV 摆好
+      if (props.editMode) syncAGVsFromConfig()
     })
     return
   }
@@ -1045,7 +1304,8 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
     buildWaypoints()
     buildEdges()
   } else if (hint === 'agv') {
-    // AGV 数据不在 topology 中，由 updateFromStore 自动同步数量
+    // AGV 增删/重命名：重建 mesh 数量并按 initialLocation 重新摆位
+    syncAGVsFromConfig()
   } else if (!hint) {
     // 无 hint（纯数据修正等场景）→ 仅同步重建静态元素
     buildStaticElements()
@@ -1055,9 +1315,11 @@ watch(() => props.staticConfig, (newVal, oldVal) => {
 // ==================== 监听编辑模式切换 ====================
 watch(() => props.editMode, (val) => {
   if (val) {
-    setupEditModeListeners()
+    // 进入编辑模式：把 AGV 摆到 cfg.agvs.initialLocation（无仿真时 mesh 默认停在 0,0）
+    syncAGVsFromConfig()
   } else {
-    removeEditModeListeners()
+    hideHighlight()
+    selectionPointerStart = null
   }
 })
 
@@ -1123,17 +1385,37 @@ defineExpose({
 
 .world-label {
   position: absolute;
-  font-family: "Consolas", "Monaco", monospace;
-  font-size: 10px;
-  font-weight: bold;
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  font-weight: 800;
   transform: translate(-50%, -50%);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.55);
   white-space: nowrap;
   pointer-events: none;
+  letter-spacing: 0;
 }
 
 .label-name {
   line-height: 1;
+}
+
+.label-main-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.label-badge {
+  display: block;
+  margin-top: 3px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 70, 70, 0.92);
+  color: #fff8f0;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
 }
 
 /* Hover 命中区：扩大点击范围 */
@@ -1143,15 +1425,61 @@ defineExpose({
 }
 .label-hitbox {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
-  margin: -4px -6px;
+  padding: 5px 8px;
+  margin: -5px -8px;
   border-radius: 4px;
+  background: rgba(11, 18, 28, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
   transition: background 0.15s;
+}
+.label-hitbox-alert {
+  background: rgba(132, 18, 26, 0.88);
+  border-color: rgba(255, 215, 140, 0.75);
+  box-shadow: 0 0 0 1px rgba(255, 95, 95, 0.35), 0 4px 14px rgba(90, 0, 0, 0.38);
 }
 .label-hoverable:hover .label-hitbox {
   background: rgba(100, 180, 255, 0.12);
+}
+.label-hoverable:hover .label-hitbox-alert {
+  background: rgba(158, 28, 38, 0.96);
+}
+.label-selected .label-hitbox {
+  background: rgba(70, 145, 220, 0.32);
+  border-color: rgba(148, 215, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(100, 181, 255, 0.35), 0 4px 14px rgba(0, 0, 0, 0.32);
+}
+
+.label-machine .label-hitbox {
+  background: rgba(20, 32, 48, 0.72);
+}
+
+.label-machine .label-hitbox-alert {
+  background: rgba(128, 18, 28, 0.9);
+}
+
+.label-agv .label-hitbox {
+  background: rgba(0, 73, 92, 0.76);
+  border-color: rgba(151, 232, 255, 0.45);
+}
+
+.label-agv .label-hitbox-alert {
+  background: rgba(152, 24, 32, 0.94);
+  border-color: rgba(255, 225, 150, 0.82);
+}
+
+.label-agv .label-hitbox-alert .label-badge {
+  background: #ff2f3f;
+  color: #fff;
+}
+
+.label-exception-obstacle .label-hitbox {
+  background: rgba(178, 28, 36, 0.82);
+  border-color: rgba(255, 222, 160, 0.75);
+  color: #fff4f4;
 }
 
 /* 状态色点 */

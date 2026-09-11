@@ -482,7 +482,7 @@ def convert_to_grid_factory(
 
     # --- 组装完整配置 ---
     config = {
-        "id": "grid_factory",
+        "id": "grid_factory_new",
         "name": "SkyEngine 统一问题描述",
         "version": "1.2.0",
         "createdAt": _today_str(),
@@ -509,6 +509,10 @@ def convert_to_grid_factory(
             "_comment": "machine_id 映射: 0-based 索引",
             "_machine_id_map": machine_id_map,
             "job_list": job_list,
+        },
+        "material_handling_config": {
+            "pickup_dwell_steps": 2,
+            "dropoff_dwell_steps": 2,
         },
         "renderConfig": _default_render_config(width, height),
         "metadata": {

@@ -285,6 +285,7 @@ celerybeat.pid
 
 # Environments
 .env
+.skyengine-windows-state.json
 .venv
 env/
 venv/
@@ -736,11 +737,10 @@ model
 *.ttf
 
 # End of https://www.toptal.com/developers/gitignore/api/pycharm,python,vs,macos,windows,linux,vue,vuejs
-*.svg
-*.png
 experiment/data/*
 sky_logs/metrics/*
 sky_logs/renders/*
+logs/windows-*.log
 
 # Claude Code local settings (含本地路径和权限信息)
 .claude/settings.local.json
@@ -750,5 +750,12 @@ application/frontend/.env.development
 application/frontend/.env.production
 application/dockerfile/docker-bin/
 
+.uv-cache/
+docs/
+experiment/
+test/
+
 # 归档文档（历史参考，不再跟踪）
 docs/archive/
+
+# 运行时落盘的 run 记录（后端容器以 root 写入，本机用户无权读 + 不该入库）

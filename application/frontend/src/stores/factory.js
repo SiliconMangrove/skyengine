@@ -106,8 +106,19 @@ export const ASSET_TEMPLATES = Object.freeze({
 
 const EMPTY_GRID_STATE = Object.freeze({
   env_timeline: "0",
-  grid_state: { positions_xy: [], is_active: [] },
+  grid_state: {
+    positions_xy: [], finishes_xy: [], is_active: [], agv_status: [], agv_repair_remaining: [],
+    agv_task_phase: [], agv_handling_remaining: [], agv_loaded: [],
+  },
   machines: {},
+  event_epoch: 0,
+  map_epoch: 0,
+  machine_epoch: 0,
+  agv_epoch: 0,
+  job_epoch: 0,
+  event_metrics: {},
+  events: [],
+  blocked_cells: [],
   active_transfers: [],
 });
 
@@ -162,10 +173,23 @@ function normalizeSnapshot(snapshot, fallbackIndex) {
   return {
     env_timeline:
       snapshot.timestamp ?? snapshot.env_timeline ?? `T+${fallbackIndex}`,
-    grid_state: snapshot.grid_state ?? { positions_xy: [], is_active: [] },
+    timestamp: snapshot.timestamp ?? null,
+    grid_state: snapshot.grid_state ?? {
+      positions_xy: [], finishes_xy: [], is_active: [], agv_status: [], agv_repair_remaining: [],
+      agv_task_phase: [], agv_handling_remaining: [], agv_loaded: [],
+    },
+    event_epoch: snapshot.event_epoch ?? 0,
+    map_epoch: snapshot.map_epoch ?? 0,
+    machine_epoch: snapshot.machine_epoch ?? 0,
+    agv_epoch: snapshot.agv_epoch ?? 0,
+    job_epoch: snapshot.job_epoch ?? 0,
+    event_metrics: snapshot.event_metrics ?? {},
+    events: Array.isArray(snapshot.events) ? snapshot.events : [],
+    blocked_cells: Array.isArray(snapshot.blocked_cells) ? snapshot.blocked_cells : [],
     machines: machinesDict,
     jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs : [],
     active_transfers: snapshot.active_transfers ?? [],
+    insertion_requests: Array.isArray(snapshot.insertion_requests) ? snapshot.insertion_requests : [],
   }
 }
 
@@ -183,13 +207,6 @@ export const useFactoryStore = defineStore("factory", () => {
       image: getAssetUrl("packet_factory.jpg"),
       description:
         "地处华东核心制造区，配备智能 AGV 运输与全自动机器人电池装配流水线。",
-    },
-    {
-      id: "grid_factory",
-      name: "翼辉原料分拣仓",
-      image: getAssetUrl("grid_factory.jpg"),
-      description:
-        "坐落于华东关键物流节点，拥有 AGV 智能分拣与自动化货物存储管理系统。",
     },
     {
       id: "northeast_center",
@@ -214,9 +231,13 @@ export const useFactoryStore = defineStore("factory", () => {
     },
   ]);
 
+  const storedFactoryId = localStorage.getItem(STORAGE_KEYS.SELECTED_FACTORY);
   const selectedFactoryId = ref(
-    localStorage.getItem(STORAGE_KEYS.SELECTED_FACTORY) ?? "packet_factory",
+    storedFactoryId === "grid_factory" ? "grid_factory_new" : (storedFactoryId ?? "packet_factory"),
   );
+  if (storedFactoryId === "grid_factory") {
+    localStorage.setItem(STORAGE_KEYS.SELECTED_FACTORY, "grid_factory_new");
+  }
 
   const currentFactory = computed(() =>
     factories.value.find((f) => f.id === selectedFactoryId.value) ?? null,
@@ -247,6 +268,8 @@ export const useFactoryStore = defineStore("factory", () => {
   const factoryConfigs = ref({});
 
   const currentConfigId = ref(null);
+  const runtimeExceptionConfig = ref(null);
+  const runtimeProcessingTimeConfig = ref(null);
 
   /** 3D 重建提示：记录最近一次编辑操作的资产类型，供 watch 精准局部重建 */
   const rebuildHint = ref(null);   // 'zone' | 'machine' | 'waypoint' | 'agv' | null
@@ -276,6 +299,19 @@ export const useFactoryStore = defineStore("factory", () => {
     }
     factoryConfigs.value[config.id] = config;
     currentConfigId.value = config.id;
+    setRuntimeProfiles({
+      exceptionConfig: config.exception_config ?? null,
+      processingTimeConfig: config.processing_time_config ?? null,
+    });
+  }
+
+  function setRuntimeProfiles({ exceptionConfig = null, processingTimeConfig = null } = {}) {
+    runtimeExceptionConfig.value = exceptionConfig
+      ? JSON.parse(JSON.stringify(exceptionConfig))
+      : null;
+    runtimeProcessingTimeConfig.value = processingTimeConfig
+      ? JSON.parse(JSON.stringify(processingTimeConfig))
+      : null;
   }
 
   function setCurrentConfig(configId) {
@@ -327,6 +363,10 @@ export const useFactoryStore = defineStore("factory", () => {
         capacity: agv.capacity ?? 100,
         status: agv.status ?? "IDLE",
       })),
+      material_handling_config: topologyData.material_handling_config ?? {
+        pickup_dwell_steps: 2,
+        dropoff_dwell_steps: 2,
+      },
       renderConfig: {
         baseGridSize:
           topologyData.baseGridSize ?? DEFAULT_RENDER_CONFIG.baseGridSize,
@@ -358,6 +398,78 @@ export const useFactoryStore = defineStore("factory", () => {
         waypoints: {},
       }
     );
+  }
+
+  // 配置中的静态任务实例（job_list）。当未启动仿真、currentState.jobs 为空时，
+  // UI 仍可基于此展示 Job 列表（与 machines 同样降级到配置）。
+  // 结构：{ job_id, name?, operations:[{machine_id, duration, name?}],
+  //         arrival_time, due_time, priority? }
+  function getJobs() {
+    return currentConfig.value?.jobs?.job_list ?? [];
+  }
+  // machine_id(int) → machine key(string) 映射，便于把工序的 machine_id 翻成 "MACHINE_1_1"
+  function getJobMachineIdMap() {
+    return currentConfig.value?.jobs?._machine_id_map ?? {};
+  }
+
+  function getMachineRuntimeKey(machineRef, state = null) {
+    if (machineRef == null) return null;
+    const source = state ?? latestState.value;
+    const stateMachines = source?.machines ?? {};
+    const refValue = String(machineRef);
+
+    if (Object.prototype.hasOwnProperty.call(stateMachines, refValue)) return refValue;
+
+    const stateEntry = Object.entries(stateMachines).find(([, machine]) =>
+      [machine?.id, machine?.runtime_id, machine?.config_key, machine?.config_id]
+        .some((value) => value != null && String(value) === refValue),
+    );
+    if (stateEntry) return stateEntry[0];
+
+    const runtimeMatch = refValue.match(/^M?(\d+)$/i);
+    if (runtimeMatch) return `M${runtimeMatch[1]}`;
+
+    const configMachines = currentConfig.value?.topology?.machines ?? {};
+    const configEntry = Object.entries(configMachines).find(([configKey, machine]) =>
+      configKey === refValue || String(machine?.id) === refValue,
+    );
+    if (!configEntry) return refValue;
+
+    const [configKey] = configEntry;
+    const runtimeMapEntry = Object.entries(getJobMachineIdMap())
+      .find(([, mappedConfigKey]) => mappedConfigKey === configKey);
+    if (runtimeMapEntry) return `M${runtimeMapEntry[0]}`;
+
+    const configIndex = Object.keys(configMachines).indexOf(configKey);
+    return Object.keys(stateMachines)[configIndex] ?? refValue;
+  }
+
+  function getMachineConfig(machineRef, state = null) {
+    if (machineRef == null) return null;
+    const configMachines = currentConfig.value?.topology?.machines ?? {};
+    const refValue = String(machineRef);
+    const directEntry = Object.entries(configMachines).find(([configKey, machine]) =>
+      configKey === refValue || String(machine?.id) === refValue,
+    );
+    if (directEntry) return directEntry[1];
+
+    const runtimeKey = getMachineRuntimeKey(machineRef, state);
+    const runtimeId = String(runtimeKey).match(/^M(\d+)$/i)?.[1];
+    if (runtimeId == null) return null;
+    const configKey = getJobMachineIdMap()[runtimeId];
+    return configMachines[configKey] ?? null;
+  }
+
+  function getMachineDisplayName(machineRef, state = null) {
+    if (machineRef == null) return "—";
+    const source = state ?? latestState.value;
+    const runtimeKey = getMachineRuntimeKey(machineRef, source);
+    const machine = source?.machines?.[runtimeKey];
+    const runtimeName = machine?.display_name ?? machine?.name;
+    if (runtimeName) return runtimeName;
+
+    const configMachine = getMachineConfig(machineRef, source);
+    return configMachine?.name ?? configMachine?.id ?? runtimeKey;
   }
 
   function getAssetsStats() {
@@ -451,9 +563,9 @@ export const useFactoryStore = defineStore("factory", () => {
     const topo = cfg.topology;
     const occupied = new Set();
 
-    // 机器占用 location 所在格
-    Object.entries(topo.machines || {}).forEach(([key, m]) => {
-      if (excludeAssetType === 'machine' && key === excludeAssetId) return;
+    // 机器占用 location 所在格（按 m.id 字段匹配，避免字典 key 与 m.id 不一致）
+    Object.values(topo.machines || {}).forEach((m) => {
+      if (excludeAssetType === 'machine' && m.id === excludeAssetId) return;
       if (m.location) {
         const [x, y] = m.location;
         const sw = m.size?.[0] || 1;
@@ -589,19 +701,26 @@ export const useFactoryStore = defineStore("factory", () => {
     // 碰撞校验：排除自身
     if (isCellOccupied(gridX, gridY, assetId, assetType)) return false;
 
-    if (assetType === 'machine' && topo.machines?.[assetId]) {
-      topo.machines[assetId].location = [gridX, gridY];
-    } else if (assetType === 'waypoint' && topo.waypoints?.[assetId]) {
-      topo.waypoints[assetId].location = [gridX, gridY];
+    if (assetType === 'machine' && topo.machines) {
+      // 按 m.id 字段查找（字典 key 可能与 m.id 不一致）
+      const machine = Object.values(topo.machines).find(m => m.id === assetId);
+      if (!machine) return false;
+      machine.location = [gridX, gridY];
+    } else if (assetType === 'waypoint' && topo.waypoints) {
+      const wp = Object.values(topo.waypoints).find(w => w.id === assetId);
+      if (!wp) return false;
+      wp.location = [gridX, gridY];
     } else if (assetType === 'zone' && topo.zones) {
       const zone = topo.zones.find(z => z.id === assetId);
-      if (zone && zone.area) {
-        zone.area.x = gridX;
-        zone.area.y = gridY;
-      }
+      if (!zone || !zone.area) return false;
+      zone.area.x = gridX;
+      zone.area.y = gridY;
     } else if (assetType === 'agv' && cfg.agvs) {
       const agv = cfg.agvs.find(a => String(a.id) === String(assetId));
-      if (agv) agv.initialLocation = [gridX, gridY];
+      if (!agv) return false;
+      agv.initialLocation = [gridX, gridY];
+    } else {
+      return false;
     }
     return true;
   }
@@ -614,10 +733,12 @@ export const useFactoryStore = defineStore("factory", () => {
     if (!cfg) return;
     const topo = cfg.topology;
 
-    if (assetType === 'machine' && topo.machines?.[assetId]) {
-      topo.machines[assetId].name = newName;
-    } else if (assetType === 'waypoint' && topo.waypoints?.[assetId]) {
-      topo.waypoints[assetId].name = newName;
+    if (assetType === 'machine' && topo.machines) {
+      const machine = Object.values(topo.machines).find(m => m.id === assetId);
+      if (machine) machine.name = newName;
+    } else if (assetType === 'waypoint' && topo.waypoints) {
+      const wp = Object.values(topo.waypoints).find(w => w.id === assetId);
+      if (wp) wp.name = newName;
     } else if (assetType === 'zone' && topo.zones) {
       const zone = topo.zones.find(z => z.id === assetId);
       if (zone) zone.name = newName;
@@ -638,9 +759,11 @@ export const useFactoryStore = defineStore("factory", () => {
     rebuildHint.value = assetType;
 
     if (assetType === 'machine' && topo.machines) {
-      delete topo.machines[assetId];
+      const dictKey = Object.keys(topo.machines).find(k => topo.machines[k].id === assetId);
+      if (dictKey) delete topo.machines[dictKey];
     } else if (assetType === 'waypoint' && topo.waypoints) {
-      delete topo.waypoints[assetId];
+      const dictKey = Object.keys(topo.waypoints).find(k => topo.waypoints[k].id === assetId);
+      if (dictKey) delete topo.waypoints[dictKey];
     } else if (assetType === 'zone' && topo.zones) {
       topo.zones = topo.zones.filter(z => z.id !== assetId);
     } else if (assetType === 'agv' && cfg.agvs) {
@@ -684,6 +807,11 @@ export const useFactoryStore = defineStore("factory", () => {
     return historyBuffer.value[idx];
   });
 
+  const latestState = computed(() => {
+    if (historyBuffer.value.length === 0) return { ...EMPTY_GRID_STATE };
+    return historyBuffer.value[historyBuffer.value.length - 1];
+  });
+
   // ──────────────────────────────────────────
   // 动画动作
   // ──────────────────────────────────────────
@@ -691,12 +819,32 @@ export const useFactoryStore = defineStore("factory", () => {
   // 模块① machine ↔ Job 双向联动选中态
   const selectedMachineKey = ref(null) // 形如 "M3"
   const selectedJobId = ref(null) // 数字 job_id
+  const selectedAgvIndex = ref(null) // AGV 在 positions_xy 中的下标
 
   function selectMachine(key) {
-    selectedMachineKey.value = selectedMachineKey.value === key ? null : key
+    const runtimeKey = getMachineRuntimeKey(key, currentState.value)
+    const next = selectedMachineKey.value === runtimeKey ? null : runtimeKey
+    selectedMachineKey.value = next
+    if (next != null) {
+      selectedJobId.value = null
+      selectedAgvIndex.value = null
+    }
   }
   function selectJob(jobId) {
-    selectedJobId.value = selectedJobId.value === jobId ? null : jobId
+    const next = selectedJobId.value === jobId ? null : jobId
+    selectedJobId.value = next
+    if (next != null) {
+      selectedMachineKey.value = null
+      selectedAgvIndex.value = null
+    }
+  }
+  function selectAgv(index) {
+    const next = selectedAgvIndex.value === index ? null : index
+    selectedAgvIndex.value = next
+    if (next != null) {
+      selectedMachineKey.value = null
+      selectedJobId.value = null
+    }
   }
 
   function reset() {
@@ -707,6 +855,7 @@ export const useFactoryStore = defineStore("factory", () => {
     isLiveMode.value = true;
     selectedMachineKey.value = null;
     selectedJobId.value = null;
+    selectedAgvIndex.value = null;
   }
 
   /**
@@ -843,6 +992,8 @@ export const useFactoryStore = defineStore("factory", () => {
     // 配置
     factoryConfigs.value = {};
     currentConfigId.value = null;
+    runtimeExceptionConfig.value = null;
+    runtimeProcessingTimeConfig.value = null;
     // 工厂选择仍保留 localStorage
     localStorage.removeItem(STORAGE_KEYS.SELECTED_FACTORY);
   }
@@ -864,6 +1015,8 @@ export const useFactoryStore = defineStore("factory", () => {
     currentConfig,
     currentTopologyConfig,
     currentRenderConfig,
+    runtimeExceptionConfig,
+    runtimeProcessingTimeConfig,
     rebuildHint,
     loadConfigFromFile,
     setCurrentConfig,
@@ -873,6 +1026,11 @@ export const useFactoryStore = defineStore("factory", () => {
     getAGVs,
     initializeAGVs,
     getCurrentAssets,
+    getJobs,
+    getJobMachineIdMap,
+    getMachineRuntimeKey,
+    getMachineConfig,
+    getMachineDisplayName,
     getAssetsStats,
     formatAssetsList,
     addAssetFromTemplate,
@@ -882,6 +1040,7 @@ export const useFactoryStore = defineStore("factory", () => {
     renameAsset,
     removeAsset,
     exportCurrentConfig,
+    setRuntimeProfiles,
 
     // ── 动画状态 ──
     historyBuffer,
@@ -892,6 +1051,7 @@ export const useFactoryStore = defineStore("factory", () => {
     playbackSpeed,
     totalSteps,
     currentState,
+    latestState,
     reset,
     clearAll,
     pushSnapshot,
@@ -904,8 +1064,10 @@ export const useFactoryStore = defineStore("factory", () => {
     // ── 模块① machine ↔ Job 联动 ──
     selectedMachineKey,
     selectedJobId,
+    selectedAgvIndex,
     selectMachine,
     selectJob,
+    selectAgv,
 
     // ── 数据集缓存 ──
     datasetList,

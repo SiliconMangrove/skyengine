@@ -1,0 +1,111 @@
+# ============================================================================
+# SkyEngine (天工) - 实验编排
+# 架构：engine 对外暴露 HTTP，内部以 REST 调用 mapf / fjsp 组件
+# ============================================================================
+
+x-gpu-deploy: &gpu-deploy
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [ gpu ]
+
+x-common-env: &common-env
+  SKY_LOG_LEVEL: INFO
+  CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+  SEED: ${SEED:-42}
+
+services:
+
+  # --------------------------------------------------------------------------
+  # 核心引擎 — 唯一对外入口
+  # --------------------------------------------------------------------------
+  engine:
+    <<: *gpu-deploy
+    build:
+      context: .
+      dockerfile: dockerfile
+    image: ${SKYENGINE_IMAGE:-skyengine:latest}
+    working_dir: /app
+    ports:
+      - "${BATCH_ENGINE_PORT:-8081}:8080" # 批处理引擎宿主机端口
+    volumes:
+      - ${DATA_DIR:-./dataset}:/dataset:ro # 数据集挂载 (fjsp/ + mapf/)
+      - ./run.py:/app/run.py:ro # 运行脚本挂载
+      - ./sky_logs:/app/sky_logs # 日志 & SVG 输出（绑定挂载到宿主机）
+      - ./config:/app/config:ro # 配置文件挂载
+      - ./sky_executor:/app/sky_executor # 核心执行器挂载
+      - ./sky_logs/logger.py:/app/sky_logs/logger.py:ro # 日志模块挂载
+    environment:
+      <<: *common-env
+      SKY_LOG_DIR: "/app/sky_logs"
+      # --- 数据集 ---
+      DATA_DIR: "/dataset"
+      FJSP_INSTANCE: "J10P5M6.json"
+      MAPF_INSTANCE: "medium-mazes-seed-0000@medium_maps.yaml"
+
+      # --- 场景参数 ---
+      NUM_MACHINES: 5
+      NUM_AGV: 8
+      NUM_SIZE: 16
+      NUM_DENSE: 0.1
+      NUM_RADIUS: 5
+      NUM_STEPS: ${NUM_STEPS:-500}
+      HTTP_TIMEOUT: ${HTTP_TIMEOUT:-6}
+      OBS_TYPE: "default" # default / MAPF / POMAPF
+
+      # --- 求解器选择 ---
+      SOLVER_JOB: "http" # greedy / best / http / drl
+      SOLVER_ROUTE: "http" # astar / greedy / http
+      SOLVER_ASSIGN: "random" # random
+      # --- http求解器默认位置 ---
+
+      MAPF_SERVICE_URL: "http://mapf:8001"
+      FJSP_SERVICE_URL: "http://fjsp:8002"
+      MAPF_IMAGE: ${MAPF_IMAGE:-skyengine-mapf-gpt:latest} # 供 engine 自动推断 obs_type
+
+      # --- 显卡 ---
+      NVIDIA_VISIBLE_DEVICES: 2
+
+    networks:
+      - control-net
+    command: [ "sh", "-c", "${ENGINE_CMD:-uv run python -u run.py}" ]
+
+  # --------------------------------------------------------------------------
+  # 组件 A — MAPF 路径规划（仅内网可达，不对外暴露）
+  # --------------------------------------------------------------------------
+  mapf:
+    <<: *gpu-deploy
+    image: ${MAPF_IMAGE:-skyengine-mapf-gpt:latest}
+    expose:
+      - "8001"
+    environment:
+      <<: *common-env
+      TIME_LIMIT: 30
+      NVIDIA_VISIBLE_DEVICES: 2
+    networks:
+      - control-net
+
+  # --------------------------------------------------------------------------
+  # 组件 B — FJSP 作业调度
+  # --------------------------------------------------------------------------
+  fjsp:
+    <<: *gpu-deploy
+    image: ${FJSP_IMAGE:-skyengine-fjsp-pso:latest}
+    expose:
+      - "8002"
+    environment:
+      <<: *common-env
+      TIME_LIMIT: 5
+      NVIDIA_VISIBLE_DEVICES: 1
+    networks:
+      - control-net
+
+networks:
+  control-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

@@ -1,20 +1,22 @@
+FROM ghcr.io/astral-sh/uv:latest AS uv-bin
+
 FROM python:3.11-slim
 
 WORKDIR /app
+
+COPY --from=uv-bin /uv /usr/local/bin/uv
+COPY --from=uv-bin /uvx /usr/local/bin/uvx
 
 # Use Chinese mirror for apt
 RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    docker-compose \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy local binaries: uv + docker CLI + compose plugin
-# COPY application/dockerfile/docker-bin/uv /usr/local/bin/uv
-# COPY application/dockerfile/docker-bin/docker /usr/local/bin/docker
-# COPY application/dockerfile/docker-bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Set PyPI mirror (tsinghua)
 ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -23,7 +25,7 @@ ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 COPY pyproject.toml uv.lock ./
 
 # Sync dependencies
-RUN uv sync --frozen --no-dev
+RUN uv sync --no-dev
 
 ENV PYTHONUNBUFFERED=1
 
@@ -32,6 +34,8 @@ COPY application /app/application
 COPY executor /app/executor
 COPY config /app/config
 COPY dataset /app/dataset
+COPY sky_executor /app/sky_executor
+COPY sky_logs /app/sky_logs
 
 EXPOSE 8000
 

@@ -6,10 +6,6 @@
 @Date    ：2025/11/4 23:09
 """
 
-import sys
-from pathlib import Path
-
-
 from application.backend.core.BaseFactoryProxy import BaseFactoryProxy, FactoryProxyProtocol
 
 
@@ -63,21 +59,7 @@ class ProxyFactory:
     def create(cls, name: str, **kwargs) -> BaseFactoryProxy:
         name = name.lower()
 
-        # 针对插件环境进行延迟导入
-        if name == "grid_factory":
-            try:
-                # 添加 backend 目录到 sys.path，使得可以 import joint_sim
-                _backend_path = Path(__file__).parent.parent
-                if str(_backend_path) not in sys.path:
-                    sys.path.insert(0, str(_backend_path))
-                from joint_sim.proxy.grid_factory_proxy import GridFactoryProxy
-
-                if name not in cls._registry:
-                    cls.register(name, GridFactoryProxy)
-            except ImportError as e:
-                raise ImportError(f"创建 {name} 失败。请先安装必要的依赖包: {e}")
-
-        elif name == "packet_factory":
+        if name == "packet_factory":
             try:
                 from application.backend.core.PacketFactoryProxy import PacketFactoryProxy
 

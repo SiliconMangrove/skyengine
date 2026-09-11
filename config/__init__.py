@@ -8,22 +8,25 @@
 # 提供全局根路径,提供各个文件夹相对根路径的相对寻址,跨平台
 
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(Path(ROOT_DIR) / '.env', override=False)
 
 # 给出后端路径
-BACKEND_DIR = os.path.join(ROOT_DIR, 'backend')
-BACKEND_ENV_DIR = os.path.join(BACKEND_DIR, 'environment')
-BACKEND_DATA_DIR = os.path.join(BACKEND_DIR, 'config_set')
+BACKEND_DIR = os.getenv('BACKEND_DIR', os.path.join(ROOT_DIR, 'backend'))
+BACKEND_ENV_DIR = os.getenv('BACKEND_ENV_DIR', os.path.join(BACKEND_DIR, 'environment'))
+BACKEND_DATA_DIR = os.getenv('BACKEND_DATA_DIR', os.path.join(BACKEND_DIR, 'config_set'))
 
 # 给出数据集路径
-CONFIG_DIR = os.path.join(ROOT_DIR, 'config')
-MAP_CONFIG_DIR = os.path.join(CONFIG_DIR, 'config_set')
-DATA_DIR = os.path.join(ROOT_DIR, 'dataset')
-MAPF_BENCHMARK_DIR = os.path.join(DATA_DIR, 'map_dataset/sky_pogema-benchmark-main')
-MAPF_GPT_DIR = os.path.join(DATA_DIR, 'map_dataset/gpt_eval_config')
+CONFIG_DIR = os.getenv('CONFIG_DIR', os.path.join(ROOT_DIR, 'config'))
+MAP_CONFIG_DIR = os.getenv('MAP_CONFIG_DIR', os.path.join(CONFIG_DIR, 'config_set'))
+DATA_DIR = os.getenv('DATA_DIR', os.path.join(ROOT_DIR, 'dataset'))
+MAPF_BENCHMARK_DIR = os.getenv('MAPF_BENCHMARK_DIR', os.path.join(DATA_DIR, 'map_dataset/sky_pogema-benchmark-main'))
+MAPF_GPT_DIR = os.getenv('MAPF_GPT_DIR', os.path.join(DATA_DIR, 'map_dataset/gpt_eval_config'))
 # 给出日志路径
-LOG_DIR = os.path.join(ROOT_DIR, 'sky_logs')
+LOG_DIR = os.getenv('LOG_DIR', os.path.join(ROOT_DIR, 'sky_logs'))
 TEMP_LOG_DIR = os.path.join(LOG_DIR, 'temp_logs')
 BACKEND_LOG_DIR = os.path.join(LOG_DIR, 'backend_logs')
 SYSTEM_LOG_DIR = os.path.join(LOG_DIR, 'system_logs')
@@ -34,7 +37,7 @@ SVG_DIR = os.path.join(LOG_DIR, 'renders')
 ANIMATE_DIR = os.path.join(SVG_DIR, '')
 STEPS_DIR = os.path.join(SVG_DIR, 'steps')
 
-METRICS_DIR=os.path.join(LOG_DIR, 'metrics')
+METRICS_DIR = os.path.join(LOG_DIR, 'metrics')
 
 if __name__ == '__main__':
     print(CONFIG_DIR)

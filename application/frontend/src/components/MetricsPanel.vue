@@ -155,7 +155,7 @@ use([
 const props = defineProps({
     title: { type: String, default: '关键指标' },
     showChart: { type: Boolean, default: true },
-    // 'grid_factory' / 'docker' 触发 sim 模式；否则走 PacketFactory 默认
+    // 容器化 Grid 工厂使用 sim_server 指标；其他工厂使用各自指标。
     factoryType: { type: String, default: '' },
 })
 
@@ -163,7 +163,7 @@ const props = defineProps({
 const monitorStore = useMonitorStore()
 
 const isSimMode = computed(() =>
-    props.factoryType === 'grid_factory' || props.factoryType === 'docker'
+    props.factoryType === 'grid_factory_new' || props.factoryType === 'docker'
 )
 
 // ============ sim_server 模式: 关键指标卡片 ============

@@ -33,18 +33,19 @@ export function useSimulationConfig({
   const isRunningTest = ref(false);
   let stopTest = null;
 
-  // ==================== 模块③：episode 结束快照到 analysisLog ====================
+  // ==================== 模块③：episode 结束快照到 analysisLog（async，落盘到后端）====================
 
-  function snapshotToAnalysisLog(store, monitorStore, meta) {
+  async function snapshotToAnalysisLog(store, monitorStore, meta) {
     try {
       const analysisLog = useAnalysisLogStore()
-      const run = analysisLog.finalizeFromStores(store, monitorStore, meta)
+      const run = await analysisLog.finalizeFromStores(store, monitorStore, meta)
       ElMessage.success(
-        `已保存分析样本：${run.total_steps} 步 → [查看分析] /analysis`,
+        `已保存分析样本：${run.total_steps} 步（系统日志 tab → 📊 查看历史样本）`,
       )
       return run
     } catch (err) {
       console.warn('[useSimulationConfig] snapshotToAnalysisLog 失败:', err)
+      ElMessage.error(`分析样本保存失败：${err.message || err}`)
       return null
     }
   }

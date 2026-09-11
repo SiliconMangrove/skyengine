@@ -1,0 +1,286 @@
+{
+  "id": "flexible_workshop_static",
+  "name": "柔性制造车间静态沙盘",
+  "version": "1.0.0",
+  "createdAt": "2026-07-14",
+  "description": "用于正式版本静态展示的 12 x 10 柔性制造车间，包含 9 台设备、3 台 AGV 和每台设备旁的 1 x 2 工作台，不包含订单、异常或算法配置。",
+  "topology": {
+    "gridWidth": 12,
+    "gridHeight": 10,
+    "zones": [
+      {
+        "id": "zone_inbound",
+        "name": "来料/AGV 等待区",
+        "area": { "x": 0, "y": 3, "w": 1, "h": 5 },
+        "type": "restricted",
+        "color": "rgba(255, 235, 59, 0.14)"
+      },
+      {
+        "id": "zone_family_a",
+        "name": "A族壳体加工岛",
+        "area": { "x": 1, "y": 1, "w": 9, "h": 2 },
+        "type": "workbench",
+        "color": "rgba(33, 150, 243, 0.14)"
+      },
+      {
+        "id": "zone_family_b",
+        "name": "B族泵阀加工岛",
+        "area": { "x": 1, "y": 4, "w": 9, "h": 2 },
+        "type": "workbench",
+        "color": "rgba(76, 175, 80, 0.14)"
+      },
+      {
+        "id": "zone_family_c",
+        "name": "C族夹具加工岛",
+        "area": { "x": 1, "y": 7, "w": 9, "h": 2 },
+        "type": "workbench",
+        "color": "rgba(255, 152, 0, 0.14)"
+      },
+      {
+        "id": "zone_outbound",
+        "name": "检验/出库缓冲",
+        "area": { "x": 10, "y": 3, "w": 2, "h": 5 },
+        "type": "workarea",
+        "color": "rgba(0, 150, 136, 0.14)"
+      },
+      {
+        "id": "zone_m0_workbench",
+        "name": "M0旁工作台/夹具台",
+        "area": { "x": 3, "y": 1, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m1_workbench",
+        "name": "M1旁工作台/夹具台",
+        "area": { "x": 3, "y": 4, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m2_workbench",
+        "name": "M2旁工作台/夹具台",
+        "area": { "x": 3, "y": 7, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m3_workbench",
+        "name": "M3旁工作台/夹具台",
+        "area": { "x": 6, "y": 1, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m4_workbench",
+        "name": "M4旁工作台/夹具台",
+        "area": { "x": 6, "y": 4, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m5_workbench",
+        "name": "M5旁工作台/夹具台",
+        "area": { "x": 6, "y": 7, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m6_workbench",
+        "name": "M6旁工作台/夹具台",
+        "area": { "x": 9, "y": 1, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m7_workbench",
+        "name": "M7旁工作台/夹具台",
+        "area": { "x": 9, "y": 4, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      },
+      {
+        "id": "zone_m8_workbench",
+        "name": "M8旁工作台/夹具台",
+        "area": { "x": 9, "y": 7, "w": 1, "h": 2 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.45)"
+      }
+    ],
+    "machines": {
+      "M0_CNC_A": {
+        "id": "M0_CNC_A",
+        "name": "M0 CNC-A 壳体主机",
+        "location": [2, 2],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M1_CNC_B": {
+        "id": "M1_CNC_B",
+        "name": "M1 CNC-B 泵阀主机",
+        "location": [2, 5],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M2_CNC_C": {
+        "id": "M2_CNC_C",
+        "name": "M2 CNC-C 夹具主机",
+        "location": [2, 8],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M3_DRILL_A": {
+        "id": "M3_DRILL_A",
+        "name": "M3 钻攻-A",
+        "location": [5, 2],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M4_DRILL_B": {
+        "id": "M4_DRILL_B",
+        "name": "M4 钻攻-B",
+        "location": [5, 5],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M5_DRILL_C": {
+        "id": "M5_DRILL_C",
+        "name": "M5 钻攻-C",
+        "location": [5, 8],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M6_QC_A": {
+        "id": "M6_QC_A",
+        "name": "M6 检测装配-A",
+        "location": [8, 2],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M7_QC_B": {
+        "id": "M7_QC_B",
+        "name": "M7 检测装配-B",
+        "location": [8, 5],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M8_QC_C": {
+        "id": "M8_QC_C",
+        "name": "M8 检测装配-C",
+        "location": [8, 8],
+        "size": [1, 1],
+        "status": "IDLE"
+      }
+    },
+    "waypoints": {
+      "INBOUND": {
+        "id": "INBOUND",
+        "location": [1, 5],
+        "type": "dock",
+        "name": "来料口"
+      },
+      "LINE_A_BUFFER": {
+        "id": "LINE_A_BUFFER",
+        "location": [1, 2],
+        "type": "route",
+        "name": "A线入口缓冲"
+      },
+      "LINE_B_BUFFER": {
+        "id": "LINE_B_BUFFER",
+        "location": [1, 5],
+        "type": "route",
+        "name": "B线入口缓冲"
+      },
+      "LINE_C_BUFFER": {
+        "id": "LINE_C_BUFFER",
+        "location": [1, 8],
+        "type": "route",
+        "name": "C线入口缓冲"
+      },
+      "CROSS_AISLE": {
+        "id": "CROSS_AISLE",
+        "location": [4, 3],
+        "type": "route",
+        "name": "中部换线通道"
+      },
+      "INSPECTION_AISLE": {
+        "id": "INSPECTION_AISLE",
+        "location": [10, 4],
+        "type": "route",
+        "name": "检验通道"
+      },
+      "OUTBOUND": {
+        "id": "OUTBOUND",
+        "location": [11, 5],
+        "type": "dock",
+        "name": "出库口"
+      }
+    }
+  },
+  "agvs": [
+    {
+      "id": 0,
+      "name": "AGV-01",
+      "initialLocation": [0, 4],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 1,
+      "name": "AGV-02",
+      "initialLocation": [0, 5],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 2,
+      "name": "AGV-03",
+      "initialLocation": [0, 6],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    }
+  ],
+  "renderConfig": {
+    "baseGridSize": 38,
+    "gridWidth": 12,
+    "gridHeight": 10,
+    "colors": {
+      "background": "#ECEFF1",
+      "grid": "#CFD8DC",
+      "dock": "#1565C0",
+      "dock_inner": "#42A5F5",
+      "dock_text": "#FFFFFF",
+      "route": "#4CAF50",
+      "route_text": "#FFFFFF",
+      "agv": "#FF5722",
+      "agv_stroke": "#FFFFFF",
+      "machine_working": "#FFD700",
+      "machine_idle": "#90EE90",
+      "machine_broken": "#F44336",
+      "machine_maintenance": "#FF9800",
+      "machine_stroke": "#333333",
+      "zone_restricted": "rgba(255, 235, 59, 0.14)",
+      "zone_restricted_line": "rgba(255, 152, 0, 1)",
+      "zone_workbench": "rgba(33, 150, 243, 0.14)",
+      "zone_workbench_line": "rgba(33, 150, 243, 1)",
+      "zone_obstacle": "rgba(69, 90, 100, 0.45)",
+      "zone_obstacle_line": "rgba(55, 71, 79, 0.8)",
+      "zone_workarea": "rgba(0, 150, 136, 0.14)",
+      "zone_workarea_line": "rgba(0, 150, 136, 0.9)",
+      "boundary": "rgba(100, 100, 100, 0.3)"
+    }
+  },
+  "metadata": {
+    "gridUnit": "20 cm cell",
+    "footprint": "12 x 10 grid cells",
+    "machineCount": 9,
+    "agvCount": 3,
+    "scenarioRole": "static_display",
+    "layoutVersion": "compact_12x10_machine_side_workbenches",
+    "workbenchObstacleCount": 9,
+    "workbenchObstacleSize": "1 x 2 cells per machine"
+  }
+}

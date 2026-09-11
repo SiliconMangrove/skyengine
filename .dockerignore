@@ -1,0 +1,14 @@
+.git
+.venv
+node_modules
+**/node_modules
+application/frontend/node_modules
+__pycache__
+.pytest_cache
+sky_logs/*
+data/history
+application/frontend/dist
+docs
+experiment
+test
+.uv-cache

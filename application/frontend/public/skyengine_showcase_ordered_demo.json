@@ -1,0 +1,491 @@
+{
+  "id": "skyengine_showcase_ordered_demo",
+  "name": "SkyEngine 7月机制顺序演示车间",
+  "version": "1.0.0",
+  "createdAt": "2026-07-17",
+  "description": "面向演示视频的7x7板式家具柔性车间。正常生产启动后，依次展示AGV取放料、加工时间波动、机器故障、AGV故障和临时障碍；建议在step 169左右通过插单面板提交特急订单，继续展示PSO在线重规划与归档回放。",
+  "topology": {
+    "gridWidth": 7,
+    "gridHeight": 7,
+    "zones": [
+      {
+        "id": "body_m0",
+        "name": "M0 电子开料锯本体",
+        "area": { "x": 0, "y": 0, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m1",
+        "name": "M1 Nesting CNC本体",
+        "area": { "x": 3, "y": 0, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m2",
+        "name": "M2 直线封边机本体",
+        "area": { "x": 6, "y": 0, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m3",
+        "name": "M3 柔性封边机本体",
+        "area": { "x": 1, "y": 2, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m4",
+        "name": "M4 六面钻本体",
+        "area": { "x": 5, "y": 2, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m5",
+        "name": "M5 CNC钻铣中心本体",
+        "area": { "x": 0, "y": 4, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m6",
+        "name": "M6 宽带砂光机本体",
+        "area": { "x": 3, "y": 4, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m7",
+        "name": "M7 柔性砂光单元本体",
+        "area": { "x": 6, "y": 4, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m8",
+        "name": "M8 喷涂固化单元本体",
+        "area": { "x": 2, "y": 6, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "body_m9",
+        "name": "M9 检测装配单元本体",
+        "area": { "x": 6, "y": 6, "w": 1, "h": 1 },
+        "type": "obstacle",
+        "color": "rgba(69, 90, 100, 0.58)"
+      },
+      {
+        "id": "zone_raw_material",
+        "name": "原料与取料区",
+        "area": { "x": 0, "y": 5, "w": 2, "h": 2 },
+        "type": "restricted",
+        "color": "rgba(255, 193, 7, 0.16)"
+      },
+      {
+        "id": "zone_main_aisle",
+        "name": "AGV共享运输主通道",
+        "area": { "x": 0, "y": 3, "w": 7, "h": 1 },
+        "type": "workarea",
+        "color": "rgba(0, 150, 136, 0.12)"
+      }
+    ],
+    "machines": {
+      "M0_PANEL_SAW": {
+        "id": "M0_PANEL_SAW",
+        "name": "M0 电子开料锯",
+        "location": [0, 1],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M1_NESTING_CNC": {
+        "id": "M1_NESTING_CNC",
+        "name": "M1 Nesting CNC",
+        "location": [3, 1],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M2_EDGE_BANDER_A": {
+        "id": "M2_EDGE_BANDER_A",
+        "name": "M2 直线封边机A",
+        "location": [6, 1],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M3_EDGE_BANDER_B": {
+        "id": "M3_EDGE_BANDER_B",
+        "name": "M3 柔性封边机B",
+        "location": [2, 2],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M4_SIX_SIDE_DRILL": {
+        "id": "M4_SIX_SIDE_DRILL",
+        "name": "M4 六面钻",
+        "location": [4, 2],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M5_CNC_DRILL_MILL": {
+        "id": "M5_CNC_DRILL_MILL",
+        "name": "M5 CNC钻铣中心",
+        "location": [1, 4],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M6_WIDE_BELT_SANDER": {
+        "id": "M6_WIDE_BELT_SANDER",
+        "name": "M6 宽带砂光机",
+        "location": [2, 4],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M7_FLEXIBLE_SANDER": {
+        "id": "M7_FLEXIBLE_SANDER",
+        "name": "M7 柔性砂光单元",
+        "location": [5, 4],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M8_SPRAY_CURE": {
+        "id": "M8_SPRAY_CURE",
+        "name": "M8 喷涂固化单元",
+        "location": [2, 5],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M9_INSPECT_ASSEMBLY": {
+        "id": "M9_INSPECT_ASSEMBLY",
+        "name": "M9 检测装配单元",
+        "location": [6, 5],
+        "size": [1, 1],
+        "status": "IDLE"
+      }
+    },
+    "waypoints": {
+      "RAW_MATERIAL": {
+        "id": "RAW_MATERIAL",
+        "location": [0, 6],
+        "type": "dock",
+        "name": "原料进料口"
+      },
+      "MAIN_AISLE_LEFT": {
+        "id": "MAIN_AISLE_LEFT",
+        "location": [1, 3],
+        "type": "route",
+        "name": "主通道左段"
+      },
+      "MAIN_AISLE_CENTER": {
+        "id": "MAIN_AISLE_CENTER",
+        "location": [3, 3],
+        "type": "route",
+        "name": "主通道中心"
+      },
+      "MAIN_AISLE_RIGHT": {
+        "id": "MAIN_AISLE_RIGHT",
+        "location": [5, 3],
+        "type": "route",
+        "name": "主通道右段"
+      },
+      "OUTBOUND": {
+        "id": "OUTBOUND",
+        "location": [6, 5],
+        "type": "dock",
+        "name": "检测与出库口"
+      }
+    }
+  },
+  "agvs": [
+    {
+      "id": 0,
+      "name": "AGV-01",
+      "initialLocation": [2, 3],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 1,
+      "name": "AGV-02",
+      "initialLocation": [3, 3],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 2,
+      "name": "AGV-03",
+      "initialLocation": [4, 3],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    },
+    {
+      "id": 3,
+      "name": "AGV-04",
+      "initialLocation": [5, 3],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    }
+  ],
+  "jobs": {
+    "job_list": [
+      {
+        "job_id": 0,
+        "name": "柜体侧板-01",
+        "product_family": "CABINET_SIDE",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 11], [1, 13]] },
+          { "name": "封边", "machine_options_with_time": [[2, 9], [3, 11]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 12], [5, 14]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 8]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 150,
+        "priority": 1
+      },
+      {
+        "job_id": 1,
+        "name": "柜体侧板-02",
+        "product_family": "CABINET_SIDE",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 12], [1, 10]] },
+          { "name": "封边", "machine_options_with_time": [[2, 10], [3, 9]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 13], [5, 11]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 8]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 150,
+        "priority": 1
+      },
+      {
+        "job_id": 2,
+        "name": "柜体背板-01",
+        "product_family": "CABINET_BACK",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 10], [1, 12]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 12], [5, 10]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 10], [7, 12]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 7]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 160,
+        "priority": 1
+      },
+      {
+        "job_id": 3,
+        "name": "喷漆门板-01",
+        "product_family": "DOOR_PANEL",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 12], [1, 10]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 14], [5, 11]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 11], [7, 10]] },
+          { "name": "喷涂固化", "machine_options_with_time": [[8, 14]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 8]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 180,
+        "priority": 2
+      },
+      {
+        "job_id": 4,
+        "name": "喷漆门板-02",
+        "product_family": "DOOR_PANEL",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 11], [1, 13]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 13], [5, 12]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 12], [7, 10]] },
+          { "name": "喷涂固化", "machine_options_with_time": [[8, 13]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 8]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 180,
+        "priority": 2
+      },
+      {
+        "job_id": 5,
+        "name": "异形装饰板-01",
+        "product_family": "PROFILE_PANEL",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 13], [1, 11]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 13], [5, 11]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 12], [7, 10]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 8]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 165,
+        "priority": 1
+      },
+      {
+        "job_id": 6,
+        "name": "活动层板-01",
+        "product_family": "SHELF",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 9], [1, 11]] },
+          { "name": "封边", "machine_options_with_time": [[2, 9], [3, 10]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 10], [5, 12]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 7]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 145,
+        "priority": 1
+      },
+      {
+        "job_id": 7,
+        "name": "抽屉面板-01",
+        "product_family": "DRAWER_FRONT",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 10], [1, 12]] },
+          { "name": "封边", "machine_options_with_time": [[2, 10], [3, 9]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 11], [5, 10]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 9], [7, 10]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 7]] }
+        ],
+        "arrival_time": 0,
+        "due_time": 170,
+        "priority": 1
+      }
+    ]
+  },
+  "material_handling_config": {
+    "pickup_dwell_steps": 3,
+    "dropoff_dwell_steps": 3,
+    "raw_material_source": [0, 6]
+  },
+  "processing_time_config": {
+    "enabled": true,
+    "preset": "moderate_variance",
+    "random_seed": 20260717,
+    "sample_on": "operation_start",
+    "rounding": "round",
+    "min_value": 1,
+    "default_distribution": {
+      "dist": "multiplier_uniform",
+      "low": 0.85,
+      "high": 1.2
+    },
+    "machine_distributions": {
+      "8": {
+        "dist": "multiplier_triangular",
+        "low": 0.8,
+        "mode": 1.05,
+        "high": 1.35
+      }
+    }
+  },
+  "exception_config": {
+    "enabled": true,
+    "preset": "no_event",
+    "random_seed": 20260717,
+    "schedule": [
+      {
+        "step": 92,
+        "type": "machine_breakdown",
+        "machine_id": 0,
+        "duration_steps": 14,
+        "reason": "demo_panel_saw_breakdown"
+      },
+      {
+        "step": 118,
+        "type": "agv_breakdown",
+        "agv_id": 1,
+        "duration_steps": 12,
+        "reason": "demo_agv_03_breakdown"
+      },
+      {
+        "step": 140,
+        "type": "temporary_obstacle",
+        "cell": [4, 3],
+        "duration_steps": 14,
+        "reason": "demo_lower_cross_aisle_blockage"
+      },
+      {
+        "step": 141,
+        "type": "temporary_obstacle",
+        "cell": [3, 3],
+        "duration_steps": 13,
+        "reason": "demo_lower_cross_aisle_blockage_extension"
+      }
+    ],
+    "machine_failure": {
+      "enabled": false
+    },
+    "agv_failure": {
+      "enabled": false
+    },
+    "temporary_obstacle": {
+      "enabled": false,
+      "preserve_connectivity": true
+    }
+  },
+  "simulation_control": {
+    "max_steps": 420
+  },
+  "renderConfig": {
+    "baseGridSize": 64,
+    "gridWidth": 7,
+    "gridHeight": 7,
+    "colors": {
+      "background": "#ECEFF1",
+      "grid": "#B0BEC5",
+      "dock": "#1565C0",
+      "dock_inner": "#42A5F5",
+      "dock_text": "#FFFFFF",
+      "route": "#43A047",
+      "route_text": "#FFFFFF",
+      "agv": "#F4511E",
+      "agv_stroke": "#FFFFFF",
+      "machine_working": "#FBC02D",
+      "machine_idle": "#81C784",
+      "machine_broken": "#D32F2F",
+      "machine_maintenance": "#F57C00",
+      "machine_stroke": "#263238",
+      "zone_restricted": "rgba(255, 193, 7, 0.16)",
+      "zone_restricted_line": "rgba(255, 143, 0, 0.9)",
+      "zone_workarea": "rgba(0, 150, 136, 0.12)",
+      "zone_workarea_line": "rgba(0, 121, 107, 0.85)",
+      "zone_obstacle": "rgba(69, 90, 100, 0.58)",
+      "zone_obstacle_line": "rgba(38, 50, 56, 0.95)",
+      "boundary": "rgba(55, 71, 79, 0.45)"
+    }
+  },
+  "metadata": {
+    "gridUnit": "40 cm structural cell",
+    "footprint": "7 x 7 cells, 2.8 m x 2.8 m",
+    "machineCount": 10,
+    "jobCount": 8,
+    "agvCount": 4,
+    "scenarioRole": "video_showcase_ordered_mechanisms",
+    "recommendedAlgorithm": "pso+mapf_gpt+nearest",
+    "automaticTimeline": [
+      { "stepRange": "1-91", "action": "正常生产，重点拍摄AGV前往取料、取料中、载货运输、放料中和加工时间波动" },
+      { "step": 92, "action": "M0电子开料锯在加工阶段发生故障，持续14步" },
+      { "step": 105, "action": "M0自动恢复并继续生产" },
+      { "step": 116, "action": "AGV-03在执行搬运任务时发生故障，持续12步" },
+      { "step": 127, "action": "AGV-03自动恢复并继续原任务" },
+      { "step": 140, "action": "下部横向通道出现第一格临时障碍" },
+      { "step": 141, "action": "相邻第二格临时障碍出现，形成清晰的两格阻塞" },
+      { "step": 153, "action": "两格临时障碍自动清除" }
+    ],
+    "manualTimeline": [
+      {
+        "recommendedStep": 169,
+        "action": "打开插单面板提交特急订单",
+        "orderName": "特急订单-演示",
+        "priority": 200,
+        "dueInSteps": 60,
+        "operationAdvice": "选择当时正在加工的非特急机器作为唯一候选设备，加工时间设置为8至12步，以便录制重规划和可选抢占过程"
+      }
+    ],
+    "recordingNotes": [
+      "配置内的异常全部采用定时计划，不启用随机异常，因此每次重置后的触发顺序可复现。",
+      "加工时间波动从工序开始时按固定随机种子采样。",
+      "紧急插单不属于Exception，必须通过插单面板或insert_jobs接口提交。",
+      "正式录制前建议先完整运行一次，确认step 140和141的目标格在所选算法下未被AGV占用。"
+    ]
+  }
+}

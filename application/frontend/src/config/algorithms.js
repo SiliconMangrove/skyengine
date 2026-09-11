@@ -10,7 +10,7 @@ const algorithms = {
       id: "pso",
       name: "PSO 粒子群优化",
       description: "模拟鸟群觅食行为的群体智能算法，通过粒子在解空间中的协作搜索寻找近优调度方案。收敛速度较快，适合中等规模问题。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {
@@ -41,7 +41,7 @@ const algorithms = {
       id: "astar",
       name: "A* 路由",
       description: "经典启发式搜索算法，为每个 AGV 独立计算最短路径，通过优先级机制避免冲突。计算效率高，适合密度较低的场景。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {
@@ -58,7 +58,7 @@ const algorithms = {
       id: "nearest",
       name: "最近分配",
       description: "将任务分配给距离最近的可用机器，减少 AGV 运输距离。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {
@@ -72,7 +72,7 @@ const algorithms = {
       id: "greedy",
       name: "贪心分配",
       description: "每步选择当前最优的机器-任务匹配，局部最优决策。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {
@@ -86,21 +86,21 @@ const algorithms = {
       id: "least_congestion",
       name: "最小拥堵",
       description: "优先分配给当前负载最低的机器，均衡各机器利用率。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {
       id: "load_balance",
       name: "负载均衡",
       description: "综合考虑机器队列长度和加工时间，动态平衡产线负载。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {
       id: "random",
       name: "随机分配",
       description: "随机选择可用机器，常作为基准对照。",
-      environments: ["grid_factory", "grid_factory_new"],
+      environments: ["grid_factory_new"],
       status: "available",
     },
     {

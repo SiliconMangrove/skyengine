@@ -1,366 +1,158 @@
-# SkyEngine 快速开始指南
+# SkyEngine Quickstart
 
-## 📋 目录
+本文给出从零部署 SkyEngine 的最短路径。平台本身、在线仿真引擎和前端由 `skyengine` 管理；FJSP/MAPF 算子由两个独立仓库提供，首次部署时必须先构建对应镜像。
 
-- [环境要求](#环境要求)
-- [环境安装](#环境安装)
-- [Application 使用](#application-使用)
-- [算法研究环境使用](#算法研究环境使用)
-- [Docker Compose 部署](#docker-compose-部署)
-- [常见问题](#常见问题)
+## 1. 准备环境
 
----
+Linux 部署需要：
 
-## 环境要求
+- Git
+- Docker Engine
+- Docker Compose v2（或兼容的 `docker-compose`）
+- 可用的 Docker daemon
+- 至少 8 GB 可用内存和足够的磁盘空间
 
-### 基础要求
+使用 GPU 算子时，还需要 NVIDIA 驱动和 NVIDIA Container Toolkit。只使用 CPU 算子时不需要 GPU。
 
-- **Python**: >= 3.11
-- **Node.js**: >= 20.19.0 或 >= 22.12.0
-- **包管理器**: uv (推荐) 或 pip
-- **操作系统**: Windows / Linux / macOS
+## 2. 获取项目
 
-### 硬件要求
+将本项目源码复制或检出到 Linux 主机，并进入 `skyengine` 根目录：
 
-- **内存**: 建议 8GB 以上
-- **GPU**: 可选，用于深度学习模型训练（需要 CUDA 12.9 支持）
-- **存储**: 至少 5GB 可用空间
+```bash
+cd /path/to/skyengine
+```
 
----
+后续命令都在 `skyengine` 根目录或对应的算法仓库目录中执行。
 
-## 环境安装
+## 3. 构建 FJSP 算子仓库
 
-### 1. 安装 uv 包管理器
+在与 `skyengine` 同级的目录中克隆并按仓库说明构建 [SkyEngine-FJSP](https://github.com/skyrimforest/SkyEngine-FJSP)：
 
-SkyEngine 使用 `uv` 作为包管理器，它比传统的 pip 更快、更可靠。
+```bash
+cd ..
+git clone https://github.com/skyrimforest/SkyEngine-FJSP.git
+cd SkyEngine-FJSP
+./build.sh
+```
 
-#### Windows
+`./build.sh` 会按该仓库的默认流程构建基础镜像和可用算子镜像。也可以按需构建单个算子，例如：
+
+```bash
+./build.sh de
+./build.sh pso
+./build.sh best
+```
+
+需要使用深度学习算子时，再按该仓库说明构建 `drl`，并准备对应的 GPU 环境和模型权重。
+
+## 4. 构建 MAPF 算子仓库
+
+继续在与 `skyengine` 同级的目录中克隆并按仓库说明构建 [SkyEngine-MAPF](https://github.com/skyrimforest/SkyEngine-MAPF)：
+
+```bash
+cd ..
+git clone https://github.com/skyrimforest/SkyEngine-MAPF.git
+cd SkyEngine-MAPF
+./build.sh
+```
+
+也可以按需构建单个算子，例如：
+
+```bash
+./build.sh astar
+./build.sh flow-rl
+./build.sh mapf-gpt
+```
+
+部分 MAPF 算子需要 GPU 或额外模型权重，具体以该仓库的说明为准。
+
+> 两个外部仓库的镜像名称必须与其说明一致。若平台配置选择了某个算子，而对应镜像尚未构建，平台在启动该算子时会找不到镜像。
+
+## 5. 安装 SkyEngine
+
+返回 `skyengine` 目录，首次安装时执行：
+
+```bash
+cd ../skyengine
+chmod +x install.sh start.sh stop.sh
+./install.sh
+```
+
+`install.sh` 会检查 Docker 和 Compose，生成或更新 `.env`，创建运行所需目录，并构建平台、在线引擎和批处理引擎镜像。脚本会把当前项目的绝对路径写入 `.env`，不需要手工填写 Windows 路径或容器路径。
+
+## 6. 启动服务
+
+```bash
+./start.sh
+```
+
+脚本会启动前端、平台后端和在线仿真引擎，并等待服务 HTTP 就绪。脚本会检测默认宿主机端口是否已被占用；如果被占用，会自动选择后续可用端口并写回 `.env`。因此实际访问地址以脚本最后输出为准，默认值为：
+
+- 前端：`http://localhost:5180`
+- 后端 API：`http://localhost:8233`
+- 在线引擎：`http://localhost:8080`
+
+容器内部端口由 Compose 固定，宿主机端口可以因自动协调而变化。
+
+查看服务状态和日志：
+
+```bash
+docker compose -f docker-compose.yml ps
+docker compose -f docker-compose.yml logs -f backend frontend
+docker compose -p skyengine-online -f docker-compose-online.yaml logs -f engine
+```
+
+打开脚本输出的前端地址即可使用网页界面。平台通过 DockerProxy 按需启动在线算法服务；算法镜像需要先完成第 3、4 步的构建。
+
+## 7. 停止服务
+
+```bash
+./stop.sh
+```
+
+该脚本会停止平台、在线引擎和批处理引擎 Compose 项目，但不会删除镜像、数据集或日志。
+
+## Windows 开发入口
+
+Windows 使用 Docker Desktop、Python 3.11、Node.js 20 或更高版本，并在项目根目录运行：
 
 ```powershell
-# 使用 PowerShell 安装
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+.\启动SkyEngine开发服务.ps1
 ```
 
-#### Linux / macOS
+停止服务：
 
-```bash
-# 使用 curl 安装
-curl -LsSf https://astral.sh/uv/install.sh | sh
+```powershell
+.\停止SkyEngine开发服务.ps1
 ```
 
-#### 验证安装
+Windows 启动脚本同样会在默认端口被占用时自动选择可用端口，并在输出中显示实际地址。
 
-```bash
-uv --version
-```
+## 可选配置
 
-### 2. 克隆项目
-
-```bash
-git clone https://github.com/dayu-autostreamer/skyengine.git
-cd skyengine
-```
-
-### 3. 安装 Python 依赖
-
-使用 uv 同步项目依赖：
-
-```bash
-# 同步所有依赖（推荐）
-uv sync
-
-# 或者手动安装
-uv pip install -e .
-```
-
-**注意事项**：
-
-- 项目使用 PyTorch 2.8.0（CUDA 12.9 版本）
-- uv 会自动处理依赖冲突和版本约束
-- Pydantic 版本被固定在 1.x（<2.0.0），以确保与 pogema 的兼容性
-
-### 4. 安装前端依赖
-
-```bash
-cd application/frontend
-npm install
-cd ../..
-```
-
-### 5. 验证安装
-
-```bash
-# 验证 Python 环境
-uv run python -c "import torch; import pogema; print('Python 环境正常')"
-
-# 验证前端环境
-cd application/frontend && npm run build && cd ../..
-```
-
----
-
-## Application 使用
-
-Application 是 SkyEngine 的可视化交互界面，提供实时仿真监控和调度可视化功能。
-
-### 启动后端服务
-
-在项目根目录下运行：
-
-```bash
-uv run uvicorn application.backend.server:app --reload --host 0.0.0.0 --port 8000
-```
-
-**启动参数说明**：
-
-- `--reload`: 开发模式，代码修改后自动重载
-- `--port 8000`: 后端监听端口（默认 8000）
-
-**后端功能**：
-
-- SSE（Server-Sent Events）实时状态推送
-- 工厂代理管理（Grid Factory / Packet Factory）
-- 性能指标监控
-- 配置加载和管理
-
-### 启动前端服务
-
-打开新终端，运行：
-
-```bash
-cd application/frontend
-npm run dev
-```
-
-前端默认运行在 `http://localhost:5173`
-
-### 使用界面
-
-1. **打开浏览器**访问 `http://localhost:5173`
-2. **选择工厂类型**：
-   - Grid Factory: 栅格化仿真环境
-   - Packet Factory: 包裹调度仿真环境
-   - Static Factory: 用于测试
-3. **加载配置文件**：上传对应的配置文件（YAML 格式）
-4. **启动仿真**：点击"开始"按钮
-5. **实时监控**：
-   - 状态可视化（地图、AGV、工单）
-   - 性能指标（吞吐量、完成时间、资源利用率）
-   - 热力图分析
-
-注意，当你初次进入，可能会发现Grid Factory与Packet Factory等环境均无法正常显示，不要着急！请参考如下文档：
-
-> [GridFactory](https://github.com/dayu-autostreamer/skyengine/blob/main/docs/grid_factory)
-> [PacketFactory](https://github.com/dayu-autostreamer/skyengine/blob/main/docs/packet_factory)
-
-### API 端点
-
-- `GET /stream/state`: 工厂状态流（SSE）
-- `GET /stream/metrics`: 性能指标流（SSE）
-- `POST /load_config`: 加载配置
-- `POST /control/start`: 启动仿真
-- `POST /control/step`: 单步执行
-- `POST /control/pause`: 暂停仿真
-- `POST /control/resume`: 恢复仿真
-- `POST /control/stop`: 停止仿真
-- `POST /control/reset`: 重置环境
-
-### 基准数据集
-
-项目内置多个标准数据集：
-
-- **FJSP 数据集**: `dataset/fjsp-instances/`
-  - Barnes, Behnke, Brandimarte, Dauzere, Fattahi, Hurink, Kacem
-- **MAPF 数据集**:  `dataset/map_dataset/pogema-benchmark-main/`
-  - random / mazes / warehouse / movingai / puzzles / pathfinding 多类场景
-
-## Docker Compose 部署
-
-使用 Docker Compose 一键部署后端 + 前端 + （可选）算法引擎栈。compose 文件位于项目根目录 `docker-compose.yml`。
-
-### 前置要求
-
-- **Docker**: >= 20.10
-- **Docker Compose**: >= 2.0
-- （离线/受限网络）已通过 `application/dockerfile/docker-bin/download.sh` 下载 `docker` / `docker-compose` / `uv` 二进制；否则使用系统自带 Docker 即可
-
-### 必需的环境变量
-
-部署前在项目根目录准备 `.env`（参考 `.env.example`）：
-
-```dotenv
-# SkyEngine 算法引擎的 online compose 文件路径（DockerProxy 按需启停）
-SKYENGINE_COMPOSE_PATH=/abs/path/to/skyengine/docker-compose-online.yaml
-# SkyEngine 算法项目根目录
-SKYENGINE_PROJECT_DIR=/abs/path/to/skyengine
-# 可选：RAG 助手后端地址
-RAG_BACKEND_URL=http://backend:8000
-# 可选：GPU 设备
-CUDA_VISIBLE_DEVICES=0
-```
-
-> 未设置 `SKYENGINE_COMPOSE_PATH` / `SKYENGINE_PROJECT_DIR` 时 backend 容器会启动失败（compose 用 `:?` 强校验）。
-
-### 部署步骤
-
-#### 1. 构建并启动服务
-
-在项目根目录下：
-
-```bash
-docker-compose up -d --build
-```
-
-构建上下文为项目根目录，使用 `application/dockerfile/backend.Dockerfile` 与 `application/dockerfile/frontend.Dockerfile`。
-
-#### 2. 查看服务状态
-
-```bash
-docker-compose ps
-```
-
-#### 3. 查看日志
-
-```bash
-docker-compose logs -f             # 全部
-docker-compose logs -f backend     # 仅后端
-docker-compose logs -f frontend    # 仅前端
-```
-
-#### 4. 停止服务
-
-```bash
-docker-compose down
-```
-
-### 服务端口
-
-- **前端**: `http://localhost:5180` （容器 5173 → 宿主 5180）
-- **后端**: `http://localhost:8233` （容器 8000 → 宿主 8233）
-
-### 卷挂载（开发模式热更新）
-
-`docker-compose.yml` 已配置源码 bind mount，改源码即生效：
-
-- `./application`、`./executor`、`./config`、`./dataset` → 容器 `/app/*`
-- `./application/frontend` → 前端容器 `/app`
-- `/app/.venv`、`/app/node_modules` 用匿名卷隔离，避免被宿主覆盖
-- `/var/run/docker.sock` 挂入 backend，供 DockerProxy 按需启停算法引擎栈
-
-### 新增前端依赖
-
-前端新增 npm 包必须重新 build 镜像，不能只在运行中的容器里 `npm install`：
-
-```bash
-docker-compose build frontend && docker-compose up -d frontend
-```
-
-### DockerProxy（算法引擎栈联动）
-
-backend 通过挂载的 `docker.sock` 与 `SKYENGINE_COMPOSE_PATH` 指向的 `docker-compose-online.yaml`，按需启停独立的算法引擎栈。uvicorn 退出时会自动 `compose down` online 栈，`stop_grace_period: 30s` 留足清理时间。
-
----
+- `.env` 中的 `FJSP_IMAGE` 和 `MAPF_IMAGE` 可用于选择已构建的默认算法镜像。
+- 使用 GPU 算子时，按需设置 `CUDA_VISIBLE_DEVICES`，并确保 Docker 能访问 GPU。
+- RAG 助手需要单独的模型服务和地址配置，不是 SkyEngine 基础网页启动的必需项。
+- 数据集位于 `dataset/`，批处理和在线引擎会使用项目配置的挂载目录。
 
 ## 常见问题
 
-### Q1: uv 安装依赖时报错 "Could not find a version that satisfies..."
+### 前端或后端端口变化
 
-**解决方案**：
+这是启动脚本的端口自动协调功能。使用 `start.sh` 输出的地址访问服务，并查看 `.env` 中的 `BACKEND_PORT`、`FRONTEND_PORT` 和 `ENGINE_PORT`。
 
-```bash
-# 清除缓存并重新安装
-uv cache clean
-uv sync --refresh
-```
+### 算法服务启动时找不到镜像
 
-### Q2: PyTorch CUDA 版本不匹配
+确认已经分别进入 `SkyEngine-FJSP` 和 `SkyEngine-MAPF`，并按它们各自的说明成功执行过 `./build.sh`。选择了特定算子时，还要确认对应的镜像标签与平台配置一致。
 
-**解决方案**：
+### 服务启动失败
+
+先查看容器状态和日志：
 
 ```bash
-# 检查 CUDA 版本
-nvidia-smi
-
-# 如果需要 CPU 版本的 PyTorch，修改 pyproject.toml 中的索引配置
+docker compose -f docker-compose.yml ps
+docker compose -f docker-compose.yml logs --tail 100 backend frontend
+docker compose -p skyengine-online -f docker-compose-online.yaml logs --tail 100 engine
 ```
 
-### Q3: 前端启动后无法连接后端
-
-**检查清单**：
-
-- 后端是否在 8000 端口运行
-- CORS 配置是否正确
-- 防火墙是否阻止连接
-
-```bash
-# 测试后端连接
-curl http://localhost:8000/stream/state
-```
-
-### Q4: Docker 构建失败
-
-**解决方案**：
-
-```bash
-# 清理 Docker 缓存
-docker system prune -a
-
-# 使用 --no-cache 重新构建
-docker-compose -f dockerfiles/application.yaml build --no-cache
-```
-
-### Q5: 仿真运行缓慢
-
-**优化建议**：
-
-- 减少地图大小或障碍物数量
-- 降低 AGV 数量
-- 使用更简单的调度算法
-- 关闭不必要的日志输出
-
-### Q6: 如何切换不同的调度算法？
-
-在配置文件中修改：
-
-```yaml
-scheduler:
-  type: "priority"  # 可选: greedy, priority, best, neural
-  priority_rule: "FIFO"  # 优先级规则
-```
-
-### Q7: 日志文件过大
-
-**解决方案**：
-
-```bash
-# 清理旧日志
-uv run python -c "from sky_logs.logger import clean_old_logs; clean_old_logs(days=7)"
-```
-
----
-
-## 下一步
-
-### 深入学习
-
-- 📖 阅读 [README.md](../README.md) 了解系统架构
-- 📖 查看 [docs/](.) 目录获取详细文档
-- 🔧 研究 [test/](../test/) 目录的示例代码
-- 📊 分析基准数据集 [dataset/](../dataset/)
-
-### 开发指南
-
-- 🏗️ [组件设计文档](https://github.com/dayu-autostreamer/skyengine/blob/main/docs/quick_start/client)
-- 🔄 [事件系统设计](https://github.com/dayu-autostreamer/skyengine/blob/main/docs/quick_start/developer)
-- 📝 [调度算法实现](./implement/)
-
-### 社区与支持
-
-- 🐛 提交 Issue: [GitHub Issues](https://github.com/dayu-autostreamer/skyengine/issues)
-- 💬 讨论区: [GitHub Discussions](https://github.com/dayu-autostreamer/skyengine/discussions)
-- 📧 联系我们: [hitskyrim@qq.com]
-
-
----
-
-**祝您使用愉快！🚀**
+如果修改了依赖或 Dockerfile，重新执行 `./install.sh`；只修改源码时重新执行 `./start.sh` 即可触发平台镜像更新。

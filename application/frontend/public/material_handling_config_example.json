@@ -1,0 +1,73 @@
+{
+  "id": "material_handling_example",
+  "name": "AGV material handling example",
+  "version": "1.0.0",
+  "description": "Backend-configured pickup and dropoff dwell example.",
+  "topology": {
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "zones": [],
+    "machines": {
+      "M0": {
+        "id": "M0",
+        "name": "Machine 0",
+        "location": [4, 4],
+        "size": [1, 1],
+        "status": "IDLE"
+      },
+      "M1": {
+        "id": "M1",
+        "name": "Machine 1",
+        "location": [8, 8],
+        "size": [1, 1],
+        "status": "IDLE"
+      }
+    },
+    "waypoints": {}
+  },
+  "agvs": [
+    {
+      "id": 0,
+      "name": "AGV-01",
+      "initialLocation": [2, 2],
+      "velocity": 1.0,
+      "capacity": 100,
+      "status": "IDLE"
+    }
+  ],
+  "jobs": {
+    "job_list": [
+      {
+        "job_id": 0,
+        "name": "Example Job",
+        "operations": [
+          {
+            "name": "Operation 0",
+            "machine_options_with_time": [[0, 5], [1, 7]]
+          },
+          {
+            "name": "Operation 1",
+            "machine_options_with_time": [[0, 7], [1, 5]]
+          }
+        ],
+        "arrival_time": 0,
+        "due_time": 50,
+        "priority": 1
+      }
+    ]
+  },
+  "material_handling_config": {
+    "pickup_dwell_steps": 2,
+    "dropoff_dwell_steps": 2,
+    "raw_material_source": [2, 2]
+  },
+  "simulation_control": {
+    "max_steps": 100
+  },
+  "renderConfig": {
+    "baseGridSize": 40,
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "colors": {}
+  }
+}

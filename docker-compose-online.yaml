@@ -1,0 +1,87 @@
+# ============================================================================
+# SkyEngine (天工) - 在线仿真服务
+# 与 docker-compose.yaml (实验模式) 并存，本文件用于平台集成
+#
+# 用法:
+#   docker compose -f docker-compose-online.yaml up -d          # 启动全部
+#   docker compose -f docker-compose-online.yaml up -d engine   # 仅启动引擎
+#   docker compose -f docker-compose-online.yaml down           # 停止全部
+#
+# 镜像变量 (通过 --env-file 或环境变量覆盖):
+#   FJSP_IMAGE  — FJSP 算法镜像 (默认 skyengine-fjsp-pso:latest)
+#   MAPF_IMAGE  — MAPF 算法镜像 (默认 skyengine-mapf-astar:latest)
+# ============================================================================
+
+x-gpu-deploy: &gpu-deploy
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+x-common-env: &common-env
+  SKY_LOG_LEVEL: INFO
+  CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+  SEED: ${SEED:-42}
+
+services:
+  # --------------------------------------------------------------------------
+  # 仿真引擎 — sim_server.py 提供在线控制 API
+  # --------------------------------------------------------------------------
+  engine:
+    <<: *gpu-deploy
+    build:
+      context: .
+      dockerfile: online.dockerfile
+    image: ${SKYENGINE_IMAGE:-skyengine-online:latest}
+    working_dir: /app
+    ports:
+      - "${ENGINE_PORT:-8080}:8080"
+    volumes:
+      - ${DATA_DIR:-./dataset}:/dataset:ro
+      - ./sim_server.py:/app/sim_server.py:ro
+      - ./sky_executor:/app/sky_executor:ro
+      - ./sky_logs:/app/sky_logs
+      - ./config:/app/config:ro
+    environment:
+      <<: *common-env
+      DATA_DIR: "/dataset"
+      SKY_LOG_DIR: "/app/sky_logs"
+      PYTHONUNBUFFERED: "1"
+      HTTP_TIMEOUT: 30
+
+    command: ["sh", "-c", "${ENGINE_CMD:-uv run python -u sim_server.py}"]
+
+    networks:
+      - sim-net
+
+  # --------------------------------------------------------------------------
+  # MAPF 算法服务 (单机测试用, 集成模式下由 DockerProxy 按需启动)
+  # --------------------------------------------------------------------------
+  mapf:
+    image: ${MAPF_IMAGE:-skyengine-mapf-astar:latest}
+    <<: *gpu-deploy
+    environment:
+      <<: *common-env
+      TIME_LIMIT: "30"
+    networks:
+      - sim-net
+
+  # --------------------------------------------------------------------------
+  # FJSP 算法服务 (单机测试用, 集成模式下由 DockerProxy 按需启动)
+  # --------------------------------------------------------------------------
+  fjsp:
+    image: ${FJSP_IMAGE:-skyengine-fjsp-pso:latest}
+    <<: *gpu-deploy
+    environment:
+      <<: *common-env
+      TIME_LIMIT: "5"
+    networks:
+      - sim-net
+
+networks:
+  sim-net:
+    external: true
+    name: skyengine-net

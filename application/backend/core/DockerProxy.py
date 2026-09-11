@@ -11,14 +11,36 @@ DockerProxy — 通过 docker compose 按需启停 SkyEngine 在线仿真服务
 """
 
 import os
+import re
 import asyncio
 import json
 import logging
+import datetime
+import subprocess
+import shutil
 from enum import Enum
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _compose_command() -> list[str]:
+    """Return the Compose CLI available in the backend image."""
+    docker = shutil.which("docker")
+    if docker:
+        result = subprocess.run(
+            [docker, "compose", "version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return [docker, "compose"]
+    legacy = shutil.which("docker-compose")
+    if legacy:
+        return [legacy]
+    raise RuntimeError("Docker Compose is unavailable; install docker compose or docker-compose")
 
 
 class ExecutionStatus(str, Enum):
@@ -41,8 +63,80 @@ ALGORITHM_MAP = {
     "mapf": {
         "astar":    "skyengine-mapf-astar:latest",
         "mapf_gpt": "skyengine-mapf-gpt:latest",
+        "flow_rl":  "skyengine-mapf-flow-rl:latest",
     },
 }
+
+
+# ==================== 批处理：日志解析 + 默认 ENV（参考 experiment/exp0503/run_experiments.py）====================
+
+# 批处理默认 ENV（与 exp0503 BASE_ENV 对齐）
+BATCH_BASE_ENV = {
+    "FJSP_INSTANCE": "J10P5M6.json",
+    # 格式：<实例名>@<文件名>。medium_maps.yaml 是 dataset/mapf/ 下实际存在的多实例文件，
+    # 内含 medium-mazes-seed-0000 等多个 seed。原 10-medium-mazes-part1.yaml 已不存在。
+    "MAPF_INSTANCE": "medium-mazes-seed-0000@medium_maps.yaml",
+    "NUM_MACHINES": "5",
+    "NUM_AGV": "8",
+    "NUM_SIZE": "16",
+    "NUM_DENSE": "0.1",
+    "NUM_RADIUS": "5",
+    "NUM_STEPS": "500",
+    "OBS_TYPE": "default",
+    "HTTP_TIMEOUT": "6",
+    "MAPF_SERVICE_URL": "http://mapf:8001",
+    "FJSP_SERVICE_URL": "http://fjsp:8002",
+    "SOLVER_ASSIGN": "random",
+}
+
+# 从 run.py stdout 抓取的指标字段（正则匹配 metric_key: number）
+METRIC_KEYS = [
+    # FJSP
+    "machine_utilization",
+    "machine_non_processing_time_mean",
+    "machine_load_variance",
+    "operation_queue_waiting_time_mean",
+    # MAPF
+    "swap_conflict_count",
+    "tasked_stationary_count",
+    "agv_loaded_utilization",
+    "agv_busy_utilization",
+    "agv_travel_time_total",
+    "agv_waiting_time_total",
+    # Coupling
+    "transport_delay_ratio",
+    "transport_blocking_delay_mean",
+    "machine_waiting_for_inbound_transfer_ratio",
+    # Episode
+    "completed_makespan",
+    "full_makespan",
+    "success_rate",
+    "job_completion_rate",
+]
+
+
+def parse_metrics(log: str) -> dict:
+    """从 run.py 输出抓取指标。复制自 experiment/exp0503/run_experiments.py:parse_metrics。
+    匹配 `metric_key: <number>` 形式；terminated_reason 走关键词匹配。"""
+    metrics = {}
+    for key in METRIC_KEYS:
+        m = re.search(
+            rf"{re.escape(key)}:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
+            log,
+        )
+        metrics[key] = float(m.group(1)) if m else ""
+
+    m = re.search(r"terminated_reason:\s*([A-Za-z0-9_\-]+)", log)
+    if m:
+        metrics["terminated_reason"] = m.group(1)
+    elif re.search(r"Episode ended", log):
+        metrics["terminated_reason"] = "done"
+    elif re.search(r"\bmax_steps\b", log):
+        metrics["terminated_reason"] = "max_steps"
+    else:
+        metrics["terminated_reason"] = "unknown"
+
+    return metrics
 
 
 class DockerProxy:
@@ -57,6 +151,8 @@ class DockerProxy:
                 {"label": "DE调度 + A*路由 + 最近分配", "value": "de+astar+nearest"},
                 {"label": "DRL调度 + A*路由 + 最近分配", "value": "drl+astar+nearest"},
                 {"label": "PSO调度 + MAPF-GPT路由 + 随机分配", "value": "pso+mapf_gpt+random"},
+                {"label": "PSO调度 + MAPF-GPT路由 + 最近分配", "value": "pso+mapf_gpt+nearest"},
+                {"label": "PSO调度 + FLOW-RL路由 + 最近分配", "value": "pso+flow_rl+nearest"},
             ],
         }
         self.status: ExecutionStatus = ExecutionStatus.IDLE
@@ -64,19 +160,34 @@ class DockerProxy:
         self._total_steps: int = 0
 
         # ---- compose 配置 ----
-        self._compose_file: str = os.getenv(
-            "SKYENGINE_COMPOSE_PATH",
-            "/opt/skyengine/docker-compose-online.yaml",
-        )
         self._project_dir: str = os.getenv(
             "SKYENGINE_PROJECT_DIR",
             "",
+        )
+        if not self._project_dir and os.name == "nt":
+            self._project_dir = self._default_windows_project_dir()
+
+        self._compose_file: str = self._resolve_windows_host_path(
+            os.getenv(
+                "SKYENGINE_COMPOSE_PATH",
+                "/opt/skyengine/docker-compose-online.yaml",
+            ),
+            fallback_filename="docker-compose-online.yaml",
+        )
+        self._batch_compose_file: str = self._resolve_windows_host_path(
+            os.getenv(
+                "SKYENGINE_BATCH_COMPOSE_PATH",
+                "/opt/skyengine/docker-compose-batch.yaml",
+            ),
+            fallback_filename="docker-compose.yaml",
         )
         self._project_name: str = "skyengine-online"
         self._engine_url: str = os.getenv(
             "ENGINE_URL",
             f"http://localhost:{os.getenv('ENGINE_PORT', '8080')}",
         )
+        if os.name == "nt" and self._engine_url == "http://engine:8080":
+            self._engine_url = "http://localhost:8080"
 
         self._config: dict = {}
         self._algorithm: str = "pso+astar+nearest"
@@ -86,14 +197,61 @@ class DockerProxy:
         # SSE 透传
         self._streaming = False
 
+        # ---- 批处理模式（参考 experiment/exp0503/run_experiments.py）----
+        # 用实验 compose（docker-compose.yaml）跑 run.py，串行多 episode
+        # 与在线模式互斥（GPU + project name 不冲突，但同时跑会资源争用）
+        # 宿主机上 dataset 目录路径（compose 把它以 :ro 挂到容器 /dataset）。
+        # 上传的实例文件写到此处，容器内即可见。
+        self._batch_dataset_host_dir: str = os.getenv(
+            "SKYENGINE_BATCH_DATASET_HOST_DIR",
+            os.path.join(self._project_dir or os.getcwd(), "dataset"),
+        )
+        self._batch_project_name: str = "skyengine-batch"
+        self._batch_queue: asyncio.Queue | None = None
+        self._batch_task: asyncio.Task | None = None
+        self._batch_cancel_event: asyncio.Event = asyncio.Event()
+        self._batch_status: dict = {
+            "running": False,
+            "idx": 0,
+            "total": 0,
+            "results": [],
+        }
+
+    @staticmethod
+    def _default_windows_project_dir() -> str:
+        """Windows 本地开发默认使用当前 skyengine 项目根目录。"""
+        frontend_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..")
+        )
+        return frontend_root if os.path.isdir(frontend_root) else ""
+
+    def _resolve_windows_host_path(self, path: str, fallback_filename: str) -> str:
+        """把容器内 /opt/skyengine 路径转换为 Windows 宿主机真实路径。"""
+        if os.name != "nt" or not path:
+            return path
+
+        normalized = path.replace("\\", "/")
+        candidates: list[str] = []
+        if normalized.startswith("/opt/skyengine/") and self._project_dir:
+            tail = normalized.removeprefix("/opt/skyengine/")
+            if tail == "docker-compose-batch.yaml":
+                candidates.append(os.path.join(self._project_dir, "docker-compose.yaml"))
+            candidates.append(os.path.join(self._project_dir, tail))
+
+        if self._project_dir:
+            candidates.append(os.path.join(self._project_dir, fallback_filename))
+
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return os.path.normpath(candidate)
+
+        return os.path.normpath(candidates[0]) if candidates else path
+
     # ==================== docker compose 辅助 ====================
 
     async def _compose(self, *args: str, env: dict | None = None) -> str:
         """执行 docker compose 命令并返回输出"""
-        cmd = [
-            "docker", "compose",
-            "-p", self._project_name,
-        ]
+        cmd = [*_compose_command(), "-p", self._project_name]
         if self._project_dir:
             cmd += ["--project-directory", self._project_dir]
         cmd += ["-f", self._compose_file, *args]
@@ -103,20 +261,22 @@ class DockerProxy:
         if env:
             merged_env.update(env)
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             env=merged_env,
         )
-        stdout, stderr = await proc.communicate()
 
-        if proc.returncode != 0:
-            err = stderr.decode().strip()
-            logger.error(f"[DockerProxy] compose 失败 (rc={proc.returncode}): {err}")
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "").strip()
+            logger.error(f"[DockerProxy] compose 失败 (rc={result.returncode}): {err}")
             raise RuntimeError(f"docker compose failed: {err}")
 
-        return stdout.decode().strip()
+        return result.stdout.strip()
 
     # ==================== 配置方法 ====================
 
@@ -195,8 +355,8 @@ class DockerProxy:
         }
         logger.info(f"[DockerProxy] mapf={mapf_image}, fjsp={fjsp_image}")
 
-        # 2. 启动算法容器
-        await self._compose("up", "-d", "mapf", "fjsp", env=compose_env)
+        # 2. 启动算法容器。每轮仿真强制重建算法服务，避免上轮 MAPF/FJSP 内部缓存残留。
+        await self._compose("up", "-d", "--force-recreate", "mapf", "fjsp", env=compose_env)
 
         # 2.5 等待 fjsp/mapf 的 Flask 就绪（避免 play 时 Connection refused）
         await self._wait_for_service("fjsp", 8002)
@@ -224,6 +384,60 @@ class DockerProxy:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(f"{self._engine_url}/sim/pause")
         self.status = ExecutionStatus.PAUSED
+
+    async def insert_jobs(self, body: dict) -> dict:
+        """转发到 engine POST /sim/insert_jobs（v2 FJSP 格式）。
+        透传 engine 响应：{status: ok|partial|error, inserted, rejected?, message?}。
+        timeout=30s 给足批量插单 + engine 校验时间。"""
+        if not self._engine_url:
+            return {"status": "error", "message": "engine 未就绪"}
+        url = f"{self._engine_url}/sim/insert_jobs"
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, json=body)
+                return resp.json()
+        except Exception as e:
+            logger.error(f"[DockerProxy] insert_jobs 失败: {e}")
+            return {"status": "error", "message": str(e)}
+
+    async def inject_exception(self, body: dict) -> dict:
+        """转发运行时 Exception 注入请求到 engine。"""
+        if not self._engine_url:
+            return {"status": "error", "message": "engine 未就绪"}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(f"{self._engine_url}/sim/exception/inject", json=body)
+                if resp.status_code == 404:
+                    await self._refresh_engine_after_missing_exception_api()
+                    resp = await client.post(f"{self._engine_url}/sim/exception/inject", json=body)
+                return resp.json()
+        except Exception as e:
+            logger.error(f"[DockerProxy] inject_exception 失败: {e}")
+            return {"status": "error", "message": str(e)}
+
+    async def clear_exceptions(self, body: dict) -> dict:
+        """转发运行时 Exception 清理请求到 engine。"""
+        if not self._engine_url:
+            return {"status": "error", "message": "engine 未就绪"}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(f"{self._engine_url}/sim/exception/clear", json=body or {})
+                if resp.status_code == 404:
+                    await self._refresh_engine_after_missing_exception_api()
+                    resp = await client.post(f"{self._engine_url}/sim/exception/clear", json=body or {})
+                return resp.json()
+        except Exception as e:
+            logger.error(f"[DockerProxy] clear_exceptions 失败: {e}")
+            return {"status": "error", "message": str(e)}
+
+    async def _refresh_engine_after_missing_exception_api(self) -> None:
+        """旧 engine 容器不含运行时 Exception API 时，重建 engine 后再重试。"""
+        logger.warning("[DockerProxy] engine 缺少 Exception API，尝试重建 engine 容器")
+        self._streaming = False
+        await self._compose("up", "-d", "--force-recreate", "engine")
+        await self._wait_for_health(timeout=60.0)
+        self.initialized = True
+        self.status = ExecutionStatus.IDLE
 
     async def reset(self) -> None:
         if self._engine_url:
@@ -291,6 +505,10 @@ class DockerProxy:
         会撞上 Connection refused，仿真线程直接崩溃。
         """
         logger.info(f"[DockerProxy] 等待 {host}:{port} 就绪 ...")
+        if os.name == "nt" and host in {"fjsp", "mapf"}:
+            await self._wait_for_compose_service_from_engine(host, port, timeout)
+            return
+
         async with httpx.AsyncClient() as client:
             for i in range(int(timeout)):
                 try:
@@ -300,6 +518,29 @@ class DockerProxy:
                     return
                 except Exception:
                     pass
+                await asyncio.sleep(1.0)
+        raise TimeoutError(f"Service {host}:{port} not ready within {timeout}s")
+
+    async def _wait_for_compose_service_from_engine(self, host: str, port: int, timeout: float) -> None:
+        """Windows 宿主机无法解析 Compose 服务名，借 engine 容器在内部网络探测。"""
+        script = (
+            "import sys, urllib.error, urllib.request\n"
+            f"url='http://{host}:{port}/'\n"
+            "try:\n"
+            "    resp=urllib.request.urlopen(url, timeout=2)\n"
+            "    print(resp.status)\n"
+            "except urllib.error.HTTPError as e:\n"
+            "    print(e.code)\n"
+            "except Exception as e:\n"
+            "    print(e, file=sys.stderr)\n"
+            "    sys.exit(1)\n"
+        )
+        for i in range(int(timeout)):
+            try:
+                status = await self._compose("exec", "-T", "engine", "python", "-c", script)
+                logger.info(f"[DockerProxy] {host}:{port} 就绪 (耗时 {i}s, status={status})")
+                return
+            except Exception:
                 await asyncio.sleep(1.0)
         raise TimeoutError(f"Service {host}:{port} not ready within {timeout}s")
 
@@ -389,3 +630,313 @@ class DockerProxy:
 
     def is_idle(self) -> bool:
         return self.status == ExecutionStatus.IDLE
+
+    # ==================== 批处理模式（参考 experiment/exp0503/run_experiments.py）====================
+    #
+    # 用实验 compose（docker-compose.yaml）跑 run.py，串行执行多组配置。
+    # 与在线模式（start/pause/stop）完全解耦：用不同的 compose 文件 + project name。
+    # 前端通过 SSE /batch/stream 收：
+    #   batch_progress  → 当前 episode 进度 (idx/total)
+    #   batch_log       → run.py stdout 实时输出
+    #   batch_metric    → 单 episode 跑完后的解析指标
+    #   batch_done      → 全部完成
+    #   batch_error     → 异常
+    # 不挂载卷、不落盘，所有信息从 docker compose stdout 抓。
+
+    async def _batch_compose(self, *args: str, env: dict | None = None) -> str:
+        """批处理专用 compose 命令（用 _batch_compose_file + _batch_project_name）。
+        与 _compose 区分：在线模式用 online.yaml + skyengine-online；
+        批处理用 docker-compose.yaml + skyengine-batch。"""
+        cmd = [*_compose_command(), "-p", self._batch_project_name]
+        if self._project_dir:
+            cmd += ["--project-directory", self._project_dir]
+        cmd += ["-f", self._batch_compose_file, *args]
+        merged_env = {**os.environ}
+        if env:
+            merged_env.update(env)
+
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=merged_env,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(f"batch compose failed: {err}")
+        return result.stdout.strip()
+
+    def get_batch_status(self) -> dict:
+        """查询批处理状态。"""
+        return dict(self._batch_status)
+
+    def save_batch_instance(self, filename: str, content: bytes, kind: str) -> str:
+        """把前端上传的实例文件写到宿主机 dataset/{kind}/ 下，返回纯文件名。
+
+        compose 把 dataset 挂载到容器 /dataset:ro，写入后容器可见。
+        kind: "fjsp" 或 "mapf"。fjsp 接受 .json；mapf 接受 .yaml/.yml。
+        """
+        kind = kind.lower()
+        if kind not in ("fjsp", "mapf"):
+            raise ValueError("kind 必须是 fjsp 或 mapf")
+        # 仅保留文件名，禁止路径穿越
+        bare = os.path.basename(filename)
+        if not bare:
+            raise ValueError("文件名非法")
+        ext = os.path.splitext(bare)[1].lower()
+        if kind == "fjsp" and ext != ".json":
+            raise ValueError("FJSP 实例必须是 .json")
+        if kind == "mapf" and ext not in (".yaml", ".yml"):
+            raise ValueError("MAPF 实例必须是 .yaml/.yml")
+
+        target_dir = os.path.join(self._batch_dataset_host_dir, kind)
+        os.makedirs(target_dir, exist_ok=True)
+        target_path = os.path.join(target_dir, bare)
+        with open(target_path, "wb") as f:
+            f.write(content)
+        logger.info(
+            f"[DockerProxy] 实例上传：{bare} ({len(content)}B) → {target_path}"
+        )
+        return bare
+
+    async def start_batch(self, experiments: list[dict], base_env: dict | None = None) -> dict:
+        """启动批处理 worker。立即返回，后台串行执行。
+        experiments: 每项形如 {solver_job, solver_route, fjsp_image, mapf_image, mapf_obs_type, seed}
+                     （参考 exp0503 FJSP_CONFIGS × MAPF_CONFIGS × seeds）
+        base_env: 覆盖 BATCH_BASE_ENV 默认值（可选）
+        """
+        if self._batch_status["running"]:
+            raise RuntimeError("批处理已在运行")
+        if self.is_running():
+            raise RuntimeError("在线仿真运行中，无法启动批处理")
+        if not experiments:
+            raise ValueError("experiments 不能为空")
+
+        self._batch_status = {
+            "running": True,
+            "idx": 0,
+            "total": len(experiments),
+            "results": [],
+            "cancelled": False,
+            "started_at": datetime.datetime.now().isoformat(),
+        }
+        self._batch_cancel_event.clear()
+        self._batch_queue = asyncio.Queue(maxsize=500)
+        self._batch_task = asyncio.create_task(
+            self._batch_worker(experiments, base_env or {})
+        )
+        logger.info(
+            f"[DockerProxy] 批处理启动：{len(experiments)} 个 episode，"
+            f"compose={self._batch_compose_file}, project={self._batch_project_name}"
+        )
+        return {"status": "started", "total": len(experiments)}
+
+    async def cancel_batch(self) -> dict:
+        """取消批处理：docker compose down + 停 worker。"""
+        was_running = self._batch_status["running"]
+        self._batch_cancel_event.set()
+
+        # 立即 down 容器（中止正在跑的 episode）
+        try:
+            await self._batch_compose("down", "--remove-orphans")
+        except Exception as e:
+            logger.error(f"[DockerProxy] batch cancel down 失败: {e}")
+
+        if self._batch_task and not self._batch_task.done():
+            self._batch_task.cancel()
+            try:
+                await self._batch_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        self._batch_status["running"] = False
+        self._batch_status["cancelled"] = True
+        logger.info(f"[DockerProxy] 批处理已取消（之前 running={was_running}）")
+        return {"status": "cancelled"}
+
+    async def batch_stream(self):
+        """SSE 生成器：从 _batch_queue 读事件 yield。
+        事件类型：batch_progress / batch_log / batch_metric / batch_done / batch_error。
+        收到 done/error 或 worker 结束时退出。"""
+        if self._batch_queue is None:
+            return
+        while True:
+            try:
+                event_type, data = await asyncio.wait_for(
+                    self._batch_queue.get(), timeout=1.0
+                )
+                yield (event_type, data)
+                if event_type in ("batch_done", "batch_error"):
+                    break
+            except asyncio.TimeoutError:
+                # worker 已结束但队列可能还有事件；都消费完就退出
+                if (self._batch_task is None) or self._batch_task.done():
+                    if self._batch_queue.empty():
+                        break
+                continue
+            except asyncio.CancelledError:
+                break
+
+    async def _batch_emit(self, event_type: str, data: dict) -> None:
+        """推一个事件到队列。满了丢最旧。"""
+        if self._batch_queue is None:
+            return
+        try:
+            self._batch_queue.put_nowait((event_type, data))
+        except asyncio.QueueFull:
+            try:
+                self._batch_queue.get_nowait()
+                self._batch_queue.put_nowait((event_type, data))
+            except Exception:
+                pass
+
+    async def _batch_worker(self, experiments: list[dict], base_env_override: dict) -> None:
+        """串行跑每个 episode。每个 episode = 一次 docker compose up --abort-on-container-exit。
+        每个 episode 跑完 docker compose down --remove-orphans 清理。
+        """
+        try:
+            # 清理可能残留的容器
+            try:
+                await self._batch_compose("down", "--remove-orphans")
+            except Exception:
+                pass
+
+            merged_base = {**BATCH_BASE_ENV, **base_env_override}
+            total = len(experiments)
+
+            for idx, cfg in enumerate(experiments, 1):
+                if self._batch_cancel_event.is_set():
+                    logger.info(f"[DockerProxy] 批处理取消信号触发，跳过 episode {idx}")
+                    break
+
+                self._batch_status["idx"] = idx
+                await self._batch_emit("batch_progress", {
+                    "idx": idx, "total": total, "cfg": cfg,
+                })
+                logger.info(
+                    f"[DockerProxy] 批处理 [{idx}/{total}] "
+                    f"fjsp={cfg.get('fjsp_image')} mapf={cfg.get('mapf_image')} seed={cfg.get('seed')}"
+                )
+
+                # 组装 ENV（参考 exp0503 run_once）
+                env = {**merged_base}
+                env["SOLVER_JOB"] = str(cfg.get("solver_job", "http"))
+                env["SOLVER_ROUTE"] = str(cfg.get("solver_route", "http"))
+                env["SEED"] = str(cfg.get("seed", 42))
+                # 镜像变量（docker compose ${VAR} 替换）
+                env["FJSP_IMAGE"] = cfg.get(
+                    "fjsp_image", "skyengine-fjsp-pso:latest"
+                )
+                env["MAPF_IMAGE"] = cfg.get(
+                    "mapf_image", "skyengine-mapf-astar:latest"
+                )
+                env["OBS_TYPE"] = str(cfg.get("mapf_obs_type", "default"))
+                # 实例覆盖（前端上传后会传 fjsp_instance / mapf_instance 的纯文件名）
+                if cfg.get("fjsp_instance"):
+                    env["FJSP_INSTANCE"] = str(cfg["fjsp_instance"])
+                if cfg.get("mapf_instance"):
+                    env["MAPF_INSTANCE"] = str(cfg["mapf_instance"])
+
+                metrics = await self._run_batch_episode(idx, cfg, env)
+                self._batch_status["results"].append(metrics)
+                await self._batch_emit("batch_metric", {
+                    "idx": idx, "cfg": cfg, "metrics": metrics,
+                })
+
+                # 每个 episode 之后清理（避免下次冲突）
+                try:
+                    await self._batch_compose("down", "--remove-orphans")
+                except Exception as e:
+                    logger.warning(f"[DockerProxy] episode {idx} 后清理失败: {e}")
+
+            self._batch_status["running"] = False
+            await self._batch_emit("batch_done", {
+                "total": total,
+                "completed": len(self._batch_status["results"]),
+                "cancelled": self._batch_cancel_event.is_set(),
+            })
+            logger.info(
+                f"[DockerProxy] 批处理完成：{len(self._batch_status['results'])}/{total}"
+            )
+        except asyncio.CancelledError:
+            self._batch_status["running"] = False
+            await self._batch_emit("batch_done", {
+                "total": len(experiments),
+                "completed": len(self._batch_status["results"]),
+                "cancelled": True,
+            })
+            raise
+        except Exception as e:
+            logger.error(f"[DockerProxy] batch worker 异常: {e}", exc_info=True)
+            self._batch_status["running"] = False
+            self._batch_status["error"] = str(e)
+            await self._batch_emit("batch_error", {"message": str(e)})
+
+    async def _run_batch_episode(self, idx: int, cfg: dict, env: dict) -> dict:
+        """跑一次 docker compose up（不加 -d，attach stdout 实时读），解析指标返回。"""
+        log_lines: list[str] = []
+        cmd = [*_compose_command(), "-p", self._batch_project_name]
+        if self._project_dir:
+            cmd += ["--project-directory", self._project_dir]
+        cmd += [
+            "-f", self._batch_compose_file,
+            "up",
+            "--abort-on-container-exit",   # 任一容器退出即整体退出
+            "--exit-code-from", "engine",  # 以 engine 退出码为准
+            "--no-color",                  # 便于日志解析
+        ]
+        merged_env = {**os.environ, **env}
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,  # 合并 stderr 到 stdout
+                env=merged_env,
+            )
+
+            # 实时按行读 stdout，推到队列
+            while True:
+                if self._batch_cancel_event.is_set():
+                    proc.kill()
+                    break
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                text = line.decode(errors="replace").rstrip()
+                log_lines.append(text)
+                await self._batch_emit("batch_log", {
+                    "line": text, "idx": idx, "cfg": cfg,
+                })
+
+            await proc.wait()
+            rc = proc.returncode
+        except asyncio.CancelledError:
+            # 取消时也要解析已有日志
+            rc = -1
+        except Exception as e:
+            logger.error(f"[DockerProxy] episode {idx} 异常: {e}", exc_info=True)
+            await self._batch_emit("batch_log", {
+                "line": f"[DockerProxy ERROR] episode {idx} failed: {e}",
+                "idx": idx, "cfg": cfg,
+            })
+            return {
+                "cfg": cfg,
+                "terminated_reason": "error",
+                "notes": str(e),
+                "run_id": f"run_{idx}",
+            }
+
+        # 解析指标（参考 exp0503 parse_metrics）
+        full_log = "\n".join(log_lines)
+        metrics = parse_metrics(full_log)
+        metrics["cfg"] = cfg
+        metrics["run_id"] = f"run_{idx}"
+        metrics["exit_code"] = rc
+        if rc != 0 and not metrics.get("completed_makespan"):
+            metrics["terminated_reason"] = "error"
+            metrics["notes"] = f"exit={rc}"
+        return metrics

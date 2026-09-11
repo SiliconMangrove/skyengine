@@ -1,0 +1,132 @@
+{
+  "id": "wood_furniture_workshop_7x7_staggered",
+  "name": "7x7 板式家具错落展示车间",
+  "version": "2.1.0",
+  "createdAt": "2026-07-14",
+  "updatedAt": "2026-07-16",
+  "description": "面向客户展示与高冲突 AGV 调度实验的板式家具柔性车间。10 台设备按 3-2-3-2 四排错位工艺岛布置，中央横向主通道连接上下加工区，两侧和岛间保留多条替代路线。左下角原空置的 2×2 区域仅将最外角格设为原料进料口，其余三格继续保持空地供AGV通行。难度来自跨区工艺流、替代设备选择和多车交叉，而不是唯一通道或障碍堆叠。",
+  "topology": {
+    "gridWidth": 7,
+    "gridHeight": 7,
+    "zones": [
+      { "id": "body_m0", "name": "M0 电子开料锯本体", "area": { "x": 0, "y": 0, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m1", "name": "M1 Nesting CNC本体", "area": { "x": 3, "y": 0, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m2", "name": "M2 直线封边机本体", "area": { "x": 6, "y": 0, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m3", "name": "M3 柔性封边机本体", "area": { "x": 1, "y": 2, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m4", "name": "M4 六面钻本体", "area": { "x": 5, "y": 2, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m5", "name": "M5 CNC钻铣中心本体", "area": { "x": 0, "y": 4, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m6", "name": "M6 宽带砂光机本体", "area": { "x": 3, "y": 4, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m7", "name": "M7 柔性砂光单元本体", "area": { "x": 6, "y": 4, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m8", "name": "M8 喷涂固化单元本体", "area": { "x": 2, "y": 6, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" },
+      { "id": "body_m9", "name": "M9 检测装配单元本体", "area": { "x": 6, "y": 6, "w": 1, "h": 1 }, "type": "obstacle", "color": "rgba(69, 90, 100, 0.58)" }
+    ],
+    "machines": {
+      "M0_PANEL_SAW": { "id": "M0_PANEL_SAW", "name": "M0 电子开料锯", "location": [0, 1], "size": [1, 1], "status": "IDLE" },
+      "M1_NESTING_CNC": { "id": "M1_NESTING_CNC", "name": "M1 Nesting CNC", "location": [3, 1], "size": [1, 1], "status": "IDLE" },
+      "M2_EDGE_BANDER_A": { "id": "M2_EDGE_BANDER_A", "name": "M2 直线封边机A", "location": [6, 1], "size": [1, 1], "status": "IDLE" },
+      "M3_EDGE_BANDER_B": { "id": "M3_EDGE_BANDER_B", "name": "M3 柔性封边机B", "location": [2, 2], "size": [1, 1], "status": "IDLE" },
+      "M4_SIX_SIDE_DRILL": { "id": "M4_SIX_SIDE_DRILL", "name": "M4 六面钻", "location": [4, 2], "size": [1, 1], "status": "IDLE" },
+      "M5_CNC_DRILL_MILL": { "id": "M5_CNC_DRILL_MILL", "name": "M5 CNC钻铣中心", "location": [1, 4], "size": [1, 1], "status": "IDLE" },
+      "M6_WIDE_BELT_SANDER": { "id": "M6_WIDE_BELT_SANDER", "name": "M6 宽带砂光机", "location": [2, 4], "size": [1, 1], "status": "IDLE" },
+      "M7_FLEXIBLE_SANDER": { "id": "M7_FLEXIBLE_SANDER", "name": "M7 柔性砂光单元", "location": [5, 4], "size": [1, 1], "status": "IDLE" },
+      "M8_SPRAY_CURE": { "id": "M8_SPRAY_CURE", "name": "M8 喷涂固化单元", "location": [2, 5], "size": [1, 1], "status": "IDLE" },
+      "M9_INSPECT_ASSEMBLY": { "id": "M9_INSPECT_ASSEMBLY", "name": "M9 检测装配单元", "location": [6, 5], "size": [1, 1], "status": "IDLE" }
+    },
+    "waypoints": {
+      "RAW_MATERIAL": { "id": "RAW_MATERIAL", "location": [0, 6], "type": "dock", "name": "左下最外角原料进料口" }
+    }
+  },
+  "agvs": [
+    { "id": 0, "name": "AGV-01", "initialLocation": [2, 3], "velocity": 1.0, "capacity": 100, "status": "IDLE" },
+    { "id": 1, "name": "AGV-02", "initialLocation": [3, 3], "velocity": 1.0, "capacity": 100, "status": "IDLE" },
+    { "id": 2, "name": "AGV-03", "initialLocation": [4, 3], "velocity": 1.0, "capacity": 100, "status": "IDLE" },
+    { "id": 3, "name": "AGV-04", "initialLocation": [5, 3], "velocity": 1.0, "capacity": 100, "status": "IDLE" }
+  ],
+  "jobs": {
+    "job_list": [
+      {
+        "job_id": 0, "name": "柜体侧板-01", "product_family": "CABINET_SIDE",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 6], [1, 8]] },
+          { "name": "封边", "machine_options_with_time": [[2, 5], [3, 6]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 7], [5, 9]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 4]] }
+        ], "arrival_time": 0, "due_time": 120, "priority": 1
+      },
+      {
+        "job_id": 1, "name": "柜体侧板-02", "product_family": "CABINET_SIDE",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 7], [1, 6]] },
+          { "name": "封边", "machine_options_with_time": [[2, 6], [3, 5]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 8], [5, 7]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 4]] }
+        ], "arrival_time": 0, "due_time": 120, "priority": 1
+      },
+      {
+        "job_id": 2, "name": "喷漆门板-01", "product_family": "DOOR_PANEL",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 7], [1, 6]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 9], [5, 7]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 6], [7, 7]] },
+          { "name": "喷涂固化", "machine_options_with_time": [[8, 9]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 4]] }
+        ], "arrival_time": 0, "due_time": 145, "priority": 2
+      },
+      {
+        "job_id": 3, "name": "喷漆门板-02", "product_family": "DOOR_PANEL",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 6], [1, 8]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 8], [5, 8]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 7], [7, 6]] },
+          { "name": "喷涂固化", "machine_options_with_time": [[8, 8]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 4]] }
+        ], "arrival_time": 0, "due_time": 145, "priority": 2
+      },
+      {
+        "job_id": 4, "name": "活动层板-01", "product_family": "SHELF",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 5], [1, 7]] },
+          { "name": "封边", "machine_options_with_time": [[2, 5], [3, 6]] },
+          { "name": "钻孔", "machine_options_with_time": [[4, 6], [5, 8]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 3]] }
+        ], "arrival_time": 0, "due_time": 110, "priority": 1
+      },
+      {
+        "job_id": 5, "name": "异形装饰板-01", "product_family": "PROFILE_PANEL",
+        "operations": [
+          { "name": "开料", "machine_options_with_time": [[0, 7], [1, 6]] },
+          { "name": "轮廓钻铣", "machine_options_with_time": [[1, 8], [5, 7]] },
+          { "name": "砂光", "machine_options_with_time": [[6, 7], [7, 6]] },
+          { "name": "检测装配", "machine_options_with_time": [[9, 4]] }
+        ], "arrival_time": 0, "due_time": 130, "priority": 1
+      }
+    ]
+  },
+  "material_handling_config": { "pickup_dwell_steps": 1, "dropoff_dwell_steps": 1, "raw_material_source": [0, 6] },
+  "simulation_control": { "max_steps": 1000 },
+  "renderConfig": {
+    "baseGridSize": 64, "gridWidth": 7, "gridHeight": 7,
+    "colors": {
+      "background": "#ECEFF1", "grid": "#B0BEC5", "dock": "#1565C0", "route": "#43A047",
+      "agv": "#F4511E", "agv_stroke": "#FFFFFF", "machine_working": "#FBC02D",
+      "machine_idle": "#81C784", "machine_broken": "#D32F2F", "machine_maintenance": "#F57C00",
+      "machine_stroke": "#263238", "zone_obstacle": "rgba(69, 90, 100, 0.58)",
+      "zone_obstacle_line": "rgba(38, 50, 56, 0.95)", "boundary": "rgba(55, 71, 79, 0.45)"
+    }
+  },
+  "metadata": {
+    "gridUnit": "40 cm structural cell", "footprint": "7 x 7 cells, 2.8 m x 2.8 m",
+    "machineCount": 10, "machineBodyObstacleCount": 10, "jobCount": 6, "agvCount": 4,
+    "scenarioRole": "client_showcase_staggered_high_conflict_agv_dispatch",
+    "layoutPrinciple": "Four staggered process-island rows around a shared horizontal transport spine, with only the outermost lower-left corner cell used as the raw-material dock and the other three corner cells kept open.",
+    "trafficFeatures": ["shared_horizontal_transport_spine", "cross_zone_job_flows", "opposite_side_alternative_machines", "multiple_vertical_detours", "endpoint_contention", "lower_left_corner_raw_material_dock"],
+    "rawMaterialDock": { "location": [0, 6], "adjacentFreeCells": [[0, 5], [1, 5], [1, 6]] },
+    "machineLocationSemantics": "Machine location is the AGV interaction cell; the adjacent obstacle is the physical machine body. Interaction cells face the central transport area.",
+    "pathSpaceMetrics": {
+      "freeCells": 39, "allMachinePortsConnected": true, "machinePortArticulationCount": 0,
+      "meanMachinePairShortestDistance": 4.53, "maxMachinePairShortestDistance": 10,
+      "meanMachinePairShortestPathCount": 4.11, "maxMachinePairShortestPathCount": 25,
+      "meanMachinePairSimplePathsWithinShortestPlus2": 17.02, "maxMachinePairSimplePathsWithinShortestPlus2": 106
+    }
+  }
+}

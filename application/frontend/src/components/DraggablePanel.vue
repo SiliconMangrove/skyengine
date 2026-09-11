@@ -13,7 +13,12 @@
         <span class="dp-title">{{ title }}</span>
       </div>
       <div class="dp-header-actions">
-        <button class="dp-action-btn" @click.stop="isCollapsed = !isCollapsed" :title="isCollapsed ? '展开' : '折叠'">
+        <button
+          v-if="collapsible"
+          class="dp-action-btn"
+          @click.stop="isCollapsed = !isCollapsed"
+          :title="isCollapsed ? '展开' : '折叠'"
+        >
           <span class="dp-chevron" :class="{ rotated: isCollapsed }">&#9662;</span>
         </button>
         <button class="dp-action-btn dp-close-btn" @click.stop="$emit('close')" title="关闭">
@@ -35,7 +40,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 
 const props = defineProps({
   title: { type: String, default: '面板' },
@@ -51,14 +56,16 @@ const props = defineProps({
   height: { type: Number, default: 0 },
   /** 最大高度 (px)，超出内容滚动 */
   maxHeight: { type: Number, default: 0 },
+  /** 是否显示折叠按钮（某些浮层不需要折叠态） */
+  collapsible: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['close', 'collapse', 'move'])
 
 // ==================== 拖拽状态 ====================
 
-const posX = ref(0)
-const posY = ref(0)
+const posX = ref(props.initialPos?.x ?? 0)
+const posY = ref(props.initialPos?.y ?? 0)
 const isDragging = ref(false)
 const isCollapsed = ref(props.defaultCollapsed)
 const hovered = ref(false)
@@ -70,7 +77,8 @@ const panelStyle = computed(() => {
   const style = {
     width: `${props.width}px`,
     minWidth: `${props.minWidth}px`,
-    transform: `translate(${posX.value}px, ${posY.value}px)`,
+    left: `${posX.value}px`,
+    top: `${posY.value}px`,
   }
   if (props.height > 0) {
     style.height = `${props.height}px`
@@ -143,13 +151,7 @@ onUnmounted(() => {
 })
 
 // ==================== 初始化位置 ====================
-
-onMounted(() => {
-  if (props.initialPos) {
-    posX.value = props.initialPos.x
-    posY.value = props.initialPos.y
-  }
-})
+// initialPos 已作为 ref 初始值，挂载即就位，无需 onMounted 设置（避免 0,0 → initialPos 跳变）
 </script>
 
 <style scoped>
