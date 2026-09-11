@@ -15,7 +15,7 @@
 
 ## 快速部署
 
-新人建议先阅读 [Quickstart](./docs/QUICKSTART.md)，按照其中的顺序完成 FJSP/MAPF 外部算子仓库构建、SkyEngine 安装和服务启动。
+建议先阅读 [Quickstart](./docs/QUICKSTART.md)，按照其中的顺序完成 FJSP/MAPF 外部算子仓库构建、SkyEngine 安装和服务启动。
 
 ---
 
