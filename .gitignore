@@ -759,3 +759,14 @@ test/
 docs/archive/
 
 # 运行时落盘的 run 记录（后端容器以 root 写入，本机用户无权读 + 不该入库）
+
+# Runtime and local development outputs
+sky_logs/*
+!sky_logs/__init__.py
+!sky_logs/logger.py
+logs/
+data/
+启动SkyEngine开发服务.ps1
+停止SkyEngine开发服务.ps1
+*.log
+*.db
