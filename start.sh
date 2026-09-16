@@ -4,6 +4,19 @@ set -Eeuo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$project_root"
 
+lock_dir="$project_root/.skyengine-start.lock"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  if [[ -f "$lock_dir/pid" ]] && ! kill -0 "$(cat "$lock_dir/pid" 2>/dev/null)" 2>/dev/null; then
+    rm -rf "$lock_dir"
+    mkdir "$lock_dir"
+  else
+    printf 'start.sh: another SkyEngine startup is already running.\n' >&2
+    exit 1
+  fi
+fi
+printf '%s\n' "$$" > "$lock_dir/pid"
+trap 'rm -rf "$lock_dir"' EXIT
+
 command -v docker >/dev/null 2>&1 || {
   printf 'start.sh: Docker is required. Run install.sh after installing Docker.\n' >&2
   exit 1
@@ -24,6 +37,11 @@ docker info >/dev/null 2>&1 || {
   printf 'start.sh: .env is missing. Run ./install.sh first.\n' >&2
   exit 1
 }
+env_size="$(wc -c < .env)"
+if (( env_size > 1048576 )); then
+  printf 'start.sh: .env is unexpectedly large (%s bytes). Repair it from .env.example before starting.\n' "$env_size" >&2
+  exit 1
+fi
 
 get_env_value() {
   local key="$1"
@@ -35,13 +53,20 @@ get_env_value() {
 set_env_value() {
   local key="$1"
   local value="$2"
-  local escaped
-  escaped="$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')"
-  if grep -qE "^${key}=" .env; then
-    sed -i "s|^${key}=.*$|${key}=${escaped}|" .env
-  else
-    printf '%s=%s\n' "$key" "$value" >> .env
+  local escaped temp_file
+  if (( $(wc -c < .env) > 1048576 )); then
+    printf 'start.sh: refusing to rewrite an oversized .env file.\n' >&2
+    exit 1
   fi
+  escaped="$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')"
+  temp_file=".env.tmp.$$"
+  cp .env "$temp_file"
+  if grep -qE "^${key}=" .env; then
+    sed -i "s|^${key}=.*$|${key}=${escaped}|" "$temp_file"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$temp_file"
+  fi
+  mv -f "$temp_file" .env
 }
 
 port_in_use() {
