@@ -266,8 +266,11 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
         self.buffered_tasks.clear()
         self.reschedule_count = self.reassigned_operation_count = self.reassigned_transport_count = 0
         self._shipping_sequence = -1
+        # Observation padding is outside the factory and cannot host material stations.
+        offset: int = self.grid_config.obs_radius or 0
         cells: list[tuple[int, int]] = [self._to_public_xy((x, y))
-            for x in range(self.grid.obstacles.shape[0]) for y in range(self.grid.obstacles.shape[1])
+            for x in range(offset, self.grid.obstacles.shape[0] - offset)
+            for y in range(offset, self.grid.obstacles.shape[1] - offset)
             if self.grid.obstacles[x, y] == 0 and self._to_public_xy((x, y)) not in self.hash_machines]
         if not cells:
             raise ValueError("layout needs a traversable material station outside the machines")

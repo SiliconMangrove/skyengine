@@ -58,16 +58,18 @@ def _material_config(raw: dict | None, topology: dict) -> dict:
     if result["buffer_capacity"] < 1:
         raise ValueError("buffer_capacity must be positive")
     result["machine_buffer_capacities"] = dict(raw.get("machine_buffer_capacities", {}))
-    for name in ("raw_material_source", "finished_goods_destination"):
+    for name, topology_name in (("raw_material_source", "depot"), ("finished_goods_destination", "product")):
         source = raw.get(name)
+        if source is None:
+            source = topology.get(topology_name)
         if source is None:
             continue
         if not isinstance(source, (list, tuple)) or len(source) != 2 or any(type(v) is not int for v in source):
-            raise ValueError("material_handling_config.raw_material_source must be [x, y] integers")
+            raise ValueError(f"material station {name} must be [x, y] integers")
         width = int(topology.get("gridWidth", 20))
         height = int(topology.get("gridHeight", 20))
         if not (0 <= source[0] < width and 0 <= source[1] < height):
-            raise ValueError("material_handling_config.raw_material_source must be inside the configured map")
+            raise ValueError(f"material station {name} must be inside the configured map")
         result[name] = list(source)
     return result
 
