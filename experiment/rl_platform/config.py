@@ -104,7 +104,7 @@ def build_plugins(config: dict[str, Any]) -> tuple[Any, Any, Any]:
     # The GUI edits values in the top-level training section. Forward only
     # trainer-owned keys; unrelated episode/environment settings stay out.
     training = config.get("training") or {}
-    for key in ("learning_rate", "gamma", "gae_lambda", "clip_ratio", "epochs", "value_coef", "entropy_coef", "minibatch_size"):
+    for key in ("learning_rate", "gamma", "gae_lambda", "clip_ratio", "epochs", "value_coef", "entropy_coef", "minibatch_size", "sequence_length"):
         if key in training:
             trainer_kwargs.setdefault(key, training[key])
     trainer_kwargs = inject_runtime(trainer_section["target"], trainer_kwargs)

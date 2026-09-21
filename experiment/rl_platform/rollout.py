@@ -34,6 +34,7 @@ class RolloutCollector:
             self.policy.reset()
         observation, info = env.reset(seed=seed)
         transitions = []
+        event_policy: bool = hasattr(self.policy, "bootstrap_value")
         trace = []
         if self.trace_dir:
             self.trace_dir.mkdir(parents=True, exist_ok=True)
@@ -72,14 +73,22 @@ class RolloutCollector:
             transition.reward = self.reward.compute(transition)
             if self.training_only:
                 transition.info = {"delta_t": transition_info["delta_t"], "_policy": policy_data}
-            transitions.append(transition)
+            if event_policy and policy_data is None:
+                # Low-level routing belongs to the preceding scheduling action.
+                previous = transitions[-1]
+                previous.reward += transition.reward
+                previous.next_observation = next_observation_snapshot
+                previous.terminated, previous.truncated = terminated, truncated
+                previous.info["delta_t"] += transition_info["delta_t"]
+            else:
+                transitions.append(transition)
             if progress_callback is not None and (
-                len(transitions) % progress_interval == 0 or terminated or truncated
+                (_ + 1) % progress_interval == 0 or terminated or truncated
             ):
-                progress_callback(len(transitions))
+                progress_callback(_ + 1)
             if self.trace_dir:
                 from sky_executor.runtime_log import serialize_action
-                trace.append({"type": "step", "step": len(transitions) - 1,
+                trace.append({"type": "step", "step": _,
                               "action": serialize_action(action),
                               "formal_action": serialize_action(step_info.get("raw_action")),
                               "frame": deepcopy(step_info.get("frame", env.state_frame() if hasattr(env, "state_frame") else {})),
@@ -92,7 +101,13 @@ class RolloutCollector:
             with trace_path.open("w", encoding="utf-8") as stream:
                 for record in trace:
                     stream.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
-        return Trajectory(transitions, episode_id=episode_id)
+        bootstrap: float = 0.0
+        if event_policy and transitions and not transitions[-1].terminated:
+            bootstrap = self.policy.bootstrap_value(observation)
+            transitions[-1].truncated = True
+        return Trajectory(transitions, episode_id=episode_id,
+                          metadata={"bootstrap_value": bootstrap,
+                                    "simulation_steps": sum(float(t.info["delta_t"]) for t in transitions)})
 
     def collect_batch(self, envs: Sequence[Any], max_steps: int, deterministic: bool = False) -> list[Trajectory]:
         return [self.collect(env, max_steps, deterministic, str(index)) for index, env in enumerate(envs)]

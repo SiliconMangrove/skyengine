@@ -60,7 +60,7 @@ cp -a /path/to/delivery/skyengine-DFJSPT /path/to/workspace/skyengine-DFJSPT
 
 如果团队另有正式版本库地址，也可以从该授权来源检出，但最终目录必须准确命名为 `skyengine-DFJSPT`，且其中应存在 `dfjsp_t_rl/__init__.py`。
 
-Compose 会把 `../skyengine-DFJSPT` 只读挂载到后端和在线引擎容器的 `/app/skyengine-DFJSPT`，并加入 Python 模块搜索路径。`install.sh` 会预检目录和 `dfjsp_t_rl/__init__.py`；缺失时安装会明确终止并提示补齐，以免服务启动后才暴露不完整部署。
+安装脚本会检查该目录是否完整；如提示缺失，请先补齐交付包再继续安装。
 
 ## 5. 安装 SkyEngine
 
@@ -68,7 +68,6 @@ Compose 会把 `../skyengine-DFJSPT` 只读挂载到后端和在线引擎容器�
 
 ```bash
 cd ../skyengine
-chmod +x install.sh start.sh stop.sh
 ./install.sh
 ```
 
@@ -102,11 +101,11 @@ docker compose -p skyengine-online -f docker-compose-online.yaml logs -f engine
 
 ### 使用通用算法实验工作台
 
-打开前端，在数字车间工作空间列表中选择“算法实验与优化平台”（原强化学习平台的位置），也可直接访问 `/training`。工作台提供训练、超参数探索和测试三种实验模式，并从后端数据集目录显式选择训练集、调优集和测试集。测试完成后，统一比较页可按测试数据集汇总算法结果，回放页可按数据集、实例和算法选择运行记录。CPU 环境可直接测试规则、滚动 GA 或 CP-SAT，也可对规则外部参数进行探索；CTDE-PPO 使用 `device=auto`，没有 GPU 时会走 CPU，但完整训练耗时会明显增加。
+打开前端，在数字车间工作空间列表中选择“算法实验与优化平台”，也可直接访问 `/training`。工作台提供训练、超参数探索和测试三种实验模式，并从后端数据集目录显式选择训练集、调优集和测试集。测试完成后，统一比较页可按测试数据集汇总算法结果，回放页可按数据集、实例和算法选择运行记录。CPU 环境可直接测试规则、滚动 GA 或 CP-SAT，也可对规则外部参数进行探索；CTDE-PPO 使用 `device=auto`，没有 GPU 时会走 CPU，但完整训练耗时会明显增加。
 
 CTDE-PPO 默认使用 4 个并行采样环境。Checkpoint 保存间隔填写累计采样步数：0 仅保留最佳，正数另外保留定期快照。达到间隔后会在该批网络更新完成时保存；监控页可下载 checkpoint 或继续训练。
 
-建议先点击“校验”和“编译”，再提交执行。Execution 可在监控页发出协作式取消请求；状态会先变为 `cancel_requested`，算法或 Runtime 到达检查点后变为 `cancelled`。取消不会强杀第三方求解器的一次阻塞调用。
+建议先点击“校验”和“编译”，再提交执行。Execution 可在监控页发出协作式取消请求；状态会先变为 `cancel_requested`，算法到达可停止的位置后变为 `cancelled`。取消不会强杀第三方求解器的一次阻塞调用。
 
 ### 启用后端 GPU
 
@@ -178,3 +177,4 @@ docker compose -p skyengine-online -f docker-compose-online.yaml logs --tail 100
 更新项目依赖和锁文件后重新构建后端镜像，再启动服务。平台使用无界面 OpenCV，支持图片编码，不需要安装桌面显示组件。旧环境中若同时装有两种 OpenCV，应按项目锁文件同步依赖。
 
 采样任务必须等待所有环境进程初始化完成后才能开始。若初始化失败，执行详情会给出进程信息；Python 启动阶段的完整错误可在后端容器日志中查看。
+

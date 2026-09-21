@@ -327,6 +327,7 @@ class GridFactoryEnv(ParallelEnv):
         obstacles = self.pogema_env.grid.obstacles
         obstacles = obstacles[padding:-padding, padding:-padding] if padding else obstacles
         t_obs.update({"env_timeline": self.pogema_env.env_timeline, "obstacle_grid": obstacles.copy(),
+                      "events": deepcopy(self.pogema_env.last_events),
                       "grid_height": obstacles.shape[0], "grid_width": obstacles.shape[1],
                       "move_deltas": [list(move) for move in self.grid_config.MOVES],
                       "agv_task_phase": list(self.pogema_env.agv_task_phase),
@@ -347,6 +348,11 @@ class GridFactoryEnv(ParallelEnv):
 
         if isinstance(t_obs, dict):
             self.exception_injector.enrich_task_observation(t_obs, self.pogema_env)
+        from .planning import planning_snapshot
+        observations["planning_observation"] = planning_snapshot(
+            public, t_obs, self.pogema_env.processing_time_sampler,
+            self.exception_injector, self.material_handling_config or {},
+        )
 
         rewards = {
             "job_reward": j_reward,

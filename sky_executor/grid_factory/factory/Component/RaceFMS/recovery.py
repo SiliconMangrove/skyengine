@@ -17,6 +17,50 @@ class RecoveryScope(IntEnum):
     JOINT_ROLLING_REPLAN = 4
 
 
+class RecoveryWindow:
+    """Public event/impact analysis shared by learned rolling controllers.
+
+    This identifies affected objects, not the action to execute. The learned
+    controller owns the single rescheduling transaction for its session.
+    """
+
+    @staticmethod
+    def inspect(scene: dict) -> dict:
+        machines: set[int] = {m["id"] for m in scene["machines"] if m["status"] != "OK"}
+        agents: set[int] = {a["id"] for a in scene["agents"] if a["status"] != "OK"}
+        jobs: set[int] = set()
+        hard: bool = False
+        event_types: set[str] = set()
+        for event in scene["events"]:
+            kind = event["type"]
+            event_types.add(kind)
+            payload = event.get("payload", event)
+            if "machine_id" in payload:
+                machines.add(int(payload["machine_id"]))
+            if "agv_id" in payload:
+                agents.add(int(payload["agv_id"]))
+            if "job_id" in payload:
+                jobs.add(int(payload["job_id"]))
+            hard |= kind in {"machine_breakdown", "agv_breakdown", "route_infeasible", "deadlock", "temporary_obstacle"}
+        for task in scene["tasks"]:
+            destination = tuple(task["destination"])
+            if task["assigned_agent_id"] in agents or any(m["id"] in machines and tuple(m["location"]) == destination for m in scene["machines"]):
+                jobs.add(task["job_id"])
+        for machine in scene["machines"]:
+            if machine["id"] in machines or len(machine["buffer_jobs"]) >= machine["buffer_capacity"]:
+                machines.add(machine["id"])
+                jobs.update(key[0] for key in machine["input_queue"])
+                jobs.update(machine["buffer_jobs"])
+        if not machines and scene["machines"]:
+            # Periodic optimization starts at the current queue bottleneck.
+            bottleneck = max(scene["machines"], key=lambda m: (len(m["input_queue"]), len(m["buffer_jobs"])))
+            if bottleneck["input_queue"]:
+                machines.add(bottleneck["id"])
+                jobs.update(key[0] for key in bottleneck["input_queue"])
+        return {"machines": machines, "agents": agents, "jobs": jobs,
+                "hard": hard, "event_types": event_types}
+
+
 @dataclass(frozen=True)
 class RecoveryDecision:
     scope: RecoveryScope

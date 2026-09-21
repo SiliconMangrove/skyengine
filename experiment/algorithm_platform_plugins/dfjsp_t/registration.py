@@ -176,8 +176,8 @@ CP_SAT_MANIFEST = AlgorithmManifest(
 
 CTDE_PPO_MANIFEST = AlgorithmManifest(
     algorithm_id="ctde_ppo",
-    name="DFJSP-T 分层 CTDE-PPO",
-    version=PLUGIN_VERSION,
+    name="DFJSP-T 图策略与滚动联合调度",
+    version="0.2.0",
     protocol_version=PLATFORM_PROTOCOL_VERSION,
     interfaces=frozenset(
         {AlgorithmInterface.TRAINABLE, AlgorithmInterface.ONLINE}
@@ -223,15 +223,13 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
             },
             "distributed": {"type": "boolean", "default": False},
             "mapf_algorithm": {"type": "string", "default": "astar"},
-            "node_dims": {
-                "type": "object",
-                "additionalProperties": {
-                    "type": "integer",
-                    "minimum": 1,
-                },
-            },
             "hidden_dim": {"type": "integer", "minimum": 16, "default": 128},
-            "route_actions": {"type": "integer", "minimum": 1, "default": 5},
+            "candidate_limit": {"type": "integer", "minimum": 6, "default": 24},
+            "scenario_count": {"type": "integer", "minimum": 1, "default": 8},
+            "search_seconds": {"type": "number", "minimum": 0, "default": 0.0},
+            "routing_horizon": {"type": "integer", "minimum": 2, "default": 24},
+            "decision_interval": {"type": "integer", "minimum": 1, "default": 5},
+            "sequence_length": {"type": "integer", "minimum": 1, "default": 32},
             "max_production_actions": {
                 "type": "integer",
                 "minimum": 1,
@@ -247,12 +245,7 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
                 "exclusiveMinimum": 0.0,
                 "default": 0.0003,
             },
-            "gamma": {
-                "type": "number",
-                "minimum": 0.0,
-                "maximum": 1.0,
-                "default": 1.0,
-            },
+            "gamma": {"type": "number", "const": 1.0, "default": 1.0},
             "gae_lambda": {
                 "type": "number",
                 "minimum": 0.0,

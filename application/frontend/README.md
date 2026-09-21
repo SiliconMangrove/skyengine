@@ -1,38 +1,9 @@
-# sky-front
+# SkyEngine 前端
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 / Vite 前端，包含工厂管理、实时指标、离线分析和算法实验工作台。
 
-## Recommended IDE Setup
+- [开发者指南](../../../docs/开发者指南.md)
+- [看板与离线分析](../../../docs/可配置指标看板与离线分析.md)
+- [用户文档](../../docs/README.md)
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd) 
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
+依赖和脚本以本目录 package.json 为准。宿主机开发和容器部署的后端代理地址不同，见开发者指南。

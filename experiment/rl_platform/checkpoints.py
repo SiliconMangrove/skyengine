@@ -15,6 +15,8 @@ def save_checkpoint(path: str | Path, policy, trainer, metadata: dict | None = N
     except ImportError:
         numpy_state = None
     state = {
+        "schema_version": 2,
+        "policy_parameters": getattr(policy, "checkpoint_parameters", {}),
         "metadata": metadata or {},
         "policy": policy.state_dict() if hasattr(policy, "state_dict") else {},
         "trainer": trainer.state_dict() if hasattr(trainer, "state_dict") else {},

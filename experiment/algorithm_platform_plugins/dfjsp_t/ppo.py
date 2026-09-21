@@ -37,7 +37,7 @@ from .domain import DFJSPTDataSplit, DFJSPT_URGENT_PRIORITY
 
 
 ALGORITHM_ID = "ctde_ppo"
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 
 
 class _FormalRolloutPolicy:
@@ -53,13 +53,16 @@ class _FormalRolloutPolicy:
     def reset(self) -> None:
         self._policy.reset()
 
+    def bootstrap_value(self, observation) -> float:
+        return self._policy.bootstrap_value(observation)
+
     def act(self, observation, action_mask=None, deterministic=False):
         action = self._policy.act(
             observation,
             action_mask,
             deterministic=deterministic,
         )
-        return _carry_pending_transfers(action, observation)
+        return action
 
 
 class DFJSPTPPOTrainable:
@@ -267,7 +270,7 @@ class DFJSPTPPOTrainable:
                 trajectories = collector.collect(jobs, self._policy, max_steps,
                                                   publish_progress, lambda: _raise_if_cancelled(context))
                 collection_seconds: float = time.monotonic() - collection_started
-                transition_count: int = sum(len(item.transitions) for item in trajectories)
+                transition_count: int = sum(int(item.metadata["simulation_steps"]) for item in trajectories)
                 context.event_publisher.emit(
                     EventType.TRAINING_PROGRESS,
                     {"phase": "updating", "episode": first_episode + 1, "episodes": episodes,
@@ -282,10 +285,10 @@ class DFJSPTPPOTrainable:
                 update_seconds: float = time.monotonic() - update_started
                 for trajectory in trajectories:
                     episode = int(trajectory.metadata["episode"])
-                    steps: int = len(trajectory.transitions)
+                    steps: int = int(trajectory.metadata["simulation_steps"])
                     episode_metrics = trajectory.metadata["metrics"]
                     stats_history.append(
-                        {"episode": episode, "transitions": steps, "num_envs": batch_count,
+                        {"episode": episode, "transitions": len(trajectory.transitions), "simulation_steps": steps, "num_envs": batch_count,
                          "collection_seconds": trajectory.metadata["collection_seconds"],
                          "batch_collection_seconds": collection_seconds, "batch_update_seconds": update_seconds,
                          "trainer": dict(to_jsonable(update)), "metrics": episode_metrics}
@@ -493,22 +496,10 @@ class FrozenDFJSPTPPOPolicy:
         self,
         request: DecisionRequest[Mapping[str, object]],
     ) -> DecisionResponse[dict[str, object]]:
-        native_observation = request.observation["native_observation"]
-        torch, _, _, _ = _algorithm_types()
-        policy_observation = dict(native_observation)
-        policy_observation["nodes"] = {
-            name: torch.as_tensor(values, dtype=torch.float32).reshape(
-                tuple(native_observation["node_shapes"][name])
-            )
-            for name, values in native_observation["nodes"].items()
-        }
+        policy_observation = {"planning_observation": request.observation["planning_observation"]}
         native_action = self._policy.act(
             policy_observation,
             deterministic=True,
-        )
-        native_action = _filter_online_action(
-            native_action,
-            request.observation,
         )
         action = {"native_action": serialize_action(native_action)}
         return DecisionResponse(
@@ -519,6 +510,7 @@ class FrozenDFJSPTPPOPolicy:
                 "policy": ALGORITHM_ID,
                 "deterministic": True,
                 "model_digest": self._selected_artifact.digest,
+                **self._policy.diagnostics,
             },
         )
 
@@ -589,7 +581,6 @@ def _policy_parameters(
 ) -> dict[str, object]:
     result = {
         "hidden_dim": int(parameters.get("hidden_dim", 128)),
-        "route_actions": int(parameters.get("route_actions", 5)),
         "max_production_actions": int(
             parameters.get("max_production_actions", 32)
         ),
@@ -597,9 +588,12 @@ def _policy_parameters(
             parameters.get("max_logistics_actions", 32)
         ),
         "device": device,
+        "candidate_limit": int(parameters.get("candidate_limit", 24)),
+        "scenario_count": int(parameters.get("scenario_count", 8)),
+        "search_seconds": float(parameters.get("search_seconds", 0.0)),
+        "routing_horizon": int(parameters.get("routing_horizon", 24)),
+        "decision_interval": int(parameters.get("decision_interval", 5)),
     }
-    if "node_dims" in parameters:
-        result["node_dims"] = dict(parameters["node_dims"])
     return result
 
 
@@ -620,6 +614,7 @@ def _trainer_parameters(parameters: Mapping[str, object]) -> dict[str, object]:
         "value_coef": float(parameters.get("value_coef", 0.5)),
         "entropy_coef": float(parameters.get("entropy_coef", 0.01)),
         "minibatch_size": int(parameters.get("minibatch_size", 64)),
+        "sequence_length": int(parameters.get("sequence_length", 32)),
     }
 
 
@@ -673,6 +668,8 @@ def _load_policy(
     )
     if payload["algorithm_id"] != ALGORITHM_ID:
         raise ValueError("artifact was produced by a different algorithm")
+    if payload["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
+        raise ValueError("模型结构已升级，请使用第二版候选策略模型或重新训练")
     policy_parameters = dict(payload["policy_parameters"])
     policy_parameters["device"] = device
     policy = policy_type(**policy_parameters)
@@ -748,22 +745,26 @@ def _evaluate_policy(
                 )
                 for _ in range(max_steps):
                     _raise_if_cancelled(context)
-                    action = _carry_pending_transfers(
-                        policy.act(observation, deterministic=True),
-                        observation,
-                    )
+                    action = policy.act(observation, deterministic=True)
                     observation, _, terminated, truncated, _ = env.step(action)
                     if terminated or truncated:
                         break
-                episode_metrics.append(_formal_metrics(env))
+                episode_metrics.append({**_formal_metrics(env), **policy.planning_metrics})
             finally:
                 env.close()
     keys = sorted({key for metrics in episode_metrics for key in metrics})
-    return {
+    summary = {
         key: sum(metrics[key] for metrics in episode_metrics if key in metrics)
         / sum(1 for metrics in episode_metrics if key in metrics)
         for key in keys
     }
+    successful = sorted(metrics["C_max"] for metrics in episode_metrics if metrics["success_rate"] == 1.0)
+    summary["tail_completed_episodes"] = float(len(successful))
+    if successful:
+        summary["C_max_p95_completed"] = successful[min(len(successful) - 1, int(.95 * len(successful)))]
+        tail = successful[min(len(successful) - 1, int(.95 * len(successful))):]
+        summary["C_max_cvar95_completed"] = sum(tail) / len(tail)
+    return summary
 
 
 def _raise_if_cancelled(context: RunContext) -> None:
@@ -835,81 +836,6 @@ def _formal_metrics(env: SkyEngineTrainingEnv) -> dict[str, float]:
         }
     )
     return metrics
-
-
-def _filter_online_action(
-    action: Mapping[str, object],
-    observation: Mapping[str, object],
-) -> dict[str, object]:
-    jobs = {
-        int(job["job_id"]): job
-        for job in observation["jobs"]
-    }
-    frame = observation["frame"]
-    committed = {
-        (int(item["job_id"]), int(item["op_id"]))
-        for name in ("pending_transfers", "active_transfers")
-        for item in frame.get(name, ())
-    }
-    committed.update(
-        (
-            int(machine["current_op"]["job_id"]),
-            int(machine["current_op"]["op_id"]),
-        )
-        for machine in frame.get("machines", ())
-        if machine.get("current_op") is not None
-    )
-    production = []
-    proposed: set[tuple[int, int]] = set()
-    for item in action.get("production", ()):
-        job_id = int(item["job_id"])
-        operation_id = int(item["op_id"])
-        machine_id = int(item["machine_id"])
-        key = (job_id, operation_id)
-        job = jobs[job_id]
-        operation = job["operations"][operation_id]
-        eligible = {
-            int(option["machine_id"])
-            for option in operation["machine_options"]
-        }
-        predecessor_ready = (
-            operation_id == 0
-            or job["operations"][operation_id - 1]["status"] == "FINISHED"
-        )
-        if (
-            key not in committed
-            and key not in proposed
-            and operation["status"] == "PENDING"
-            and operation["assigned_machine"] is None
-            and predecessor_ready
-            and machine_id in eligible
-        ):
-            production.append(dict(item))
-            proposed.add(key)
-    return {
-        **dict(action),
-        "production": production,
-    }
-
-
-def _carry_pending_transfers(
-    action: Mapping[str, object],
-    observation: Mapping[str, object],
-) -> dict[str, object]:
-    task_observation = observation["task_observation"]
-    assign_actions = dict(action["assign_actions"])
-    assignments = assign_actions["assignments"]
-    assigned_task_ids = {
-        int(task.task_id)
-        for task in assignments.values()
-        if task is not None
-    }
-    assign_actions["pending_transfers"] = [
-        task
-        for task in task_observation.get("pending_transfers", ())
-        if int(task.task_id) not in assigned_task_ids
-    ]
-    return {**dict(action), "assign_actions": assign_actions}
 
 
 def _episode_seed(base: int, offset: int) -> int:

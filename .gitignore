@@ -775,12 +775,17 @@ experiment/*
 !experiment/algorithm_platform_plugins/
 !experiment/algorithm_platform_plugins/**
 
-# 算法实验平台设计与 API 文档
+# 面向使用者的文档；开发/API 文档位于工作区根 docs
 !docs/
 docs/*
+!docs/README.md
+!docs/QUICKSTART.md
 !docs/算法实验与优化平台.md
-!docs/算法实验平台核心API.md
-!docs/算法实验平台HTTP_API.md
+!docs/联合调度训练使用说明.md
+!docs/工厂仿真配置.md
+!docs/工厂运行与日志分析.md
+!docs/pics/
+!docs/pics/**
 logs/
 data/
 启动SkyEngine开发服务.ps1

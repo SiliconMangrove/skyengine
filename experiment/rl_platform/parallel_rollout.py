@@ -57,6 +57,7 @@ def _sampling_worker(
                     cancel_check=check_cancelled,
                 )
                 metrics: dict[str, float] = metrics_reader(env)
+                metrics.update(getattr(policy, "planning_metrics", {}))
             finally:
                 env.close()
             trajectory.metadata.update({"episode": job["episode"], "metrics": metrics,

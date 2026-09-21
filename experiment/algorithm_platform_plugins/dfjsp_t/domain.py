@@ -373,6 +373,7 @@ class DFJSPTOnlineSession:
             "simulation_time": self.simulation_time,
             "state_version": self.state_version,
             "jobs": jobs,
+            "planning_observation": self._session.obs["planning_observation"],
             "machines": machines,
             "native_observation": _policy_observation(
                 self._policy_state()
