@@ -830,7 +830,7 @@ const tuneTemplate = {
   },
   algorithms: [{
     id: 'ctde_ppo',
-    version: '1.0.0',
+    version: '0.2.0',
     interface: 'trainable',
     budget: {},
     parameters: {
