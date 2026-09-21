@@ -53,6 +53,7 @@ class RaceState:
     epochs: Dict[str, int]
     events: tuple[Mapping[str, Any], ...]
     timeline: int
+    metadata: Dict[str, Any]
 
     def validate(self) -> None:
         for name, dim in ENTITY_DIMS.items():
@@ -99,7 +100,7 @@ class RaceStateEncoder:
         task_obs = obs.get("task_observation") or {}
         jobs = list(job_obs.get("jobs") or task_obs.get("jobs") or [])
         machines = list(task_obs.get("machines") or job_obs.get("machines") or [])
-        tasks = list(task_obs.get("pending_transfers") or [])
+        tasks = [*(task_obs.get("pending_transfers") or []), *(task_obs.get("active_transfers") or [])]
         agents = list(task_obs.get("agents") or [])
         events = tuple(task_obs.get("events") or ())
         timeline = int(task_obs.get("env_timeline", 0) or 0)
@@ -151,6 +152,20 @@ class RaceStateEncoder:
         coupling_vector = np.asarray(
             [coupling[name] for name in COUPLING_FEATURE_NAMES], dtype=np.float32
         )
+        operation_keys = [
+            (int(getattr(job, "job_id", job_index)), int(getattr(op, "op_id", op_index)))
+            for job_index, job in enumerate(jobs)
+            for op_index, op in enumerate(getattr(job, "ops", []))
+        ]
+        metadata = {
+            "operation_keys": operation_keys,
+            "machine_ids": [int(getattr(machine, "id", index)) for index, machine in enumerate(machines)],
+            "task_ids": [int(getattr(task, "task_id", index)) for index, task in enumerate(tasks)],
+            "agv_ids": [int(getattr(agent, "id", index)) for index, agent in enumerate(agents)],
+            "operation_machine_edges": [tuple(map(int, edge)) for edge in op_machine_edges],
+            "coupling_vector": coupling_vector.tolist(),
+            "coupling": coupling,
+        }
         state = RaceState(
             nodes={
                 "jobs": self._rows(job_rows, ENTITY_DIMS["jobs"]),
@@ -177,8 +192,22 @@ class RaceStateEncoder:
             epochs=epochs,
             events=events,
             timeline=timeline,
+            metadata=metadata,
         )
         state.validate()
+        moves = task_obs.get("move_deltas")
+        if moves is not None:
+            route_mask = np.zeros((len(agents), len(moves)), dtype=np.bool_)
+            for agent_index, agent in enumerate(agents):
+                x, y = agent.pos
+                for move_index, (dx, dy) in enumerate(moves):
+                    nx, ny = x + dx, y + dy
+                    route_mask[agent_index, move_index] = (
+                        (dx == 0 and dy == 0)
+                        or (agent.status == "OK" and agent.task_phase not in {"PICKING", "DROPPING"}
+                            and 0 <= nx < grid_h and 0 <= ny < grid_w and obstacle_array[nx, ny] == 0)
+                    )
+            state.action_masks["route"] = route_mask
         return state
 
     @staticmethod
@@ -262,11 +291,10 @@ class RaceStateEncoder:
                 sampled = getattr(op, "sampled_proc_time", None)
                 actual = float(sampled if sampled is not None else getattr(op, "proc_time", nominal) or nominal)
                 remaining = getattr(op, "remaining_proc_time", None)
-                if remaining is None and status == "PROCESSING":
-                    start = float(getattr(op, "start_process_at", timeline) or timeline)
-                    remaining = max(0.0, actual - max(0.0, timeline - start))
+                if remaining is None:
+                    remaining = max(0.0, nominal - op.processed_time)
                 remaining = float(remaining if remaining is not None else (0.0 if status == "FINISHED" else actual))
-                deviation = abs(actual - nominal) / max(nominal, 1.0)
+                deviation = (abs(actual - nominal) if status == "FINISHED" else max(0.0, op.processed_time - nominal)) / max(nominal, 1.0)
                 options = list(getattr(op, "machine_options", None) or [])
                 if not options:
                     options = [mid for mid, _ in (getattr(op, "machine_options_with_time", None) or [])]
@@ -274,7 +302,9 @@ class RaceStateEncoder:
                     if mid in machine_index:
                         machine_edges.append((op_idx, machine_index[mid]))
                         production_mask.append(
-                            status == "PENDING" and machine_available.get(mid, False)
+                            status == "PENDING" and not op.transfer_requested and op.assigned_machine is None
+                            and (op.op_id == 0 or job.ops[op.op_id - 1].status == "FINISHED")
+                            and machine_available.get(mid, False)
                         )
                 assigned = getattr(op, "assigned_machine", None)
                 rows.append(status_vec + [
@@ -299,7 +329,8 @@ class RaceStateEncoder:
         return np.asarray([
             getattr(agent, "status", "OK") == "OK"
             and getattr(agent, "current_task", None) is None
-            for _task in tasks
+            and task.assigned_agent_id is None
+            for task in tasks
             for agent in agents
         ], dtype=np.bool_)
 
@@ -310,19 +341,19 @@ class RaceStateEncoder:
             status = str(getattr(machine, "status", "OK"))
             current = getattr(machine, "current_op", None)
             current_nominal = float(getattr(current, "nominal_proc_time", 0) or 0) if current else 0.0
-            current_actual = float(getattr(current, "proc_time", 0) or 0) if current else 0.0
-            deviation = abs(current_actual - current_nominal) / max(current_nominal, 1.0)
+            current_actual = float(current.processed_time) if current else 0.0
+            deviation = max(0.0, current_actual - current_nominal) / max(current_nominal, 1.0)
             rows.append([
                 x / max(grid_w - 1, 1), y / max(grid_h - 1, 1),
                 float(status == "OK"), float(status == "DOWN"), float(status == "MAINTENANCE"),
-                _ratio01(float(getattr(machine, "repair_remaining", 0) or 0) / 10.0),
+                _ratio01(float(getattr(machine, "down_elapsed", 0) or 0) / 10.0),
                 1.0 if current is not None else 0.0,
                 _ratio01(len(getattr(machine, "input_queue", []) or [])),
                 _ratio01(float(getattr(machine, "total_work_time", 0) or 0) / max(timeline, 1)),
                 _ratio01(float(getattr(machine, "processed_ops_count", 0) or 0) / 10.0),
                 _ratio01(current_actual / 10.0),
                 _ratio01(deviation),
-                _ratio01(len(getattr(machine, "urgent_reservations", []) or [])),
+                len(machine.buffer_jobs) / machine.buffer_capacity,
             ])
         return rows
 
@@ -373,7 +404,7 @@ class RaceStateEncoder:
             rows.append([
                 x / max(grid_w - 1, 1), y / max(grid_h - 1, 1),
                 float(status == "OK"), float(status == "DOWN"),
-                _ratio01(float(getattr(agent, "repair_remaining", 0) or 0) / 10.0),
+                _ratio01(float(getattr(agent, "down_elapsed", 0) or 0) / 10.0),
                 1.0 if task is None else 0.0,
                 float("PICKUP" in phase and "TO_" not in phase),
                 float("TO_PICKUP" in phase),
@@ -393,7 +424,7 @@ class RaceStateEncoder:
             kind = self.EVENT_TYPES.get(etype, 4)
             kind_vec = [float(kind == idx) for idx in range(5)]
             payload = event.get("payload") or event
-            duration = float(payload.get("duration_steps", payload.get("repair_remaining", 0)) or 0)
+            duration = float(payload.get("elapsed_processing", 0) or 0)
             affected_id = payload.get("machine_id", payload.get("agv_id", payload.get("job_id", 0)))
             denominator = max(n_machines, n_agvs, n_jobs, 1)
             level = str(event.get("level", "info"))
@@ -426,7 +457,7 @@ class RaceStateEncoder:
                 break
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < w and 0 <= ny < h and obstacles[ny, nx] == 0 and (nx, ny) not in seen:
+                if 0 <= nx < h and 0 <= ny < w and obstacles[nx, ny] == 0 and (nx, ny) not in seen:
                     seen.add((nx, ny))
                     queue.append((nx, ny, distance + 1))
         self._distance_cache[key] = result

@@ -7,6 +7,7 @@
 """
 
 from typing import List, Tuple, Optional
+from copy import deepcopy
 
 from pettingzoo import ParallelEnv
 from pogema.grid import Grid
@@ -28,6 +29,7 @@ from sky_executor.grid_factory.factory.Utils.job import generate_jobs
 from sky_executor.grid_factory.factory.Metrics.hub import MetricsHub
 from sky_executor.grid_factory.factory.Events import ExceptionInjector
 from sky_logs.logger import LOGGER
+from .observation import observable_state
 
 
 @register_component("factory")
@@ -56,6 +58,7 @@ class GridFactoryEnv(ParallelEnv):
         exception_config: Optional[dict] = None,
         processing_time_config: Optional[dict] = None,
         material_handling_config: Optional[dict] = None,
+        headless: bool = False,
     ):
         """
         初始化网格工厂环境
@@ -72,6 +75,7 @@ class GridFactoryEnv(ParallelEnv):
         # Pogema环境
         self.pogema_env: PogemaLifeLongWithAssign | None = None
         self.grid_config = grid_config or self._create_default_grid_config()
+        self.grid_config.collision_system = "soft"
 
         # 机器组件 也就是路由的起始点和终止点
         self.machine_config = machine_config or self._create_default_machine_config()
@@ -80,6 +84,7 @@ class GridFactoryEnv(ParallelEnv):
         self.job_config = job_config or self._create_default_job_config()
         self.processing_time_config = processing_time_config
         self.material_handling_config = material_handling_config
+        self.headless = bool(headless)
 
         # 动画保存路径
         self.initialize_pogema_env(random_target)
@@ -152,8 +157,12 @@ class GridFactoryEnv(ParallelEnv):
             processing_time_config=self.processing_time_config,
             material_handling_config=self.material_handling_config,
         )
-        # 添加包装器
-        self.pogema_env = AnimationMonitor(self.pogema_env)
+        # AnimationMonitor performs bookkeeping for the visual factory.  It is
+        # deliberately omitted by the training backend so formal simulation
+        # keeps the same state transitions without rendering overhead.
+        # Keep a single owner of mutable factory state. Gym wrappers forward
+        # reads but not attribute writes; only route movement/reset through them.
+        self._movement_env = self.pogema_env if self.headless else AnimationMonitor(self.pogema_env)
         LOGGER.info(
             f"[GridFactoryEnv] Pogema环境初始化成功，智能体数量: {self.grid_config.num_agents}"
         )
@@ -189,6 +198,10 @@ class GridFactoryEnv(ParallelEnv):
         pretty_print_jobs(self.pogema_env.jobs)
 
     def step(self, actions=None):
+        self.pogema_env.last_events = list(self.pogema_env._pending_events)
+        self.pogema_env._pending_events.clear()
+        self.pogema_env._in_step = True
+        self.pogema_env.apply_reschedule((actions or {}).get("reschedule", {}))
         self.env_timeline += 1
 
         (
@@ -204,9 +217,10 @@ class GridFactoryEnv(ParallelEnv):
             t_obs, t_reward, t_terminated, t_truncated, t_info = self.pogema_env.task_step(
                 task_actions
             )
-            a_obs, a_reward, a_terminated, a_truncated, a_info = self.pogema_env.step(
+            a_obs, a_reward, a_terminated, a_truncated, a_info = self._movement_env.step(
                 patched_agent_actions
             )
+            self.pogema_env._release_due_jobs(self.pogema_env.env_timeline)
 
         # 合并输出
         observations, rewards, terminations, truncated, info = self.pack_output(
@@ -218,7 +232,7 @@ class GridFactoryEnv(ParallelEnv):
         # 统一指标收集 + reward 注入
         observations, rewards, terminations, truncated, info = \
             self.metrics_hub.on_step_end(observations, rewards, terminations, truncated, info)
-
+        self.pogema_env._in_step = False
         return observations, rewards, terminations, truncated, info
 
     def reset(self, seed=None):
@@ -227,15 +241,15 @@ class GridFactoryEnv(ParallelEnv):
         self.set_env_timeline(0)
         self.metrics_hub.on_episode_start()
         # --- 重置 Pogema 相关 ---
-        a_observations, a_infos = self.pogema_env.reset(seed=seed)
+        a_observations, a_infos = self._movement_env.reset(seed=seed)
 
         # --- 重置任务相关，使用可能位置 ---
-        t_observations, t_infos = self.pogema_env.machine_reset(self.init_machines)
+        t_observations, t_infos = self.pogema_env.machine_reset(deepcopy(self.init_machines))
 
         # --- 重置任务相关，使用任务列表 ---
-        j_observations, j_infos = self.pogema_env.job_reset(self.init_jobs)
+        j_observations, j_infos = self.pogema_env.job_reset(deepcopy(self.init_jobs))
 
-        self.exception_injector.reset(self)
+        self.exception_injector.reset(self, seed=self.pogema_env._episode_seed)
 
         # --- 打包输出 ---
         obs, rwd, term, trunc, info = self.pack_output(
@@ -305,7 +319,19 @@ class GridFactoryEnv(ParallelEnv):
         a_obs, a_reward, a_term, a_trunc, a_info = unpack(agent_info)
 
         # 提取 job_done 布尔值 — job_step 返回 {"job_done": bool}，需要解包
-        job_done = j_term.get("job_done", False) if isinstance(j_term, dict) else j_term
+        job_done = self.pogema_env.job_all_done()
+        public = observable_state(self.pogema_env)
+        j_obs = {"jobs": public["jobs"], "machines": public["machines"], "env_timeline": self.pogema_env.env_timeline}
+        t_obs = dict(public)
+        padding: int = self.grid_config.obs_radius or 0
+        obstacles = self.pogema_env.grid.obstacles
+        obstacles = obstacles[padding:-padding, padding:-padding] if padding else obstacles
+        t_obs.update({"env_timeline": self.pogema_env.env_timeline, "obstacle_grid": obstacles.copy(),
+                      "grid_height": obstacles.shape[0], "grid_width": obstacles.shape[1],
+                      "move_deltas": [list(move) for move in self.grid_config.MOVES],
+                      "agv_task_phase": list(self.pogema_env.agv_task_phase),
+                      "agv_loaded": list(self.pogema_env.agv_loaded)})
+        a_obs = self.pogema_env._obs()
 
         # 合并为标准输出结构
         observations = {
@@ -342,7 +368,7 @@ class GridFactoryEnv(ParallelEnv):
             "task_info": t_info,
             "agent_info": a_info,
         }
-        infos["events"] = self.exception_injector.get_step_events()
+        infos["events"] = deepcopy(self.pogema_env.last_events)
         infos["event_metrics"] = self.exception_injector.get_metrics()
         infos.update(self.exception_injector.get_epochs(self.pogema_env))
 

@@ -1,6 +1,7 @@
 from pogema.envs import PogemaLifeLong, GridConfig
 import random
 from typing import Optional, List, Dict, Union
+from collections import deque
 from sky_executor.grid_factory.factory.Utils.structure import (
     Machine,
     Job,
@@ -9,6 +10,7 @@ from sky_executor.grid_factory.factory.Utils.structure import (
     Operation,
 )
 from sky_executor.grid_factory.factory.Utils.processing_time import ProcessingTimeSampler
+from .rescheduling import ReschedulingActions
 import pickle, json
 
 
@@ -20,7 +22,7 @@ AGV_PHASE_DROPPING = "DROPPING"
 HANDLING_PHASES = {AGV_PHASE_PICKING, AGV_PHASE_DROPPING}
 
 
-class PogemaLifeLongWithAssign(PogemaLifeLong):
+class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
     def __init__(
         self,
         grid_config: Optional[GridConfig] = None,  # [修复] 避免使用可变对象作为默认参数
@@ -37,13 +39,23 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         self.debug_mode = debug_mode
         self.env_timeline = 0
         self.random_target = random_target
-        self.padding_init_request = padding_init_request
+        self.padding_init_request = False
+        self._episode_seed: int = int(grid_config.seed or 0)
+        self._rng = random.Random(self._episode_seed)
         self.processing_time_sampler = ProcessingTimeSampler.from_config(processing_time_config)
         handling_config = material_handling_config or {}
         self.pickup_dwell_steps = int(handling_config.get("pickup_dwell_steps", 2))
         self.dropoff_dwell_steps = int(handling_config.get("dropoff_dwell_steps", 2))
         raw_source = handling_config.get("raw_material_source")
         self.raw_material_source = tuple(raw_source) if raw_source is not None else None
+        sink = handling_config.get("finished_goods_destination")
+        self.finished_goods_destination = tuple(sink) if sink is not None else None
+        self.buffer_capacity: int = int(handling_config.get("buffer_capacity", 4))
+        self.machine_buffer_capacities: dict = handling_config.get("machine_buffer_capacities", {})
+        self.reschedule_count: int = 0
+        self.reassigned_operation_count: int = 0
+        self.reassigned_transport_count: int = 0
+        self._shipping_sequence: int = -1
 
         # machine机器相关信息
         self.machines: List[Machine] = []
@@ -56,7 +68,6 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         self.hash_operations: Dict[tuple[int, int], Operation] = {}
         self.pending_transfers: List[RoutingTask] = []
         self.transfers_to_assign: List[RoutingTask] = []
-        self.active_transfers: List[RoutingTask] = []
         self.active_transfers: List[RoutingTask] = []
         # 存放那些 Solver 发过来了，但因为前置工序没做完，暂时不能执行的任务
         self.buffered_tasks: List[RoutingTask] = []
@@ -71,6 +82,7 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         self.agv_status: List[str] = ["OK"] * self.grid_config.num_agents
         self.agv_repair_remaining: List[int] = [0] * self.grid_config.num_agents
         self.agv_down_reason: List[Union[str, None]] = [None] * self.grid_config.num_agents
+        self.agv_down_elapsed: list[int] = [0] * self.grid_config.num_agents
         self.agv_task_phase: List[str] = [AGV_PHASE_IDLE] * self.grid_config.num_agents
         self.agv_handling_remaining: List[int] = [0] * self.grid_config.num_agents
         self.agv_loaded: List[bool] = [False] * self.grid_config.num_agents
@@ -83,9 +95,12 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         self.agv_epoch = 0
         self.job_epoch = 0
         self.last_events = []
+        self._pending_events: list[dict] = []
+        self._in_step: bool = False
         self.event_metrics = {}
 
         # 初始化统计信息
+        self.agv_down_elapsed = [0] * self.grid_config.num_agents
         self.agv_stats = {
             i: {"dist": 0, "loaded": 0, "empty": 0, "idle": 0, "handling": 0, "task_waiting": 0}
             for i in range(self.grid_config.num_agents)
@@ -113,6 +128,7 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
                         self.agv_repair_remaining[idx]
                         if idx < len(self.agv_repair_remaining) else 0
                     ),
+                    down_elapsed=self.agv_down_elapsed[idx],
                     down_reason=(
                         self.agv_down_reason[idx]
                         if idx < len(self.agv_down_reason) else None
@@ -144,12 +160,15 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
             # 如果没有机器位置信息，暂时用全图或当前位置兜底
             self.grid_config.possible_targets_xy = list(self.grid.positions_xy)
 
+        self._episode_seed = int(self.grid_config.seed or 0) if seed is None else int(seed)
+        self._rng = random.Random(self._episode_seed)
+        self.processing_time_sampler.reset(self._episode_seed)
         super().reset(seed, return_info, options)
 
         for idx in range(self.grid_config.num_agents):
             if self.padding_init_request and self.grid_config.possible_targets_xy:
                 self.grid.finishes_xy[idx] = self._to_internal_xy(
-                    random.choice(self.grid_config.possible_targets_xy)
+                    self._rng.choice(self.grid_config.possible_targets_xy)
                 )
                 self.agv_current_task[idx] = None
             else:
@@ -163,6 +182,7 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         self.agv_handling_remaining = [0] * self.grid_config.num_agents
         self.agv_loaded = [False] * self.grid_config.num_agents
         self.agv_last_step_phase = [AGV_PHASE_IDLE] * self.grid_config.num_agents
+        self.agv_down_elapsed = [0] * self.grid_config.num_agents
         self.agv_stats = {
             i: {"dist": 0, "loaded": 0, "empty": 0, "idle": 0, "handling": 0, "task_waiting": 0}
             for i in range(self.grid_config.num_agents)
@@ -219,6 +239,12 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
             m.status = "OK"
             m.repair_remaining = 0
             m.down_reason = None
+            m.down_elapsed = 0
+            m.buffer_capacity = int(self.machine_buffer_capacities.get(str(m.id), self.buffer_capacity))
+            if m.buffer_capacity < 1:
+                raise ValueError("machine buffer capacity must be positive")
+            m.buffer_jobs = set()
+            m.buffer_blocked_steps = 0
 
         self.hash_machines = self.create_hash_machines()
 
@@ -231,13 +257,30 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         return obs, infos
 
     def job_reset(self, jobs: list[Job]):
-        self.jobs = jobs if jobs else []
+        self._all_jobs = jobs if jobs else []
+        self.jobs = [job for job in self._all_jobs if float(getattr(job, "release", 0.0) or 0.0) <= 0.0]
+        self._future_jobs = [job for job in self._all_jobs if job not in self.jobs]
         self.pending_transfers.clear()
         self.active_transfers.clear()
         self.transfers_to_assign.clear()
         self.buffered_tasks.clear()
-        self.processing_time_sampler.reset()
-        for job in self.jobs:
+        self.reschedule_count = self.reassigned_operation_count = self.reassigned_transport_count = 0
+        self._shipping_sequence = -1
+        cells: list[tuple[int, int]] = [self._to_public_xy((x, y))
+            for x in range(self.grid.obstacles.shape[0]) for y in range(self.grid.obstacles.shape[1])
+            if self.grid.obstacles[x, y] == 0 and self._to_public_xy((x, y)) not in self.hash_machines]
+        if not cells:
+            raise ValueError("layout needs a traversable material station outside the machines")
+        source: tuple[int, int] = self.raw_material_source if self.raw_material_source is not None else cells[0]
+        destination: tuple[int, int] = self.finished_goods_destination if self.finished_goods_destination is not None else cells[-1]
+        self.raw_material_source = source
+        self.finished_goods_destination = destination
+        for job in self._all_jobs:
+            job.raw_material_source = job.raw_material_source or source
+            job.finished_goods_destination = job.finished_goods_destination or destination
+            job.material_location = job.raw_material_source
+            job.carrier_id = job.transport_task_id = None
+            job.delivered = False
             job.completion_time = -1.0
             for op in job.ops:
                 nominal = op.nominal_proc_time if op.nominal_proc_time is not None else op.proc_time
@@ -255,174 +298,114 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
                 op.remaining_proc_time = None
                 op.accumulated_process_time = 0.0
                 op.preemption_count = 0
+                op.processed_time = 0.0
+                op.transfer_requested = False
+                op.deviation_reported = False
         self.hash_operations = self.create_hash_operations()
+        self._require_connected_layout()
         self.event_epoch = 0
         self.map_epoch = 0
         self.machine_epoch = 0
         self.agv_epoch = 0
         self.job_epoch = 0
         self.last_events = []
+        self._pending_events = []
+        self._in_step = False
         self.event_metrics = {}
 
         obs = {"jobs": self.jobs, "machines": self.machines}
         infos = {"num_jobs": len(self.jobs)}
         return obs, infos
 
+    def _release_due_jobs(self, timeline: float) -> None:
+        due = [job for job in self._future_jobs if float(getattr(job, "release", 0.0) or 0.0) <= float(timeline)]
+        if not due:
+            return
+        self._future_jobs = [job for job in self._future_jobs if job not in due]
+        self.jobs.extend(due)
+        for job in due:
+            for operation in job.ops:
+                self.hash_operations[(job.job_id, operation.op_id)] = operation
+        self.job_epoch += 1
+        for job in due:
+            self.emit_event("urgent_job_arrival" if job.priority >= 200 else "job_release", {"job_id": job.job_id})
+
     def machine_process(self):
-        """
-        [修复] 机器处理逻辑：
-        1. 处理当前任务。
-        2. 如果完成或空闲，检查输入队列 (input_queue)。
-        3. 自动管理 activated_machines 列表。
-        """
-        # 使用副本遍历，因为我们可能会在循环中从 activated_machines 移除机器
-        for m in list(self.activated_machines):
-            if getattr(m, "status", "OK") != "OK":
+        for machine in list(self.activated_machines):
+            if machine.status != "OK":
                 continue
-
-            # --- 阶段 1: 尝试加载新任务 ---
-            if m.current_op is None:
-                urgent_index = next(
-                    (idx for idx, op in enumerate(m.input_queue)
-                     if getattr(op, "priority", 0) >= 200),
-                    None,
-                )
-                if urgent_index is not None:
-                    m.current_op = m.input_queue.pop(urgent_index)
-                    self.machine_process_time[m.id] = 0
-                elif m.urgent_reservations:
-                    # 特急物料尚在运输，机器为它保留，不启动普通工序。
-                    self.machine_process_time[m.id] = 0
+            if machine.current_op is not None and machine.current_op.status == "FINISHED":
+                self._release_finished_operation(machine)
+                continue
+            if machine.current_op is None:
+                if machine.urgent_reservations and not any(op.priority >= 200 for op in machine.input_queue):
                     continue
-                elif m.suspended_ops:
-                    m.current_op = m.suspended_ops.pop(0)
-                    self.machine_process_time[m.id] = 0
-                elif m.input_queue:
-                    # 普通队列按优先级取任务；同优先级保持到达顺序。
-                    best_index = max(
-                        range(len(m.input_queue)),
-                        key=lambda idx: getattr(m.input_queue[idx], "priority", 0),
-                    )
-                    m.current_op = m.input_queue.pop(best_index)
-                    self.machine_process_time[m.id] = 0
+                if machine.input_queue:
+                    index: int = max(range(len(machine.input_queue)), key=lambda i: machine.input_queue[i].priority)
+                    operation = machine.input_queue.pop(index)
+                elif machine.suspended_ops:
+                    operation = machine.suspended_ops.pop(0)
                 else:
-                    # 既没有当前任务，队列也是空的 -> 休眠
-                    self.activated_machines.remove(m)
-                    self.machine_process_time[m.id] = 0
+                    self.activated_machines.remove(machine)
                     continue
-
-            # --- 阶段 2: 执行加工逻辑 ---
-            current_op = m.current_op
-            # 获取 Operation 的真身引用
-            hash_op = (current_op.job_id, current_op.op_id)
-            real_op = self.hash_operations[hash_op]
-
-            # [Metrics] 记录开始时间
-            if self.machine_process_time[m.id] == 0:
-                if real_op.remaining_proc_time is not None:
-                    real_op.proc_time = float(real_op.remaining_proc_time)
-                    real_op.remaining_proc_time = None
+                machine.current_op = operation
+                machine.buffer_jobs.discard(operation.job_id)
+                self.machine_process_time[machine.id] = 0.0
+                if operation.remaining_proc_time is not None:
+                    operation.proc_time = operation.remaining_proc_time
+                    operation.remaining_proc_time = None
                 else:
-                    nominal = (
-                        real_op.nominal_proc_time
-                        if real_op.nominal_proc_time is not None
-                        else real_op.proc_time
-                    )
-                    sampled, distribution = self.processing_time_sampler.sample_for_operation(
-                        real_op,
-                        m.id,
-                        nominal,
-                    )
-                    real_op.proc_time = sampled
-                    real_op.sampled_proc_time = sampled
-                    real_op.processing_time_distribution = distribution
-                if real_op.start_process_at < 0:
-                    real_op.start_process_at = self.env_timeline
-                real_op.status = "PROCESSING"
+                    operation.proc_time, operation.processing_time_distribution = self.processing_time_sampler.sample_for_operation(
+                        operation, machine.id, operation.nominal_proc_time or operation.proc_time)
+                    operation.sampled_proc_time = operation.proc_time
+                if operation.start_process_at < 0:
+                    operation.start_process_at = self.env_timeline
+                operation.status = "PROCESSING"
+                self.emit_event("operation_started", {"job_id": operation.job_id, "op_id": operation.op_id, "machine_id": machine.id})
+            operation = machine.current_op
+            service: float = min(1.0, operation.proc_time - self.machine_process_time[machine.id])
+            self.machine_process_time[machine.id] += service
+            operation.processed_time += service
+            machine.total_work_time += service
+            if self.machine_process_time[machine.id] >= operation.proc_time:
+                operation.finish_process_at = self.env_timeline + 1
+                operation.status = "FINISHED"
+                operation.accumulated_process_time = operation.processed_time
+                machine.processed_ops_count += 1
+                machine.history_ops.append((operation.job_id, operation.op_id, operation.start_process_at, operation.finish_process_at))
+                self.emit_event("operation_completed", {"job_id": operation.job_id, "op_id": operation.op_id, "machine_id": machine.id}, step=self.env_timeline + 1)
+                self._release_finished_operation(machine)
+            elif operation.processed_time >= float(operation.nominal_proc_time or 0) and not operation.deviation_reported:
+                operation.deviation_reported = True
+                self.emit_event("processing_time_deviation", {"job_id": operation.job_id, "op_id": operation.op_id,
+                                "elapsed_processing": operation.processed_time}, step=self.env_timeline + 1)
 
-            # 推进时间
-            self.machine_process_time[m.id] += 1
-            m.total_work_time += 1
+    def _release_finished_operation(self, machine: Machine) -> None:
+        operation: Operation = machine.current_op
+        if len(machine.buffer_jobs) >= machine.buffer_capacity:
+            machine.buffer_blocked_steps += 1
+            return
+        machine.buffer_jobs.add(operation.job_id)
+        machine.current_op = None
+        self.machine_process_time[machine.id] = 0.0
+        job: Job = next(job for job in self.jobs if job.job_id == operation.job_id)
+        if operation.op_id == len(job.ops) - 1:
+            task = RoutingTask(task_id=self._shipping_sequence, job_id=job.job_id, op_id=len(job.ops),
+                               kind="finished_goods", source=job.material_location,
+                               destination=job.finished_goods_destination, ready_time=operation.finish_process_at,
+                               priority=job.priority, create_time=operation.finish_process_at)
+            self._shipping_sequence -= 1
+            self.buffered_tasks.append(task)
 
-            # --- 阶段 3: 检查完成 ---
-            if self.machine_process_time[m.id] >= current_op.proc_time:
-                # [Metrics] 记录完成
-                real_op.finish_process_at = self.env_timeline
-                real_op.status = "FINISHED"
-                real_op.accumulated_process_time += self.machine_process_time[m.id]
-
-                # 记录历史
-                m.processed_ops_count += 1
-                m.history_ops.append(
-                    (
-                        real_op.job_id,
-                        real_op.op_id,
-                        real_op.start_process_at,
-                        real_op.finish_process_at,
-                    )
-                )
-
-                # 任务完成，清空槽位
-                m.current_op = None
-                self.machine_process_time[m.id] = 0
-
-                # 检查 Job 是否全部完成 (Metrics)
-                job = next(job for job in self.jobs if job.job_id == real_op.job_id)
-                hash_ops_completed = all(
-                    self.hash_operations[(job.job_id, op.op_id)].status == "FINISHED"
-                    for op in job.ops
-                )
-
-                if hash_ops_completed and job.completion_time == -1:
-                    job.completion_time = self.env_timeline
-                    if self.debug_mode:
-                        print(
-                            f"  - [SUCCESS] Job {job.job_id} finished at {self.env_timeline}"
-                        )
-
-                # 注意：这里不从 activated_machines 移除
-                # 下一次循环会检查 input_queue，如果有新任务则继续，没有则移除
-
-    def _resolve_transfer(self, t: dict) -> RoutingTask:
-        """将 HTTP solver 返回的 transfer dict 转为 RoutingTask，解析 machine_id → 实际坐标"""
-        fields = {}
-        for k, v in t.items():
-            if k in ("source", "destination") and isinstance(v, list):
-                fields[k] = tuple(v)
-            else:
-                fields[k] = v
-
-        # destination: [machine_id, 0] → 机器的实际 location
-        dest = fields.get("destination")
-        if dest and len(dest) == 2 and dest[1] == 0:
-            mid = dest[0]
-            if 0 <= mid < len(self.machines):
-                fields["destination"] = self.machines[mid].location
-
-        # source: [machine_id, 0] → 机器的实际 location; [-1, 0] = depot 保持不变
-        src = fields.get("source")
-        if src and len(src) == 2 and src[0] >= 0 and src[1] == 0:
-            mid = src[0]
-            if 0 <= mid < len(self.machines):
-                fields["source"] = self.machines[mid].location
-
+    def _resolve_transfer(self, value: dict) -> RoutingTask:
+        fields: dict = dict(value)
+        destination_id = fields.pop("destination_machine_id", None)
+        source_id = fields.pop("source_machine_id", None)
+        if destination_id is not None:
+            fields["destination"] = self.machines[int(destination_id)].location
+        if source_id is not None:
+            fields["source"] = self.machines[int(source_id)].location
         return RoutingTask(**fields)
-
-    def _resolve_routing_task(self, task: RoutingTask) -> RoutingTask:
-        """将本地 solver 生成的 RoutingTask 中的 (machine_id, 0) 解析为实际坐标"""
-        src = task.source
-        if src and isinstance(src, tuple) and len(src) == 2 and src[0] >= 0 and src[1] == 0:
-            mid = src[0]
-            if 0 <= mid < len(self.machines):
-                task.source = self.machines[mid].location
-
-        dst = task.destination
-        if dst and isinstance(dst, tuple) and len(dst) == 2 and dst[0] >= 0 and dst[1] == 0:
-            mid = dst[0]
-            if 0 <= mid < len(self.machines):
-                task.destination = self.machines[mid].location
-
-        return task
 
     def _reserve_for_urgent_transfer(self, task: RoutingTask) -> None:
         """优先级 200 的运输任务可暂停目标机器上的非特急加工。"""
@@ -449,47 +432,40 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
             self.activated_machines.append(target_machine)
 
     def job_step(self, actions=None):
-        if actions is not None:
-            new_transfers = actions.get("transfer_requests", [])
-            resolved = []
-            for t in new_transfers:
-                if isinstance(t, dict):
-                    task = self._resolve_transfer(t)
-                elif isinstance(t, RoutingTask):
-                    task = self._resolve_routing_task(t)
-                else:
-                    task = t
-                if isinstance(task, RoutingTask):
-                    self._reserve_for_urgent_transfer(task)
-                resolved.append(task)
-            self.pending_transfers = resolved
-
-        rewards = {}
-        terminations = {"job_done": self.job_all_done()}
-        truncations = {}
-        infos = {}
-        observations = {
-            "jobs": self.jobs,
-            "machines": self.machines,
-        }
-        return observations, rewards, terminations, truncations, infos
+        self._release_due_jobs(self.env_timeline)
+        actions = actions or {}
+        requests: list[RoutingTask] = [self._resolve_transfer(item) if isinstance(item, dict) else item
+                                      for item in actions.get("transfer_requests", [])]
+        existing_ids: set[int] = {task.task_id for task in [*self.buffered_tasks, *self.transfers_to_assign, *self.active_transfers]}
+        selected: set[tuple[int, int]] = set()
+        for task in requests:
+            key: tuple[int, int] = (task.job_id, task.op_id)
+            if task.kind != "operation" or task.task_id < 0 or task.task_id in existing_ids or key in selected:
+                raise ValueError("duplicate or invalid production transfer")
+            operation: Operation = self.hash_operations[key]
+            machine = self.hash_machines.get(task.destination)
+            eligible: set[int] = set(operation.machine_options or [mid for mid, _ in operation.machine_options_with_time])
+            if machine is None or machine.id not in eligible:
+                raise ValueError("transfer destination is not an eligible machine")
+            if operation.status != "PENDING" or operation.transfer_requested or operation.assigned_machine is not None:
+                raise ValueError("operation already started or has a committed transfer")
+            selected.add(key)
+            existing_ids.add(task.task_id)
+        for task in requests:
+            operation = self.hash_operations[(task.job_id, task.op_id)]
+            operation.transfer_requested = True
+            operation.assigned_machine = self.hash_machines[task.destination].id
+            task.create_time = self.env_timeline
+            self.buffered_tasks.append(task)
+            self._reserve_for_urgent_transfer(task)
+        self.pending_transfers = []
+        return {"jobs": self.jobs, "machines": self.machines}, {}, {"job_done": self.job_all_done()}, {}, {}
 
     def _prepare_transfer(self, task: RoutingTask) -> RoutingTask:
-        """Normalize the physical pickup source independently of solver conventions."""
-        if task.op_id == 0:
-            if self.raw_material_source is None:
-                task.pickup_required = False
-            else:
-                task.source = self.raw_material_source
-                task.pickup_required = True
-            return task
-
+        job: Job = next(job for job in self.jobs if job.job_id == task.job_id)
+        if job.material_location is not None:
+            task.source = job.material_location
         task.pickup_required = True
-        job = next((item for item in self.jobs if item.job_id == task.job_id), None)
-        if job is not None and 0 < task.op_id < len(job.ops):
-            previous_machine_id = job.ops[task.op_id - 1].assigned_machine
-            if previous_machine_id is not None and 0 <= previous_machine_id < len(self.machines):
-                task.source = self.machines[previous_machine_id].location
         return task
 
     def _set_agv_phase(self, agent_idx: int, phase: str, remaining: int = 0) -> None:
@@ -501,10 +477,17 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
             self.grid.finishes_xy[agent_idx] = self._to_internal_xy(target)
 
     def _finish_pickup(self, agent_idx: int, transfer: RoutingTask) -> None:
+        job: Job = next(job for job in self.jobs if job.job_id == transfer.job_id)
+        source_machine = self.hash_machines.get(job.material_location)
+        if source_machine is not None:
+            source_machine.buffer_jobs.discard(job.job_id)
+        job.material_location = None
+        job.carrier_id = agent_idx
         transfer.pickup_finish_time = self.env_timeline
         self.agv_loaded[agent_idx] = True
         self._set_agv_phase(agent_idx, AGV_PHASE_TO_DROPOFF)
         self._set_agv_target(agent_idx, transfer.destination)
+        self.emit_event("transport_picked_up", {"job_id": job.job_id, "task_id": transfer.task_id, "agv_id": agent_idx})
 
     def _finish_dropoff(self, agent_idx: int, transfer: RoutingTask) -> bool:
         if not self._deliver(agent_idx, transfer):
@@ -534,6 +517,9 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
                 self._finish_pickup(agent_idx, transfer)
                 continue
 
+            if phase == AGV_PHASE_DROPPING and self.agv_handling_remaining[agent_idx] == 0:
+                self._finish_dropoff(agent_idx, transfer)
+                return
             if phase == AGV_PHASE_TO_DROPOFF:
                 if position != self._to_internal_xy(transfer.destination):
                     return
@@ -542,11 +528,14 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
                     self._set_agv_phase(agent_idx, AGV_PHASE_DROPPING, self.dropoff_dwell_steps)
                     self._set_agv_target(agent_idx, transfer.destination)
                     return
+                self._set_agv_phase(agent_idx, AGV_PHASE_DROPPING)
                 self._finish_dropoff(agent_idx, transfer)
             return
 
     def _assign_transfer(self, agent_idx: int, transfer: RoutingTask) -> None:
         transfer = self._prepare_transfer(transfer)
+        job: Job = next(job for job in self.jobs if job.job_id == transfer.job_id)
+        job.transport_task_id = transfer.task_id
         transfer.assign_time = self.env_timeline
         transfer.assigned_agent_id = agent_idx
         self.agv_current_task[agent_idx] = transfer
@@ -586,106 +575,59 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
             self._finish_dropoff(agent_idx, transfer)
 
     def task_step(self, action: dict):
-        # === Step 0: 获取输入 ===
         self._assigned_this_step.clear()
-        assignments = action.get("assignments", {})
-        # 上一步未分配的任务 (可能因为没有 AGV)
-        last_step_unassigned = action.get("pending_transfers", [])
-
-        # 来自 Solver 的新请求 (基于时间的)
-        new_requests_from_solver = self.pending_transfers
-
-        # 给新任务打时间戳
-        for task in new_requests_from_solver:
-            task.create_time = self.env_timeline
-
-        # 清空 pending，防止重复
-        self.pending_transfers = []
-
-        # === [核心修复] Step 1: 物理约束检查 (Gatekeeping) ===
-        # 将新任务加入缓冲池
-        self.buffered_tasks.extend(new_requests_from_solver)
-
-        ready_to_assign = []
-        still_buffered = []
-
+        ready: list[RoutingTask] = []
+        waiting: list[RoutingTask] = []
         for task in self.buffered_tasks:
             self._prepare_transfer(task)
             if self._check_physical_precondition(task):
-                ready_to_assign.append(task)
+                if task.kind == "operation" and task.source == task.destination:
+                    operation: Operation = self.hash_operations[(task.job_id, task.op_id)]
+                    machine: Machine = self.hash_machines[task.destination]
+                    if task.job_id not in machine.buffer_jobs and len(machine.buffer_jobs) >= machine.buffer_capacity:
+                        waiting.append(task)
+                        continue
+                    machine.buffer_jobs.add(task.job_id)
+                    operation.arrive_machine_at = self.env_timeline
+                    self._set_operation_machine(operation, machine)
+                    machine.input_queue.append(operation)
+                    if machine not in self.activated_machines:
+                        self.activated_machines.append(machine)
+                else:
+                    ready.append(task)
             else:
-                still_buffered.append(task)
-
-        # 更新缓冲池 (剩下的继续等)
-        self.buffered_tasks = still_buffered
-
-        # 只有物理上就绪的任务，才会被加入待分配列表
-        # 待分配列表 = 上次没分配完的 + 这次刚就绪的
-        self.transfers_to_assign = last_step_unassigned + ready_to_assign
-
-        # === Step 3: 机器处理 (先处理机器，可能腾出位置或者消耗队列) ===
-        self.machine_process()
-
-        # === Step 4: AGV 逻辑 ===
-        infos = [dict() for _ in range(self.grid_config.num_agents)]
-
-        for agent_idx in range(self.grid_config.num_agents):
-            agv_pos = tuple(self.grid.positions_xy[agent_idx])
-            current_transfer = self.agv_current_task[agent_idx]
-            agv_down = (
-                hasattr(self, "agv_status")
-                and agent_idx < len(self.agv_status)
-                and self.agv_status[agent_idx] != "OK"
-            )
-
-            if agv_down:
-                infos[agent_idx]["is_active"] = self.grid.is_active[agent_idx]
-                infos[agent_idx]["agv_status"] = self.agv_status[agent_idx]
-                infos[agent_idx]["repair_remaining"] = self.agv_repair_remaining[agent_idx]
+                waiting.append(task)
+        self.buffered_tasks = waiting
+        self.transfers_to_assign.extend(ready)
+        assignments: dict = action.get("assignments", {})
+        tasks: dict[int, RoutingTask] = {task.task_id: task for task in self.transfers_to_assign}
+        selected: set[int] = set()
+        jobs: set[int] = set()
+        accepted: list[tuple[int, RoutingTask]] = []
+        for agent_id, value in assignments.items():
+            agent_id = int(agent_id)
+            if value is None:
                 continue
-
-            # --- Case A: 到达当前阶段目标，进入取料/放料停留 ---
-            if current_transfer is not None:
-                self._settle_arrival(agent_idx)
-
-            # --- Case B: AGV 空闲分配新任务 ---
-            if self.agv_current_task[agent_idx] is None:
-                if self.random_target:
-                    if self.grid_config.possible_targets_xy:
-                        self.grid.finishes_xy[agent_idx] = self._to_internal_xy(
-                            random.choice(self.grid_config.possible_targets_xy)
-                        )
-                    continue
-
-                if assignments.get(agent_idx) is not None:
-                    self._assign_transfer(agent_idx, assignments[agent_idx])
-
-            infos[agent_idx]["is_active"] = self.grid.is_active[agent_idx]
-
-        obs = {
-            "machines": self.machines,
-            "pending_transfers": self.transfers_to_assign,
-            "agents": self.get_agv_info(),
-            "env_timeline": self.env_timeline,
-            "obstacle_grid": self.grid.obstacles,
-            "grid_height": self.grid.obstacles.shape[0],
-            "grid_width": self.grid.obstacles.shape[1],
-            "event_epoch": getattr(self, "event_epoch", 0),
-            "map_epoch": getattr(self, "map_epoch", 0),
-            "machine_epoch": getattr(self, "machine_epoch", 0),
-            "agv_epoch": getattr(self, "agv_epoch", 0),
-            "job_epoch": getattr(self, "job_epoch", 0),
-            "events": getattr(self, "last_events", []),
-            "event_metrics": getattr(self, "event_metrics", {}),
-            "agv_status": list(getattr(self, "agv_status", [])),
-            "agv_repair_remaining": list(getattr(self, "agv_repair_remaining", [])),
-            "agv_task_phase": list(getattr(self, "agv_task_phase", [])),
-            "agv_handling_remaining": list(getattr(self, "agv_handling_remaining", [])),
-            "agv_loaded": list(getattr(self, "agv_loaded", [])),
-        }
-        terminated = [False] * self.grid_config.num_agents
-        truncated = [False] * self.grid_config.num_agents
-        return obs, [], terminated, truncated, infos
+            task_id: int = int(value["task_id"] if isinstance(value, dict) else value.task_id if isinstance(value, RoutingTask) else value)
+            if not 0 <= agent_id < self.grid_config.num_agents or task_id not in tasks:
+                raise ValueError("assignment references an unknown AGV or a non-ready task")
+            task = tasks[task_id]
+            if task_id in selected or task.job_id in jobs or self.agv_current_task[agent_id] is not None:
+                raise ValueError("transport tasks, workpieces and AGVs must have a single owner")
+            selected.add(task_id)
+            jobs.add(task.job_id)
+            if self.agv_status[agent_id] != "OK":
+                self.emit_event("assignment_deferred", {"agv_id": agent_id, "task_id": task_id, "reason": "agv_down"})
+                continue
+            accepted.append((agent_id, task))
+        for agent_id, task in accepted:
+            self._assign_transfer(agent_id, task)
+            self.transfers_to_assign.remove(task)
+        self.machine_process()
+        for agent_id in range(self.grid_config.num_agents):
+            if self.agv_status[agent_id] == "OK" and self.agv_current_task[agent_id] is not None:
+                self._settle_arrival(agent_id)
+        return {}, [], [False] * self.grid_config.num_agents, [False] * self.grid_config.num_agents, []
 
     def step(self, action: list):
         prev_positions = self.grid.positions_xy.copy()
@@ -740,10 +682,11 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
             else:
                 stats["idle"] += 1
 
+        self.env_timeline += 1
         for idx, phase in enumerate(phase_at_step_start):
             self._advance_handling(idx, phase)
-
-        self.env_timeline += 1
+            if self.agv_status[idx] == "OK":
+                self._settle_arrival(idx)
         return obs, rewards, terminated, truncated, infos
 
     def get_state(self) -> dict:
@@ -756,6 +699,14 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         # 由于 Machine 对象是自定义类，pickle 会自动保存其属性包括 input_queue
         state_dict = {
             "env_timeline": self.env_timeline,
+            "all_jobs": self._all_jobs, "future_jobs": self._future_jobs,
+            "episode_seed": self._episode_seed, "random_state": self._rng.getstate(),
+            "shipping_sequence": self._shipping_sequence,
+            "pending_events": self._pending_events,
+            "reschedule_count": self.reschedule_count,
+            "reassigned_operation_count": self.reassigned_operation_count,
+            "reassigned_transport_count": self.reassigned_transport_count,
+            "agv_down_elapsed": self.agv_down_elapsed,
             "machines": self.machines,
             "jobs": self.jobs,
             "activated_machines": self.activated_machines,
@@ -797,6 +748,18 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
                     state_dict = json.load(f)
 
         self.env_timeline = state_dict["env_timeline"]
+        self._all_jobs = state_dict["all_jobs"]
+        self._future_jobs = state_dict["future_jobs"]
+        self._episode_seed = state_dict["episode_seed"]
+        self._rng.setstate(state_dict["random_state"])
+        self.processing_time_sampler.reset(self._episode_seed)
+        self._shipping_sequence = state_dict["shipping_sequence"]
+        self._pending_events = state_dict["pending_events"]
+        self._in_step = False
+        self.reschedule_count = state_dict["reschedule_count"]
+        self.reassigned_operation_count = state_dict["reassigned_operation_count"]
+        self.reassigned_transport_count = state_dict["reassigned_transport_count"]
+        self.agv_down_elapsed = state_dict["agv_down_elapsed"]
         self.machines = state_dict["machines"]
         self.jobs = state_dict["jobs"]
         self.activated_machines = state_dict["activated_machines"]
@@ -857,80 +820,81 @@ class PogemaLifeLongWithAssign(PogemaLifeLong):
         self.hash_operations = self.create_hash_operations()
 
     def job_all_done(self):
-        return all([job.is_completed for job in self.jobs])
+        return bool(getattr(self, "_all_jobs", self.jobs)) and all(job.is_completed for job in getattr(self, "_all_jobs", self.jobs))
 
     def _check_physical_precondition(self, task: RoutingTask) -> bool:
-        """
-        检查任务的物理前置条件是否满足。
-        对于 JSSP，主要是检查前置工序是否 FINISHED。
-        """
-        # 第一道工序，无前置约束，直接通过
-        if task.op_id == 0:
-            return True
-
-        # 获取 Job 信息
-        # 注意：self.jobs 里的状态是由 machine_process 实时更新的
-        job = next((job for job in self.jobs if job.job_id == task.job_id), None)
-        if job is None:
+        job: Job = next(job for job in self.jobs if job.job_id == task.job_id)
+        if task.ready_time > self.env_timeline or job.carrier_id is not None or job.transport_task_id is not None:
             return False
+        if task.op_id > 0 and job.ops[task.op_id - 1].status != "FINISHED":
+            return False
+        source_machine = self.hash_machines.get(job.material_location)
+        at_raw_source: bool = task.op_id == 0 and job.ops[0].arrive_machine_at < 0 and job.material_location == job.raw_material_source
+        return at_raw_source or source_machine is None or job.job_id in source_machine.buffer_jobs
 
-        # 边界检查
-        if task.op_id > 0 and task.op_id < len(job.ops):
-            prev_op = job.ops[task.op_id - 1]
-            # 只有前置工序彻底完成了，物料才存在，才能开始运输
-            if prev_op.status == "FINISHED":
-                return True
+    def _deliver(self, agent_idx: int, transfer: RoutingTask) -> bool:
+        job: Job = next(job for job in self.jobs if job.job_id == transfer.job_id)
+        if transfer.kind == "operation":
+            machine: Machine = self.hash_machines[transfer.destination]
+            if len(machine.buffer_jobs) >= machine.buffer_capacity:
+                machine.buffer_blocked_steps += 1
+                return False
+            operation: Operation = self.hash_operations[(transfer.job_id, transfer.op_id)]
+            operation.arrive_machine_at = self.env_timeline
+            self._set_operation_machine(operation, machine)
+            machine.input_queue.append(operation)
+            machine.buffer_jobs.add(job.job_id)
+            machine.urgent_reservations.discard((transfer.job_id, transfer.op_id))
+            if machine not in self.activated_machines:
+                self.activated_machines.append(machine)
         else:
-            # 异常 op_id
-            return False
-
-        return False
-
-    def _deliver(self, agent_idx: int, transfer) -> bool:
-        """AGV 卸货: 将物料放入目标机器的 input_queue"""
-        # 用 transfer.destination 查找机器，不用 finishes_xy
-        # 因为 pogema on_target="restart" 会自动将 finishes_xy 改为随机目标
-        target_machine = self.hash_machines.get(transfer.destination, None)
-
-        if target_machine is None:
-            if self.debug_mode:
-                print(
-                    f"[WARNING] Agent {agent_idx} arrived at "
-                    f"{transfer.destination} but no machine found."
-                )
-            return False
-
-        # Metrics 记录
+            job.delivered = True
+            job.completion_time = self.env_timeline
+            self.emit_event("job_completed", {"job_id": job.job_id})
         transfer.finish_time = self.env_timeline
-        hash_op = (transfer.job_id, transfer.op_id)
-        real_op = self.hash_operations[hash_op]
-        real_op.arrive_machine_at = self.env_timeline
-        real_op.assigned_machine = target_machine.id
-
-        # 解析 machine_options_with_time 获取机器实际加工时间
-        if real_op.machine_options_with_time:
-            for mid, pt in real_op.machine_options_with_time:
-                if mid == target_machine.id:
-                    real_op.nominal_proc_time = pt
-                    real_op.proc_time = pt
-                    real_op.sampled_proc_time = None
-                    real_op.processing_time_distribution = None
-                    break
-        # 如果 machine_options_with_time 为空，保持原 proc_time 不变
-
-        # 放入机器的 input_queue
-        if not hasattr(target_machine, "input_queue"):
-            target_machine.input_queue = []
-        target_machine.input_queue.append(real_op)
-        target_machine.urgent_reservations.discard((transfer.job_id, transfer.op_id))
-
-        # 激活休眠机器
-        if target_machine.id not in [m.id for m in self.activated_machines]:
-            self.activated_machines.append(target_machine)
-
-        # 记录任务完成
+        job.material_location = transfer.destination
+        job.carrier_id = job.transport_task_id = None
         self.agv_finished_tasks[agent_idx].append(transfer)
-        if transfer in self.active_transfers:
-            self.active_transfers.remove(transfer)
+        self.active_transfers.remove(transfer)
         self.agv_current_task[agent_idx] = None
+        self.emit_event("transport_completed", {"job_id": job.job_id, "task_id": transfer.task_id, "agv_id": agent_idx})
         return True
+
+    def _set_operation_machine(self, operation: Operation, machine: Machine) -> None:
+        operation.assigned_machine = machine.id
+        nominal: float = dict(operation.machine_options_with_time)[machine.id]
+        operation.nominal_proc_time = operation.proc_time = nominal
+        operation.sampled_proc_time = None
+        operation.processing_time_distribution = None
+
+    def emit_event(self, event_type: str, payload: dict, *, step: int | None = None) -> None:
+        self.event_epoch += 1
+        event: dict = {"type": event_type, "step": self.env_timeline if step is None else step,
+                       "event_epoch": self.event_epoch, "payload": payload}
+        self.last_events.append(event)
+        if not self._in_step:
+            self._pending_events.append(event)
+
+    def _require_connected_layout(self) -> None:
+        endpoints: set[tuple[int, int]] = {machine.location for machine in self.machines}
+        endpoints.update(self._to_public_xy(pos) for pos in self.grid.positions_xy)
+        endpoints.update(job.raw_material_source for job in self._all_jobs)
+        endpoints.update(job.finished_goods_destination for job in self._all_jobs)
+        cells: set[tuple[int, int]] = {self._to_internal_xy(pos) for pos in endpoints}
+        grid = self.grid.obstacles
+        for x, y in cells:
+            if not (0 <= x < grid.shape[0] and 0 <= y < grid.shape[1]) or grid[x, y] != 0:
+                raise ValueError("material stations, machines and AGVs must lie on traversable cells")
+        start = next(iter(cells))
+        seen: set = {start}
+        queue = deque([start])
+        while queue:
+            x, y = queue.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                neighbour = (x + dx, y + dy)
+                if (0 <= neighbour[0] < grid.shape[0] and 0 <= neighbour[1] < grid.shape[1]
+                        and grid[neighbour] == 0 and neighbour not in seen):
+                    seen.add(neighbour)
+                    queue.append(neighbour)
+        if not cells <= seen:
+            raise ValueError("required factory endpoints must share a connected four-neighbour road network")

@@ -91,6 +91,13 @@ class HTTPJobSolver(JobSolver):
         resp.raise_for_status()
         data = resp.json()
 
+        # Resolve the service protocol here; the environment accepts physical coordinates.
+        locations: dict = {machine.id: machine.location for machine in obs["machines"]}
+        for task in data.get("transfer_requests", []):
+            destination_id: int = int(task["candidate_machines"][0])
+            task["destination_machine_id"] = destination_id
+            task["destination"] = list(locations[destination_id])
+            task["source"] = [-1, -1]  # Environment uses the workpiece's actual location.
         # FJSP 服务端返回的 transfer_requests 已经是 dict 列表
         # 直接返回，让 Coordinator / GridFactoryEnv 处理
         return {

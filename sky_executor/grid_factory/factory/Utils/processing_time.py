@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import random
+import hashlib
 from copy import deepcopy
 from typing import Any, Optional
 
@@ -23,11 +24,11 @@ class ProcessingTimeSampler:
         },
         "moderate_variance": {
             "enabled": True,
-            "default_distribution": {"dist": "multiplier_uniform", "low": 0.8, "high": 1.25},
+            "default_distribution": {"dist": "multiplier_uniform", "low": 0.8, "high": 1.2},
         },
         "high_variance": {
             "enabled": True,
-            "default_distribution": {"dist": "multiplier_uniform", "low": 0.6, "high": 1.6},
+            "default_distribution": {"dist": "multiplier_uniform", "low": 0.6, "high": 1.4},
         },
     }
 
@@ -36,8 +37,6 @@ class ProcessingTimeSampler:
         "preset": "none",
         "random_seed": 42,
         "sample_on": "operation_start",
-        "rounding": "round",
-        "min_value": 1,
     }
 
     def __init__(self, config: Optional[dict] = None):
@@ -45,14 +44,16 @@ class ProcessingTimeSampler:
         self.config = self._normalize_config(config)
         self.enabled = bool(self.config.get("enabled", False))
         self._seed = int(self.config.get("random_seed", 42))
+        self._episode_seed = self._seed
         self.rng = random.Random(self._seed)
 
     @classmethod
     def from_config(cls, config: Optional[dict]) -> "ProcessingTimeSampler":
         return cls(config)
 
-    def reset(self):
-        self.rng = random.Random(self._seed)
+    def reset(self, seed: int | None = None):
+        self._episode_seed = self._seed if seed is None else int(seed)
+        self.rng = random.Random(self._episode_seed)
 
     def sample_for_operation(self, operation: Any, machine_id: int, nominal_time: float) -> tuple[float, Optional[dict]]:
         nominal = float(nominal_time or 0)
@@ -63,8 +64,11 @@ class ProcessingTimeSampler:
         if not dist:
             return nominal, None
 
+        # Entity-keyed draws keep a scenario comparable when policies change
+        # the order in which operations start. Durations remain continuous.
+        key: str = f"{self._episode_seed}:processing:{operation.job_id}:{operation.op_id}:{machine_id}"
+        self.rng = random.Random(int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "big"))
         sampled = self._sample_distribution(dist, nominal)
-        sampled = self._apply_bounds_and_rounding(sampled, nominal)
         return sampled, deepcopy(dist)
 
     def _normalize_config(self, config: Optional[dict]) -> dict:
@@ -158,46 +162,44 @@ class ProcessingTimeSampler:
 
     def _sample_distribution(self, dist: dict, nominal: float) -> float:
         kind = str(dist.get("dist", "")).lower()
-        if kind == "fixed":
-            return float(dist.get("value", nominal))
-        if kind == "uniform":
-            return self.rng.uniform(float(dist.get("low", nominal)), float(dist.get("high", nominal)))
-        if kind == "discrete_uniform":
-            return float(self.rng.randint(int(dist.get("low", nominal)), int(dist.get("high", nominal))))
-        if kind == "normal":
-            return self.rng.gauss(float(dist.get("mean", nominal)), float(dist.get("std", 0)))
-        if kind == "triangular":
-            return self.rng.triangular(
-                float(dist.get("low", nominal)),
-                float(dist.get("high", nominal)),
-                float(dist.get("mode", nominal)),
-            )
-        if kind == "multiplier_uniform":
-            return nominal * self.rng.uniform(float(dist.get("low", 1.0)), float(dist.get("high", 1.0)))
-        if kind == "multiplier_normal":
-            return nominal * self.rng.gauss(float(dist.get("mean", 1.0)), float(dist.get("std", 0.0)))
-        if kind == "multiplier_triangular":
-            return nominal * self.rng.triangular(
-                float(dist.get("low", 1.0)),
-                float(dist.get("high", 1.0)),
-                float(dist.get("mode", 1.0)),
-            )
-        return nominal
-
-    def _apply_bounds_and_rounding(self, value: float, nominal: float) -> float:
-        min_value = float(self.config.get("min_value", 1))
-        max_value = self.config.get("max_value")
-        value = max(min_value, float(value))
-        if max_value is not None:
-            value = min(float(max_value), value)
-
-        rounding = str(self.config.get("rounding", "round")).lower()
-        if rounding == "ceil":
-            value = math.ceil(value)
-        elif rounding == "floor":
-            value = math.floor(value)
-        elif rounding in ("none", "float"):
-            return float(value)
-        else:
-            value = round(value)
-        return float(max(min_value, value))
+        unit: float = 1.0 if kind.startswith("multiplier_") else nominal
+        family: str = kind.removeprefix("multiplier_")
+        if family == "fixed":
+            return nominal
+        if family in {"uniform", "discrete_uniform", "triangular"}:
+            low, high = float(dist.get("low", unit)), float(dist.get("high", unit))
+            if low <= 0 or high < low:
+                raise ValueError("processing duration bounds must satisfy 0 < low <= high")
+            mean: float = (low + high) / 2.0
+            if family == "triangular":
+                mode: float = float(dist.get("mode", (low + high) / 2))
+                if not low <= mode <= high:
+                    raise ValueError("triangular mode must lie inside its bounds")
+                mean = (low + high + mode) / 3.0
+                draw = self.rng.triangular(low, high, mode)
+            elif family == "discrete_uniform":
+                if low != int(low) or high != int(high):
+                    raise ValueError("discrete uniform bounds must be integers")
+                draw = self.rng.randint(int(low), int(high))
+            else:
+                draw = self.rng.uniform(low, high)
+            return nominal * draw / mean
+        if family == "lognormal":
+            sigma: float = float(dist.get("sigma", 0.2))
+            if sigma < 0:
+                raise ValueError("lognormal sigma must be nonnegative")
+            return nominal * self.rng.lognormvariate(-sigma * sigma / 2, sigma)
+        if family == "normal":
+            mean, std = float(dist.get("mean", unit)), float(dist.get("std", 0))
+            if mean <= 0 or std < 0:
+                raise ValueError("normal processing parameters require mean > 0 and std >= 0")
+            if std == 0:
+                return nominal
+            # Positive truncated normal, normalized by its analytic mean.
+            alpha: float = mean / std
+            positive_mean: float = mean + std * math.exp(-alpha * alpha / 2) / (math.sqrt(2 * math.pi) * (0.5 * (1 + math.erf(alpha / math.sqrt(2)))))
+            draw = self.rng.gauss(mean, std)
+            while draw <= 0:
+                draw = self.rng.gauss(mean, std)
+            return nominal * draw / positive_mean
+        raise ValueError(f"unsupported processing distribution: {kind}")

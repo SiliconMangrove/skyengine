@@ -19,25 +19,25 @@ def generate_jobs(job_config: JobConfig) -> List[Job]:
     """
     根据 JobConfig 随机生成一批 Job。
     """
-    random.seed(job_config.seed)
+    rng: random.Random = random.Random(job_config.seed)
     jobs: List[Job] = []
 
     if job_config.strategy == "random":
         for j in range(job_config.num_jobs):
             # 随机工序数
-            num_ops = random.randint(
+            num_ops = rng.randint(
                 job_config.min_ops_per_job, job_config.max_ops_per_job
             )
             ops: List[Operation] = []
 
             for op_id in range(num_ops):
                 # 随机处理时间
-                proc_time = random.randint(
+                proc_time = rng.randint(
                     job_config.min_proc_time, job_config.max_proc_time
                 )
 
                 # 随机可用机器选项
-                machine_options = random.sample(
+                machine_options = rng.sample(
                     range(job_config.total_machines),
                     k=min(job_config.machine_choices, job_config.total_machines),
                 )
@@ -46,6 +46,8 @@ def generate_jobs(job_config: JobConfig) -> List[Job]:
                     job_id=j,
                     op_id=op_id,
                     machine_options=machine_options,
+                    machine_options_with_time=[(mid, proc_time) for mid in machine_options],
+                    nominal_proc_time=proc_time,
                     proc_time=proc_time,
                     release=0.0,
                     due=None,
@@ -61,6 +63,8 @@ def generate_jobs(job_config: JobConfig) -> List[Job]:
                     job_id=j,
                     op_id=op_id,
                     machine_options=op_info[0],
+                    machine_options_with_time=[(mid, op_info[1]) for mid in op_info[0]],
+                    nominal_proc_time=op_info[1],
                     proc_time=op_info[1],
                 )
                 ops.append(op)

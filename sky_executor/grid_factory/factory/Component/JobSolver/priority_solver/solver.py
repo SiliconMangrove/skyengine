@@ -71,10 +71,10 @@ class GreedyJobSolver(JobSolver):
         to_machine = task_dict.get("to_machine")
         ready_time = task_dict.get("ready_time")
         # 起点为 from_machine（用 tuple 包装成坐标格式）
-        source = (from_machine, 0) if isinstance(from_machine, int) else from_machine
+        source = self.machine_locations[from_machine] if from_machine in self.machine_locations else (-1, -1)
 
         # 若 to_machine 有效，则指定 destination
-        destination = (to_machine, 0) if to_machine is not None else None
+        destination = self.machine_locations[to_machine]
 
         # 如果后续希望支持多目标机器，可以自动加入 candidate_machines
         candidate_machines = [to_machine] if to_machine is not None else []
@@ -109,6 +109,7 @@ class GreedyJobSolver(JobSolver):
         self.time_stamp = self.time_stamp + 1
         jobs = obs["jobs"]
         machines = obs["machines"]
+        self.machine_locations: dict = {machine.id: machine.location for machine in machines}
 
         # === 第一次调用,初始化计划 ===
         if not self.initialized:

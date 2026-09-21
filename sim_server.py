@@ -17,6 +17,7 @@ SkyEngine 仿真控制服务 (sim_server.py)
 """
 
 import json
+import importlib
 import threading
 import asyncio
 import queue as thread_queue
@@ -34,6 +35,7 @@ from sky_executor.grid_factory.factory.Component.RaceFMS.coupling import Counter
 from sky_executor.grid_factory.factory.Component.RaceFMS.recovery import AdaptiveRecoveryGate, RecoveryScope
 from sky_executor.utils.diff import DiffEmitter, make_envelope
 from sky_executor.session import SimulationSession, create_env_from_config as shared_create_env_from_config
+from sky_executor.runtime_log import build_runtime_frame
 
 app = FastAPI()
 
@@ -45,7 +47,9 @@ class _SimulationRecoveryHandler:
         self.manager = manager
 
     def recover(self, decision, state, observation, delegate):
-        return self.manager._recover_runtime(decision, delegate)
+        result = self.manager._recover_runtime(decision, delegate)
+        observation.update(self.manager.session.obs)
+        return result
 
 
 def create_env_from_config(config: dict, mapf_algorithm: str = "astar"):
@@ -115,6 +119,9 @@ class SimulationManager:
         self._plan_revision = 0
         self._fjsp_algorithm = ""
         self._assigner_name = ""
+        self._replay_actions = []
+        self._replay_enabled = False
+        self._policy_controller = None
         self._insertion_metrics = {
             "inserted_jobs_completed": 0,
             "job_replan_count": 0,
@@ -493,89 +500,9 @@ class SimulationManager:
         self._emit_insert_phase_event(record)
 
     def _build_replan_problem(self, new_jobs):
-        pogema = self.env.pogema_env
-        now = float(self.step)
-        committed = set()
-        frozen_completion = {}
-        committed_destinations = {}
-        allow_preemption = any(int(job.get("priority", 0)) >= 200 for job in new_jobs)
-        machine_ready = [now] * len(pogema.machines)
-        for job in pogema.jobs:
-            for op in job.ops:
-                if op.status in {"FINISHED", "PROCESSING", "SUSPENDED"}:
-                    committed.add((job.job_id, op.op_id))
-        for machine in pogema.machines:
-            repair_remaining = (
-                float(getattr(machine, "repair_remaining", 0) or 0)
-                if getattr(machine, "status", "OK") != "OK"
-                else 0.0
-            )
-            cursor = now + repair_remaining
-            available = now + repair_remaining
-            current = machine.current_op
-            if current is not None:
-                committed.add((current.job_id, current.op_id))
-                elapsed = float(pogema.machine_process_time.get(machine.id, 0))
-                cursor += max(0.0, float(current.proc_time) - elapsed)
-                frozen_completion[(current.job_id, current.op_id)] = cursor
-                if not allow_preemption or getattr(current, "priority", 0) >= 200:
-                    available = cursor
-            for reservation in list(getattr(machine, "urgent_reservations", set())):
-                reserved_op = pogema.hash_operations.get(tuple(reservation))
-                if reserved_op is None:
-                    continue
-                committed.add(tuple(reservation))
-                cursor += float(reserved_op.remaining_proc_time or reserved_op.proc_time)
-                frozen_completion[tuple(reservation)] = cursor
-                available = cursor
-            queued_ops = sorted(
-                list(getattr(machine, "input_queue", [])),
-                key=lambda op: -getattr(op, "priority", 0),
-            )
-            for queued in queued_ops:
-                committed.add((queued.job_id, queued.op_id))
-                cursor += float(queued.proc_time)
-                frozen_completion[(queued.job_id, queued.op_id)] = cursor
-                if not allow_preemption or getattr(queued, "priority", 0) >= 200:
-                    available = cursor
-            for suspended in list(getattr(machine, "suspended_ops", [])):
-                committed.add((suspended.job_id, suspended.op_id))
-                cursor += float(suspended.remaining_proc_time or suspended.proc_time)
-                frozen_completion[(suspended.job_id, suspended.op_id)] = cursor
-                if not allow_preemption:
-                    available = cursor
-            machine_ready[machine.id] = max(available, now + repair_remaining)
-        for task in list(pogema.active_transfers) + [t for t in pogema.agv_current_task if t is not None]:
-            key = (task.job_id, task.op_id)
-            committed.add(key)
-            candidates = list(getattr(task, "candidate_machines", []) or [])
-            if candidates:
-                committed_destinations[key] = int(candidates[0])
-            else:
-                destination = tuple(task.destination) if task.destination is not None else None
-                target = next(
-                    (machine for machine in pogema.machines if tuple(machine.location) == destination),
-                    None,
-                )
-                if target is not None:
-                    committed_destinations[key] = int(target.id)
-            op = pogema.hash_operations.get(key)
-            if op is not None:
-                frozen_completion[key] = max(frozen_completion.get(key, now), now + float(op.proc_time))
-
-        problem_jobs = []
-        for job in pogema.jobs:
-            remaining = [op for op in job.ops if (job.job_id, op.op_id) not in committed and op.status == "PENDING"]
-            if not remaining:
-                continue
-            first = remaining[0]
-            prev = job.ops[first.op_id - 1] if first.op_id > 0 else None
-            ready = frozen_completion.get((job.job_id, first.op_id - 1), now)
-            from_machine = getattr(prev, "assigned_machine", None) if prev else -1
-            if from_machine is None and prev is not None:
-                from_machine = committed_destinations.get((job.job_id, prev.op_id), -1)
-            problem_jobs.append(self._problem_job(job, remaining, ready, from_machine))
-
+        problem: dict = self.session.residual_problem()
+        now: float = problem["current_step"]
+        problem_jobs: list = problem["jobs"]
         materialized = []
         for item in new_jobs:
             ops = []
@@ -592,8 +519,7 @@ class SimulationManager:
                       priority=item["priority"], name=item["name"], request_id=item["request_id"])
             materialized.append(job)
             problem_jobs.append(self._problem_job(job, ops, now, -1))
-        return {"current_step": now, "machines": len(pogema.machines),
-                "machine_ready_times": machine_ready, "jobs": problem_jobs}, materialized
+        return problem, materialized
 
     @staticmethod
     def _replanned_keys(problem):
@@ -613,28 +539,11 @@ class SimulationManager:
     def _reassign_unloaded_failed_agvs(self):
         """Return physically uncollected tasks to the assignment queue."""
         pogema = self.env.pogema_env
-        reassigned = 0
-        blocked_loaded = 0
-        for agv_id, status in enumerate(getattr(pogema, "agv_status", [])):
-            if status == "OK":
-                continue
-            task = pogema.agv_current_task[agv_id]
-            if task is None:
-                continue
-            if bool(pogema.agv_loaded[agv_id]):
-                blocked_loaded += 1
-                continue
-            task.assigned_agent_id = None
-            task.assign_time = -1
-            pogema.agv_current_task[agv_id] = None
-            pogema.agv_task_phase[agv_id] = "IDLE"
-            pogema.agv_handling_remaining[agv_id] = 0
-            pogema.grid.finishes_xy[agv_id] = pogema.grid.positions_xy[agv_id]
-            if task in pogema.active_transfers:
-                pogema.active_transfers.remove(task)
-            if task not in pogema.transfers_to_assign:
-                pogema.transfers_to_assign.append(task)
-            reassigned += 1
+        blocked_loaded: int = sum(task is not None and pogema.agv_loaded[index] and pogema.agv_status[index] != "OK"
+                                  for index, task in enumerate(pogema.agv_current_task))
+        reassigned: int = pogema.release_failed_unloaded_transfers()
+        self.session.refresh_observation()
+        self.obs = self.session.obs
         self._recovery_metrics["race_agv_reassign_count"] += reassigned
         self._recovery_metrics["race_agv_reassign_blocked_loaded"] += blocked_loaded
         return reassigned
@@ -792,6 +701,14 @@ class SimulationManager:
             self.session.close()
 
         factory_config = config.get("config", {})
+        self._replay_enabled = "replay_trace" in config or "replay_trace" in factory_config
+        self._replay_actions = list(config.get("replay_trace") if "replay_trace" in config else factory_config.get("replay_trace") or [])
+        policy_config = config.get("policy_controller") or factory_config.get("policy_controller") or {}
+        self._policy_controller = None
+        if policy_config:
+            module_name, class_name = str(policy_config["target"]).rsplit(".", 1)
+            policy_class = getattr(importlib.import_module(module_name), class_name)
+            self._policy_controller = policy_class(**(policy_config.get("kwargs") or {}))
         fjsp_algo = config.get("fjsp_algorithm", "pso")
         mapf_algo = config.get("mapf_algorithm", "astar")
         assigner = config.get("solver_assign", "nearest")
@@ -811,17 +728,18 @@ class SimulationManager:
         # 用 use_io.py 同款逻辑解析配置 → 创建环境
         # 传入 mapf_algo 让 create_env_from_config 选择正确的 observation_type
         with self._env_lock:
+            controller_mode = self._policy_controller is not None
             self.session = SimulationSession.from_config(
                 factory_config,
-                job_solver="http",
-                route_solver="http",
+                job_solver="greedy" if controller_mode else "http",
+                route_solver="astar" if controller_mode else "http",
                 assigner=assigner,
                 mapf_algorithm=mapf_algo,
-                job_solver_kwargs={
+                job_solver_kwargs={} if controller_mode else {
                     "service_url": "http://fjsp:8002",
                     "algorithm": fjsp_algo,
                 },
-                route_solver_kwargs={
+                route_solver_kwargs={} if controller_mode else {
                     "service_url": "http://mapf:8001",
                     "pogema_env": None,
                     "accepts_task_observation": mapf_algo == "flow_rl",
@@ -861,6 +779,8 @@ class SimulationManager:
         # The online FJSP service owns a stateful schedule. Environment creation
         # must start a new schedule even when callers reuse algorithm containers.
         self.session.reset()
+        if self._policy_controller is not None and hasattr(self._policy_controller, "reset"):
+            self._policy_controller.reset()
         self.obs = self.session.obs
         self.max_steps = self._parse_max_steps(factory_config)
         self.step = 0
@@ -926,6 +846,8 @@ class SimulationManager:
         if self.session:
             with self._env_lock:
                 self.obs, info = self.session.reset()
+                if self._policy_controller is not None and hasattr(self._policy_controller, "reset"):
+                    self._policy_controller.reset()
                 self.step = 0
                 self._episode_status = "idle"
                 self._latest_frame = None
@@ -971,178 +893,7 @@ class SimulationManager:
 
     def _build_frame(self) -> dict:
         self._update_insert_phases()
-        pogema = self.env.pogema_env
-        agv_list = pogema.get_agv_info()
-
-        # ---- op 队列长度: 按 assigned_machine 分组统计 PENDING op ----
-        pending_count_by_machine: dict[int, int] = {}
-        jobs_by_id = {job.job_id: job for job in pogema.jobs}
-        for job in pogema.jobs:
-            for op in job.ops:
-                if op.status == "PENDING" and op.assigned_machine is not None:
-                    pending_count_by_machine[op.assigned_machine] = (
-                        pending_count_by_machine.get(op.assigned_machine, 0) + 1
-                    )
-
-        # ---- machine 列表 (字段升级: current_op 改对象 + status/queue_length) ----
-        machines_out = []
-        for m in pogema.machines:
-            metadata = self._machine_metadata.get(m.id, {})
-            op = m.current_op
-            if op is not None:
-                # 找到 op 在 job.ops 中的索引
-                job = jobs_by_id.get(op.job_id)
-                index_in_job = -1
-                total_in_job = len(job.ops) if job else 0
-                if job is not None:
-                    for idx, jop in enumerate(job.ops):
-                        if jop.op_id == op.op_id:
-                            index_in_job = idx
-                            break
-                # step_done: machine_process_time[m.id] 是当前 op 已加工步数
-                step_done = pogema.machine_process_time.get(m.id, 0)
-                proc_time = op.proc_time
-                current_op_dict = {
-                    "job_id": op.job_id,
-                    "op_id": op.op_id,
-                    "index_in_job": index_in_job,
-                    "total_in_job": total_in_job,
-                    "step_done": step_done,
-                    "proc_time": proc_time,
-                    "nominal_proc_time": getattr(op, "nominal_proc_time", None),
-                    "sampled_proc_time": getattr(op, "sampled_proc_time", None),
-                    "processing_time_distribution": getattr(op, "processing_time_distribution", None),
-                    "accumulated_process_time": getattr(op, "accumulated_process_time", 0.0),
-                    "preemption_count": getattr(op, "preemption_count", 0),
-                }
-                status = "WORKING"
-            else:
-                current_op_dict = None
-                # IDLE = 无 op 且无 transfer 阻塞; BLOCKED 暂用 IDLE 近似
-                status = "RESERVED" if getattr(m, "urgent_reservations", set()) else "IDLE"
-
-            raw_status = getattr(m, "status", "OK")
-            if raw_status == "DOWN":
-                status = "BROKEN"
-
-            machines_out.append({
-                "id": m.id,
-                "runtime_id": m.id,
-                "config_key": metadata.get("config_key"),
-                "config_id": metadata.get("config_id"),
-                "display_name": metadata.get("display_name", f"M{m.id}"),
-                "name": metadata.get("display_name", f"M{m.id}"),
-                "location": list(m.location),
-                "status": status,
-                "raw_status": raw_status,
-                "repair_remaining": int(getattr(m, "repair_remaining", 0) or 0),
-                "down_reason": getattr(m, "down_reason", None),
-                "current_op": current_op_dict,
-                "queue_length": pending_count_by_machine.get(m.id, 0),
-                "suspended_count": len(getattr(m, "suspended_ops", [])),
-                "urgent_reservation_count": len(getattr(m, "urgent_reservations", set())),
-            })
-
-        # ---- jobs 列表 (新增顶层字段, 遍历 pogema.jobs) ----
-        jobs_out = []
-        for job in pogema.jobs:
-            ops_out = []
-            done_count = 0
-            for op in job.ops:
-                if op.status == "FINISHED":
-                    done_count += 1
-                ops_out.append({
-                    "op_id": op.op_id,
-                    "status": op.status,
-                    "proc_time": op.proc_time,
-                    "nominal_proc_time": getattr(op, "nominal_proc_time", None),
-                    "sampled_proc_time": getattr(op, "sampled_proc_time", None),
-                    "processing_time_distribution": getattr(op, "processing_time_distribution", None),
-                    "assigned_machine": op.assigned_machine,
-                    "arrive_machine_at": op.arrive_machine_at,
-                    "start_process_at": op.start_process_at,
-                    "finish_process_at": op.finish_process_at,
-                    "wait_for_machine_time": op.wait_for_machine_time,
-                    "priority": getattr(op, "priority", 0),
-                    "request_id": getattr(op, "request_id", None),
-                    "remaining_proc_time": getattr(op, "remaining_proc_time", None),
-                    "accumulated_process_time": getattr(op, "accumulated_process_time", 0.0),
-                    "preemption_count": getattr(op, "preemption_count", 0),
-                })
-            jobs_out.append({
-                "job_id": job.job_id,
-                "release": job.release,
-                "due": job.due,
-                "is_completed": job.is_completed,
-                "completion_time": job.completion_time,
-                "name": getattr(job, "name", None),
-                "priority": getattr(job, "priority", 0),
-                "request_id": getattr(job, "request_id", None),
-                "progress": {"done": done_count, "total": len(job.ops)},
-                "ops": ops_out,
-            })
-
-        exception_injector = getattr(self.env, "exception_injector", None)
-        active_obstacles = getattr(exception_injector, "_active_obstacles", {}) or {}
-        event_metrics = getattr(pogema, "event_metrics", {}) or {}
-        last_events = getattr(pogema, "last_events", []) or []
-
-        return {
-            "timestamp": f"T+{self.step}s",
-            "env_timeline": pogema.env_timeline,
-            "grid_state": {
-                "positions_xy": [list(agv.pos) for agv in agv_list],
-                "finishes_xy": [self._to_public_xy(pos) for pos in pogema.grid.finishes_xy],
-                "is_active": [agv.current_task is not None for agv in agv_list],
-                "agv_status": list(getattr(pogema, "agv_status", [])),
-                "agv_repair_remaining": list(getattr(pogema, "agv_repair_remaining", [])),
-                "agv_task_phase": list(getattr(pogema, "agv_task_phase", [])),
-                "agv_handling_remaining": list(getattr(pogema, "agv_handling_remaining", [])),
-                "agv_loaded": list(getattr(pogema, "agv_loaded", [])),
-            },
-            "event_epoch": int(getattr(pogema, "event_epoch", 0)),
-            "map_epoch": int(getattr(pogema, "map_epoch", 0)),
-            "machine_epoch": int(getattr(pogema, "machine_epoch", 0)),
-            "agv_epoch": int(getattr(pogema, "agv_epoch", 0)),
-            "job_epoch": int(getattr(pogema, "job_epoch", 0)),
-            "event_metrics": dict(event_metrics),
-            "events": [self._public_exception_event(event) for event in last_events],
-            "blocked_cells": [self._to_public_xy(cell) for cell in active_obstacles.keys()],
-            "machines": machines_out,
-            "jobs": jobs_out,
-            "active_transfers": [
-                {
-                    "task_id": t.task_id,
-                    "job_id": t.job_id,
-                    "op_id": t.op_id,
-                    "source": list(t.source),
-                    "destination": list(t.destination) if t.destination else None,
-                    "priority": getattr(t, "priority", 0),
-                    "request_id": getattr(t, "request_id", None),
-                    "agent_id": getattr(t, "assigned_agent_id", None),
-                    "phase": (
-                        pogema.agv_task_phase[t.assigned_agent_id]
-                        if getattr(t, "assigned_agent_id", None) is not None
-                        else None
-                    ),
-                    "handling_remaining": (
-                        pogema.agv_handling_remaining[t.assigned_agent_id]
-                        if getattr(t, "assigned_agent_id", None) is not None
-                        else 0
-                    ),
-                    "loaded": (
-                        pogema.agv_loaded[t.assigned_agent_id]
-                        if getattr(t, "assigned_agent_id", None) is not None
-                        else False
-                    ),
-                }
-                for t in pogema.active_transfers
-            ],
-            "insertion_requests": [
-                {key: deepcopy(value) for key, value in record.items() if not key.startswith("_")}
-                for record in self._insertion_requests
-            ],
-        }
+        return build_runtime_frame(self.session, self._insertion_requests)
 
     def _dump_agv_state(self, tag: str = ""):
         """诊断: 打印每个 AGV 的位置 + current_task，定位死锁。"""
@@ -1178,7 +929,15 @@ class SimulationManager:
                     self._drain_insert_queue()
                     if self._stop_event.is_set() or generation != self._run_generation:
                         break
-                    self.obs, rewards, terminations, truncations, infos = self.session.step()
+                    if self._replay_enabled and self.step >= len(self._replay_actions):
+                        self._stop_event.set()
+                        self.running = False
+                        self._episode_status = "replay_exhausted"
+                        break
+                    replay_action = self._replay_actions[self.step] if self._replay_enabled else None
+                    if replay_action is None and self._policy_controller is not None:
+                        replay_action = self._policy_controller.act(self.obs, None, deterministic=True)
+                    self.obs, rewards, terminations, truncations, infos = self.session.step(replay_action)
                     self.step = self.session.step_index
                     if self._stop_event.is_set() or generation != self._run_generation:
                         break

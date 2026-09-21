@@ -52,6 +52,9 @@ class Operation:
     remaining_proc_time: Optional[float] = None  # 被特急任务暂停后尚需加工的时间
     accumulated_process_time: float = 0.0  # 抢占前已完成的加工时间
     preemption_count: int = 0
+    processed_time: float = 0.0  # 已实际获得的加工服务量，不含停机
+    transfer_requested: bool = False
+    deviation_reported: bool = False
 
 
 @dataclass
@@ -65,10 +68,16 @@ class Job:
     name: Optional[str] = None
     # ----------- 指标记录 -----------
     completion_time: float = -1.0  # 整个 Job 完成的时间 (Makespan calculation)
+    raw_material_source: Optional[Tuple[int, int]] = None
+    finished_goods_destination: Optional[Tuple[int, int]] = None
+    material_location: Optional[Tuple[int, int]] = None
+    carrier_id: Optional[int] = None
+    transport_task_id: Optional[int] = None
+    delivered: bool = False
 
     @property
     def is_completed(self) -> bool:
-        return all(op.status == "FINISHED" for op in self.ops)
+        return self.delivered
 
 
 class Machine:
@@ -85,6 +94,10 @@ class Machine:
         self.status: str = "OK"  # OK, DOWN, MAINTENANCE
         self.repair_remaining: int = 0
         self.down_reason: Optional[str] = None
+        self.down_elapsed: int = 0
+        self.buffer_capacity: int = 4
+        self.buffer_jobs: set[int] = set()
+        self.buffer_blocked_steps: int = 0
         # ----------- 指标记录 -----------
         self.total_work_time: int = 0  # 累计工作时间 (用于计算利用率)
         self.processed_ops_count: int = 0  # 完成工序数量
@@ -157,6 +170,7 @@ class RoutingTask(BaseModel):
     request_id: Optional[str] = Field(default=None, description="插单请求 ID")
     pickup_required: bool = Field(default=True, description="是否需要先到 source 取料")
     assigned_agent_id: Optional[int] = Field(default=None, description="执行该搬运任务的 AGV ID")
+    kind: str = "operation"  # operation / finished_goods
 
     # ----------- 指标记录 (Metrics) -----------
     create_time: float = Field(default=-1, description="任务生成时间")
@@ -197,7 +211,8 @@ class AGV(BaseModel):
     current_task: Optional[RoutingTask]  # 正在执行的任务 或 None
     finished_tasks: list[RoutingTask]  # 已完成任务（可选）
     status: str = "OK"  # OK, DOWN
-    repair_remaining: int = 0
+    repair_remaining: Optional[int] = None  # 仅内部真值；算法观测中为 None
+    down_elapsed: int = 0
     down_reason: Optional[str] = None
     task_phase: str = "IDLE"
     handling_remaining: int = 0

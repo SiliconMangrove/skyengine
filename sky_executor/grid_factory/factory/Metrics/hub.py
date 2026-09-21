@@ -77,6 +77,14 @@ class MetricsHub:
         metrics.update(fjsp_collect(penv, t))
         metrics.update(mapf_collect(penv, t, self._prev_positions))
         metrics.update(coupling_collect(penv, t))
+        metrics.update(coupling_episode_summary(penv))
+        metrics.update({"timeline": float(t), "makespan": float(metrics["full_makespan"]),
+                        "reschedule_count": penv.reschedule_count,
+                        "reassigned_operation_count": penv.reassigned_operation_count,
+                        "reassigned_transport_count": penv.reassigned_transport_count,
+                        "buffer_blocked_steps": sum(machine.buffer_blocked_steps for machine in penv.machines),
+                        "remaining_work": sum(max(0.0, float(op.nominal_proc_time or op.proc_time) - op.processed_time)
+                                              for job in penv.jobs for op in job.ops if op.status != "FINISHED")})
 
         # --- 记录当前位置供下一步使用 ---
         self._prev_positions = [tuple(p) for p in penv.grid.positions_xy]
@@ -159,7 +167,7 @@ class MetricsHub:
     def _check_done(self, terminations) -> bool:
         """判断 episode 是否结束"""
         if isinstance(terminations, dict):
-            return all(terminations.values())
+            return bool(terminations.get("job_done", False))
         if isinstance(terminations, (list, tuple)):
             return all(terminations)
         return False

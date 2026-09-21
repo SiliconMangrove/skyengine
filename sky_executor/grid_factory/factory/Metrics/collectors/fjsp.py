@@ -4,7 +4,7 @@ FJSP 侧指标采集：
 - machine_non_processing_time_mean: 平均非加工时间（粗粒度，= total_t - work_time）
 - machine_load_variance: 负载方差（总体方差）
 - operation_queue_waiting_time_mean: 工序到达机器后排队等待加工的平均时间
-- processing_time_deviation_mean/max: 已采样工序相对名义加工时间的偏差
+- processing_time_deviation_mean/max: 已完成工序相对名义加工时间的偏差
 """
 
 
@@ -50,7 +50,7 @@ def collect(penv, t: int) -> dict:
                     waiting_times.append(wait)
             nominal = getattr(op, "nominal_proc_time", None)
             sampled = getattr(op, "sampled_proc_time", None)
-            if nominal is not None and sampled is not None and float(nominal) > 0:
+            if op.status == "FINISHED" and nominal is not None and sampled is not None and float(nominal) > 0:
                 processing_deviations.append(
                     abs(float(sampled) - float(nominal)) / float(nominal)
                 )

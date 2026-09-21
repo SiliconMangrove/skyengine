@@ -13,6 +13,7 @@ class MachineGenerator:
     def __init__(self, grid: List[List[int]], config: MachineConfig):
         self.grid = grid
         self.cfg = config
+        self.rng: random.Random = random.Random(config.seed)
         self.height = len(grid)
         self.width = len(grid[0]) if self.height else 0
 
@@ -115,7 +116,7 @@ class MachineGenerator:
     # ========= 策略实现 =========
     def _generate_random(self) -> List[Tuple[int, int]]:
         cells = self._get_empty_cells()
-        random.shuffle(cells)
+        self.rng.shuffle(cells)
         return cells[: self.cfg.num_machines]
 
     def _generate_grid(self) -> List[Tuple[int, int]]:
@@ -142,13 +143,13 @@ class MachineGenerator:
         base = self._generate_grid()
         noisy = []
         for (x, y) in base:
-            nx = int(round(x + random.uniform(-self.cfg.noise, self.cfg.noise)))
-            ny = int(round(y + random.uniform(-self.cfg.noise, self.cfg.noise)))
+            nx = int(round(x + self.rng.uniform(-self.cfg.noise, self.cfg.noise)))
+            ny = int(round(y + self.rng.uniform(-self.cfg.noise, self.cfg.noise)))
             if (nx, ny) in self.inner_area:
                 noisy.append((nx, ny))
         if len(noisy) < self.cfg.num_machines:
             remain = [p for p in self.inner_area if p not in noisy]
-            random.shuffle(remain)
+            self.rng.shuffle(remain)
             noisy += remain[: self.cfg.num_machines - len(noisy)]
         return noisy
     def _generate_custom(self) -> List[Tuple[int, int]]:
@@ -183,18 +184,18 @@ class MachineGenerator:
                     if r0 <= r < r1 and c0 <= c < c1
                 ]
                 if region:
-                    random.shuffle(region)
+                    self.rng.shuffle(region)
                     selected.append(region[0])
 
         if len(selected) < self.cfg.num_machines:
             remain = [p for p in cells if p not in selected]
-            random.shuffle(remain)
+            self.rng.shuffle(remain)
             selected += remain[: self.cfg.num_machines - len(selected)]
         return selected
 
     # ========= 主入口 =========
     def generate(self) -> List[Machine]:
-        random.seed(self.cfg.seed)
+        self.rng.seed(self.cfg.seed)
         strategy_fn = {
             "random": self._generate_random,
             "grid": self._generate_grid,
@@ -209,7 +210,7 @@ class MachineGenerator:
         candidates = strategy_fn()
         if len(candidates) < self.cfg.num_machines:
             remain = [p for p in self.inner_area if p not in candidates]
-            random.shuffle(remain)
+            self.rng.shuffle(remain)
             candidates += remain[: self.cfg.num_machines - len(candidates)]
 
         return [Machine(i, loc) for i, loc in enumerate(candidates[: self.cfg.num_machines])]

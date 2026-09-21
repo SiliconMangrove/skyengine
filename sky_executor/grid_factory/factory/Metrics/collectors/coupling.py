@@ -124,7 +124,7 @@ def episode_summary(penv) -> dict:
 
     # full_makespan: 所有 job 都完成时等于 completed_makespan，
     # 否则用当前 episode 时间（代表未全部完成时的实际跨度）
-    all_completed = len(completed) == len(jobs) and len(jobs) > 0
+    all_completed = penv.job_all_done()
     full_makespan = completed_makespan if all_completed else t
 
     success_rate = len(completed) / max(len(jobs), 1)

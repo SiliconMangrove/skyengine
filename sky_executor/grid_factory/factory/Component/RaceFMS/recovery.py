@@ -67,7 +67,7 @@ class AdaptiveRecoveryGate:
 
     @staticmethod
     def _base_scope(event_types: set[str]) -> RecoveryScope:
-        if event_types & {"machine_breakdown", "machine_recovery", "urgent_job_arrival", "job_replan_started"}:
+        if event_types & {"machine_breakdown", "machine_recovery", "job_release", "urgent_job_arrival", "job_replan_started"}:
             return RecoveryScope.LOCAL_PRODUCTION_REPLAN
         if event_types & {"agv_breakdown", "agv_recovery"}:
             return RecoveryScope.AGV_REASSIGN

@@ -22,6 +22,10 @@ class ExceptionInjector:
     SUPPORTED_TYPES = {"machine_breakdown", "agv_breakdown", "temporary_obstacle"}
 
     PRESETS = {
+        # ``none`` is accepted as the configuration-level spelling for
+        # disabling exception injection (processing-time configs use the same
+        # spelling).  Keep ``no_event`` as the canonical preset name.
+        "none": {},
         "no_event": {},
         "mild_failure": {
             "machine_failure": {
@@ -276,8 +280,8 @@ class ExceptionInjector:
             "obstacle_clear_count": 0,
         }
 
-    def reset(self, env) -> None:
-        self.rng = random.Random(self.random_seed)
+    def reset(self, env, seed: int | None = None) -> None:
+        self.rng = random.Random(self.random_seed if seed is None else int(seed) ^ 0x5EEDFA17)
         self._schedule = self._load_schedule()
         self._schedule_idx = 0
         self._step_events = []
@@ -296,7 +300,7 @@ class ExceptionInjector:
             self._publish_state(penv)
             return
 
-        step = int(env.env_timeline)
+        step = int(penv.env_timeline)
         self._apply_scheduled_events(penv, step)
         self._apply_probabilistic_events(penv, step)
         self._publish_state(penv)
@@ -463,10 +467,10 @@ class ExceptionInjector:
             return
         self._ensure_state(penv)
         task_obs.update(self.get_epochs(penv))
-        task_obs["events"] = self.get_step_events()
+        task_obs["events"] = [dict(event, payload=dict(event.get("payload", {}))) for event in penv.last_events]
         task_obs["event_metrics"] = self.get_metrics()
         task_obs["agv_status"] = list(penv.agv_status)
-        task_obs["agv_repair_remaining"] = list(penv.agv_repair_remaining)
+        task_obs["agv_down_elapsed"] = list(penv.agv_down_elapsed)
         task_obs["blocked_cells"] = [list(cell) for cell in self._active_obstacles]
 
         for m in task_obs.get("machines", []) or []:
@@ -508,11 +512,11 @@ class ExceptionInjector:
                 m.down_reason = None
 
     def _publish_state(self, penv) -> None:
-        penv.last_events = self.get_step_events()
         penv.event_metrics = self.get_metrics()
 
     def _record(self, penv, step: int, etype: str, payload: Dict[str, Any], level: str = "info") -> None:
-        penv.event_epoch += 1
+        payload = {key: value for key, value in payload.items() if key not in {"duration_steps", "repair_remaining"}}
+        penv.emit_event(etype, payload, step=step)
         event = {
             "step": int(step),
             "type": etype,
@@ -692,6 +696,7 @@ class ExceptionInjector:
         if machine.status != "OK":
             return
         machine.status = "DOWN"
+        machine.down_elapsed = 0
         machine.repair_remaining = max(1, int(duration))
         machine.down_reason = reason or "machine_breakdown"
         penv.machine_epoch += 1
@@ -720,6 +725,7 @@ class ExceptionInjector:
         if penv.agv_status[agv_id] != "OK":
             return
         penv.agv_status[agv_id] = "DOWN"
+        penv.agv_down_elapsed[agv_id] = 0
         penv.agv_repair_remaining[agv_id] = max(1, int(duration))
         penv.agv_down_reason[agv_id] = reason or "agv_breakdown"
         penv.agv_epoch += 1
@@ -775,6 +781,7 @@ class ExceptionInjector:
     def _tick_repairs(self, penv, step: int) -> None:
         for machine in penv.machines:
             if machine.status == "DOWN":
+                machine.down_elapsed += 1
                 self._metrics["machine_down_steps_total"] += 1
                 machine.repair_remaining = max(0, int(machine.repair_remaining) - 1)
                 if machine.repair_remaining == 0:
@@ -790,6 +797,7 @@ class ExceptionInjector:
 
         for idx, status in enumerate(penv.agv_status):
             if status == "DOWN":
+                penv.agv_down_elapsed[idx] += 1
                 self._metrics["agv_down_steps_total"] += 1
                 penv.agv_repair_remaining[idx] = max(0, int(penv.agv_repair_remaining[idx]) - 1)
                 if penv.agv_repair_remaining[idx] == 0:
