@@ -28,8 +28,8 @@ def planning_snapshot(public: dict, task: dict, sampler, injector, material: dic
             prior["enabled"] = False
     return {
         "time": task["env_timeline"], "jobs": jobs, "machines": machines,
-        "agents": [agent.model_dump(exclude={"finished_tasks", "repair_remaining"}) for agent in public["agents"]],
-        "tasks": [item.model_dump() for name in ("pending_transfers", "buffered_transfers", "active_transfers") for item in public[name]],
+        "agents": [agent.dict(exclude={"finished_tasks", "repair_remaining"}) for agent in public["agents"]],
+        "tasks": [item.dict() for name in ("pending_transfers", "buffered_transfers", "active_transfers") for item in public[name]],
         "grid": task["obstacle_grid"].tolist(), "moves": task["move_deltas"],
         "events": deepcopy(task.get("events", [])), "failure_priors": priors,
         "pickup_steps": int(material.get("pickup_dwell_steps", 2)),
