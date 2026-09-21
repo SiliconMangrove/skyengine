@@ -71,7 +71,9 @@ cd ../skyengine
 ./install.sh
 ```
 
-`install.sh` 会检查 Docker 和 Compose，生成或更新 `.env`，创建运行所需目录，并构建平台、在线引擎和批处理引擎镜像。脚本会把当前项目的绝对路径写入 `.env`，并在 backend 镜像内实际调用 PyTorch 探测 Docker 可用的 CUDA 设备。没有可用 CUDA 时安装仍会完成，平台自动以 CPU 模式运行；`.env` 显式设置 `SKYENGINE_GPU_MODE=cuda` 时，探测失败会终止安装并说明原因。
+`install.sh` 会检查 Docker 和 Compose，生成或更新 `.env`，创建运行所需目录，按当前文件同步训练集和验证集的模板摘要，并构建平台、在线引擎和批处理引擎镜像。从 Windows 迁移到 Linux 后，安装脚本会自动处理换行格式变化带来的摘要差异。脚本会把当前项目的绝对路径写入 `.env`，并在 backend 镜像内实际调用 PyTorch 探测 Docker 可用的 CUDA 设备。没有可用 CUDA 时安装仍会完成，平台自动以 CPU 模式运行；`.env` 显式设置 `SKYENGINE_GPU_MODE=cuda` 时，探测失败会终止安装并说明原因。
+
+安装更新摘要后，刷新算法平台页面并重新点击“训练”载入模板；此前保存的实验定义仍保留原数据集摘要。
 
 ## 6. 启动服务
 

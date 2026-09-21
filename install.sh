@@ -53,6 +53,18 @@ set_env_value SKYENGINE_BATCH_DATASET_HOST_DIR "$project_root/dataset"
 
 mkdir -p sky_logs
 
+# Refresh whole-corpus digests after checkout; CRLF and LF produce different hashes.
+# BEGIN dataset template digests
+frontend_view="application/frontend/src/views/AlgorithmPlatformView.vue"
+for corpus_split in train validation; do
+  corpus_uri="dataset/dfjsp_t_${corpus_split}/${corpus_split}.jsonl"
+  corpus_digest="$(sha256sum "$corpus_uri")"
+  corpus_digest="${corpus_digest%% *}"
+  sed -i "/^[[:space:]]*uri: 'dataset\/dfjsp_t_${corpus_split}\/${corpus_split}\.jsonl',[[:space:]]*\$/ { n; s/sha256:[[:xdigit:]]\{64\}/sha256:${corpus_digest}/; }" "$frontend_view"
+  printf 'Dataset template: %s sha256:%s\n' "$corpus_uri" "$corpus_digest"
+done
+# END dataset template digests
+
 "${compose[@]}" -f docker-compose.yml config --quiet
 "${compose[@]}" -f docker-compose.yml -f docker-compose.gpu.yml config --quiet
 "${compose[@]}" -f docker-compose-online.yaml config --quiet
