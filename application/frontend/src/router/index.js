@@ -17,6 +17,12 @@ const router = createRouter({
       component: FactoryView,
       meta: { title: '工厂管理系统' }
     },
+    {
+      path: '/training',
+      name: 'training',
+      component: () => import('../views/AlgorithmPlatformView.vue'),
+      meta: { title: '算法实验与优化平台' }
+    },
   ],
 })
 

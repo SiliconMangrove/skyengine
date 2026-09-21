@@ -331,6 +331,7 @@
 
   .component-wrapper {
     flex: 1;
+    min-height: 0;
     overflow: hidden; /* 组件内部自己处理滚动 */
   }
 }

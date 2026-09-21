@@ -229,6 +229,12 @@ export const useFactoryStore = defineStore("factory", () => {
       description:
         "Docker 容器化仿真引擎，算法按需启动，支持动态调度。",
     },
+    {
+      id: "algorithm_platform",
+      name: "算法实验与优化平台",
+      image: getAssetUrl("grid_factory.jpg"),
+      description: "算法训练、超参数探索、数据集测试、效果比较与回放工作空间。",
+    },
   ]);
 
   const storedFactoryId = localStorage.getItem(STORAGE_KEYS.SELECTED_FACTORY);
@@ -877,7 +883,7 @@ export const useFactoryStore = defineStore("factory", () => {
    */
   function loadData(data) {
     reset();
-    historyBuffer.value = data;
+    historyBuffer.value = (data || []).map((frame, index) => normalizeSnapshot(frame, index));
     currentIndex.value = 0;
     isLiveMode.value = false;
   }

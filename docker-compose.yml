@@ -8,29 +8,38 @@ services:
     container_name: skyengine-backend
     ports:
       - "${BACKEND_PORT:-8233}:8000"
+      # 训练平台可选 TensorBoard 端口
+      - "${TENSORBOARD_PORT:-6006}:6006"
     volumes:
       - ./application:/app/application
       - ./executor:/app/executor
+      - ./experiment:/app/experiment
+      # DFJSP-T 插件仓库与 skyengine 并列，挂载后训练平台可动态加载算法包
+      - ../skyengine-DFJSPT:/app/skyengine-DFJSPT:ro
       - ./config:/app/config
       - ./dataset:/app/dataset
-      - /app/.venv
       # Docker Socket — 用于 DockerProxy 按需启停 SkyEngine compose 栈
       - /var/run/docker.sock:/var/run/docker.sock
-      # SkyEngine 配置文件 — 需在 .env 中设置 SKYENGINE_COMPOSE_PATH
-      - ${SKYENGINE_COMPOSE_PATH:?SKYENGINE_COMPOSE_PATH not set}:/opt/skyengine/docker-compose-online.yaml:ro
-      # SkyEngine 批处理配置文件 — 需在 .env 中设置 SKYENGINE_BATCH_COMPOSE_PATH
-      - ${SKYENGINE_BATCH_COMPOSE_PATH:?SKYENGINE_BATCH_COMPOSE_PATH not set}:/opt/skyengine/docker-compose-batch.yaml:ro
-      # SkyEngine 项目文件 — 整个目录挂进容器同名路径, 供 docker CLI 读 build context
-      - ${SKYENGINE_PROJECT_DIR}:${SKYENGINE_PROJECT_DIR}:ro
+      - type: bind
+        source: ${SKYENGINE_COMPOSE_PATH:?SKYENGINE_COMPOSE_PATH not set}
+        target: /opt/skyengine/docker-compose-online.yaml
+        read_only: true
+      - type: bind
+        source: ${SKYENGINE_BATCH_COMPOSE_PATH:?SKYENGINE_BATCH_COMPOSE_PATH not set}
+        target: /opt/skyengine/docker-compose-batch.yaml
+        read_only: true
+      # 宿主机路径只作为挂载源；容器内统一使用 Linux 路径，避免 Windows 盘符被解析成卷分隔符。
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}
+        target: /opt/skyengine/project
+        read_only: true
     environment:
       - PYTHONUNBUFFERED=1
       - SKYENGINE_COMPOSE_PATH=/opt/skyengine/docker-compose-online.yaml
       - SKYENGINE_BATCH_COMPOSE_PATH=/opt/skyengine/docker-compose-batch.yaml
-      # SkyEngine 项目根目录 — 需在 .env 中设置 SKYENGINE_PROJECT_DIR
-      - SKYENGINE_PROJECT_DIR=${SKYENGINE_PROJECT_DIR:?SKYENGINE_PROJECT_DIR not set}
-      - SKYENGINE_BATCH_DATASET_HOST_DIR=${SKYENGINE_BATCH_DATASET_HOST_DIR:?SKYENGINE_BATCH_DATASET_HOST_DIR not set}
+      - SKYENGINE_PROJECT_DIR=/opt/skyengine/project
+      - SKYENGINE_BATCH_DATASET_HOST_DIR=/app/dataset
       - ENGINE_URL=http://engine:8080
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
     networks:
       - skyengine-network
     # 给 uvicorn graceful shutdown + atexit 清理 online 栈留足时间

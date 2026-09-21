@@ -79,6 +79,9 @@ from application.backend.history.manager import HistoryManager
 
 # Analysis 模块（工厂无关的 Run 持久化仓库，dataset/run/）
 from application.backend.analysis.routes import router as analysis_router
+from application.backend.algorithm_platform_routes import (
+    router as algorithm_platform_router,
+)
 
 
 app = FastAPI()
@@ -103,6 +106,7 @@ app.include_router(history_router)
 
 # 注册 analysis 路由（Run 持久化仓库，工厂无关）
 app.include_router(analysis_router)
+app.include_router(algorithm_platform_router)
 
 # 添加CORS中间件，支持前端跨域请求
 app.add_middleware(

@@ -1,0 +1,8 @@
+{
+  "dataset": {"path": "dataset/dfjsp_t_train/train.jsonl"},
+  "environment": {"max_steps": 1000},
+  "policy": {"target": "experiment.rl_platform.examples.minimal_plugins.FirstFeasiblePolicy"},
+  "reward": {"target": "experiment.rl_platform.examples.minimal_plugins.CompletionDeltaReward"},
+  "trainer": {"target": "experiment.rl_platform.examples.minimal_plugins.CountingTrainer"},
+  "training": {"episodes": 1}
+}

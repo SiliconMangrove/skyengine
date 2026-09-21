@@ -1,0 +1,7 @@
+{
+  "split": "train",
+  "count": 1000,
+  "profiles": {
+    "train": 1000
+  }
+}

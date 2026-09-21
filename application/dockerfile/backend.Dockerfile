@@ -36,6 +36,7 @@ COPY config /app/config
 COPY dataset /app/dataset
 COPY sky_executor /app/sky_executor
 COPY sky_logs /app/sky_logs
+COPY experiment /app/experiment
 
 EXPOSE 8000
 

@@ -23,6 +23,16 @@
   user-select: none;
 }
 
+.draggable-panel.inline {
+  position: relative;
+  z-index: 1;
+  box-shadow: none;
+}
+
+.draggable-panel.inline .dp-header {
+  cursor: default;
+}
+
 /* hover 微光 */
 .draggable-panel:hover {
   border-color: rgba(100, 180, 255, 0.28);

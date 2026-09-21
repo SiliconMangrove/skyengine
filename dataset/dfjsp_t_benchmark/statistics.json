@@ -1,0 +1,11 @@
+{
+  "split": "benchmark",
+  "count": 200,
+  "profiles": {
+    "normal": 40,
+    "transport_bottleneck": 40,
+    "machine_bottleneck": 40,
+    "failure": 40,
+    "composite": 40
+  }
+}

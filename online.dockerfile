@@ -38,6 +38,7 @@ COPY .env.example      .env
 
 COPY sim_server.py /app/sim_server.py
 COPY sky_executor /app/sky_executor
+COPY experiment /app/experiment
 COPY config /app/config
 COPY sky_logs /app/sky_logs
 

@@ -1,0 +1,1380 @@
+{
+  "schema_version": 1,
+  "generator": "dfjsp_t.generate_dfjsp_t",
+  "generator_version": "1.0",
+  "split": "benchmark",
+  "base_seed": 86000000,
+  "seed_namespace": "benchmark:86000000",
+  "count": 200,
+  "profiles": {
+    "normal": {
+      "jobs": [
+        20,
+        40
+      ],
+      "machines": [
+        8,
+        16
+      ],
+      "agvs": [
+        4,
+        8
+      ],
+      "operations": [
+        4,
+        8
+      ],
+      "flexibility": [
+        0.35,
+        0.6
+      ],
+      "processing_time": [
+        5,
+        20
+      ],
+      "map_size": [
+        20,
+        28
+      ],
+      "disturbance": "none",
+      "bottleneck": "none"
+    },
+    "transport_bottleneck": {
+      "jobs": [
+        25,
+        45
+      ],
+      "machines": [
+        8,
+        16
+      ],
+      "agvs": [
+        2,
+        3
+      ],
+      "operations": [
+        5,
+        9
+      ],
+      "flexibility": [
+        0.45,
+        0.75
+      ],
+      "processing_time": [
+        5,
+        18
+      ],
+      "map_size": [
+        24,
+        32
+      ],
+      "disturbance": "none",
+      "bottleneck": "transport"
+    },
+    "machine_bottleneck": {
+      "jobs": [
+        25,
+        45
+      ],
+      "machines": [
+        8,
+        16
+      ],
+      "agvs": [
+        4,
+        7
+      ],
+      "operations": [
+        5,
+        9
+      ],
+      "flexibility": [
+        0.2,
+        0.45
+      ],
+      "processing_time": [
+        5,
+        22
+      ],
+      "map_size": [
+        20,
+        28
+      ],
+      "disturbance": "none",
+      "bottleneck": "machine"
+    },
+    "failure": {
+      "jobs": [
+        20,
+        40
+      ],
+      "machines": [
+        8,
+        16
+      ],
+      "agvs": [
+        3,
+        6
+      ],
+      "operations": [
+        4,
+        8
+      ],
+      "flexibility": [
+        0.35,
+        0.65
+      ],
+      "processing_time": [
+        5,
+        24
+      ],
+      "map_size": [
+        20,
+        28
+      ],
+      "disturbance": "failure",
+      "bottleneck": "none"
+    },
+    "composite": {
+      "jobs": [
+        35,
+        70
+      ],
+      "machines": [
+        10,
+        20
+      ],
+      "agvs": [
+        2,
+        4
+      ],
+      "operations": [
+        6,
+        10
+      ],
+      "flexibility": [
+        0.55,
+        0.9
+      ],
+      "processing_time": [
+        5,
+        28
+      ],
+      "map_size": [
+        24,
+        34
+      ],
+      "disturbance": "failure",
+      "bottleneck": "composite"
+    }
+  },
+  "difficulty_distribution": {
+    "normal": 40,
+    "transport_bottleneck": 40,
+    "machine_bottleneck": 40,
+    "failure": 40,
+    "composite": 40
+  },
+  "instances": [
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086000000-00000",
+      "seed": 86000000,
+      "profile": "normal",
+      "canonical_hash": "4f8e5f6543a6ae47329262a1b2403d055429a1d67dfb5e235beb611728223bc8"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086001010-00001",
+      "seed": 86001010,
+      "profile": "normal",
+      "canonical_hash": "49764dacee05d389ba5fd0318ad28a0b4e3e6575bc4d5d6a22fe8c0c8839c4f5"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086002020-00002",
+      "seed": 86002020,
+      "profile": "normal",
+      "canonical_hash": "2554c4cbcdf6d581563e2206e5d5582c2bb24d321d34e8c70b833860a4ad9528"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086003030-00003",
+      "seed": 86003030,
+      "profile": "normal",
+      "canonical_hash": "3696ae16f27d9da0b95390d6a01ab24caaa44884b44b6c9be9310153f37eec59"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086004040-00004",
+      "seed": 86004040,
+      "profile": "normal",
+      "canonical_hash": "7b2f179759be4cb4da3960d8cbb5886ad85d135ee31f99775d24d13a8b1811df"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086005050-00005",
+      "seed": 86005050,
+      "profile": "normal",
+      "canonical_hash": "47f271f1d4b2936e96effd9335c3785640ebb8896127f7d58e252679a9cb1c1b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086006060-00006",
+      "seed": 86006060,
+      "profile": "normal",
+      "canonical_hash": "657228a0be872145974e554a8da614db8b5554d05a2bf870a09dac7c129b2d38"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086007070-00007",
+      "seed": 86007070,
+      "profile": "normal",
+      "canonical_hash": "a975b4ef600b6336281a0d2a0acde34ba7a2cdf764df06fd79ef79b26e2478ca"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086008080-00008",
+      "seed": 86008080,
+      "profile": "normal",
+      "canonical_hash": "f5e9508d233ce062e0caec18a26c659e5e220e41605ab8bdef16ac60ae0620de"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086009090-00009",
+      "seed": 86009090,
+      "profile": "normal",
+      "canonical_hash": "cba46e3d66d7586bf204d382a55d14f54a8c34535ca074ccb52b999c2f04102e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086010100-00010",
+      "seed": 86010100,
+      "profile": "normal",
+      "canonical_hash": "dfd429290cd4db42687e409252257b1b4fe486787333cf1d1c67881f49429345"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086011110-00011",
+      "seed": 86011110,
+      "profile": "normal",
+      "canonical_hash": "31e40a8716d525ecc7ced943061f390bfb91cde222b7f004dd16b7b536eaf0db"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086012120-00012",
+      "seed": 86012120,
+      "profile": "normal",
+      "canonical_hash": "f422688bf39889c6266faeacdb468a305e72887f78cd5f74ac9312022667b240"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086013130-00013",
+      "seed": 86013130,
+      "profile": "normal",
+      "canonical_hash": "c685a84054a740bf14b51b3c9e3116926ae5445b3fccf91744a3320b98e0c3bd"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086014140-00014",
+      "seed": 86014140,
+      "profile": "normal",
+      "canonical_hash": "4359e5bb52e2bf5389e22cdcfef57d65007dc3dfb59833cc205665eaaacccd85"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086015150-00015",
+      "seed": 86015150,
+      "profile": "normal",
+      "canonical_hash": "22d7ee30b9d802060e5b80665ab5100eb90551767555c7f43db8c7b2222acbff"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086016160-00016",
+      "seed": 86016160,
+      "profile": "normal",
+      "canonical_hash": "2ab8215c8343c149c22745fdddf2cb01254aab0dabb7e87c181ce86bbdc641fc"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086017170-00017",
+      "seed": 86017170,
+      "profile": "normal",
+      "canonical_hash": "86328838ef42e1231f6385a7834430b850a6641654d3ba96927587540e5015fb"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086018180-00018",
+      "seed": 86018180,
+      "profile": "normal",
+      "canonical_hash": "63b2dffaa2fa1c840d533a227ab6ee826d97c0b12bf201336c0755636d0f14be"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086019190-00019",
+      "seed": 86019190,
+      "profile": "normal",
+      "canonical_hash": "ac51b5497d03cefeee4e339a44f96c2b4f3ac3bbbc48f9934aefea3bdffdc69c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086020200-00020",
+      "seed": 86020200,
+      "profile": "normal",
+      "canonical_hash": "c8c6caf70f24c60a1a1919225ac9ebb928113e92f1c8b319fabf7ea4c2cfef4f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086021210-00021",
+      "seed": 86021210,
+      "profile": "normal",
+      "canonical_hash": "74212ed905d4ff6b31a11463c227566071009ac102d4c30f74cc8bbd8051cb89"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086022220-00022",
+      "seed": 86022220,
+      "profile": "normal",
+      "canonical_hash": "6197fd7630671a7cdcbdba563ef3ab123c00c3ddf6bf41bfd4c09d2bf09446e6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086023230-00023",
+      "seed": 86023230,
+      "profile": "normal",
+      "canonical_hash": "fd28e1c030900fa3cb82577162bca1c11e7d4c0bf307f4c30aa97dfc35303712"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086024240-00024",
+      "seed": 86024240,
+      "profile": "normal",
+      "canonical_hash": "2f414ea4efa85b0e13ff9a21949582385fb75d9f228d2d47ed1313ea53072c5e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086025250-00025",
+      "seed": 86025250,
+      "profile": "normal",
+      "canonical_hash": "9481560cc2f04d97406cae4f8861d11d891d42649dd0bab22420403339091fc1"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086026260-00026",
+      "seed": 86026260,
+      "profile": "normal",
+      "canonical_hash": "a2d5d414bf5edd9d6791856768bffa0cd519c3a3c1a26a2990b6d70334301bb4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086027270-00027",
+      "seed": 86027270,
+      "profile": "normal",
+      "canonical_hash": "5f4c9e9185236039e2defd89ce37578cf1e478afc7431bfa689a61050a3f937a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086028280-00028",
+      "seed": 86028280,
+      "profile": "normal",
+      "canonical_hash": "902bc18cdb143b5c0f13702fa78da61d38203091baffdb2c647ef815471670f7"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086029290-00029",
+      "seed": 86029290,
+      "profile": "normal",
+      "canonical_hash": "67f32a86cf2db7daa752769853f4e8e0644ba2445f777090db88110bbaff73d0"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086030300-00030",
+      "seed": 86030300,
+      "profile": "normal",
+      "canonical_hash": "1df39efc405abdc5b00b7ac03708640d6b3c8bed685ef3c658924be8657fefbf"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086031310-00031",
+      "seed": 86031310,
+      "profile": "normal",
+      "canonical_hash": "e4237c94e71af8f3f8d767be64a32104a73997822ea538c2260ebc5931c6373a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086032320-00032",
+      "seed": 86032320,
+      "profile": "normal",
+      "canonical_hash": "052dddc9e24cdb56e05988ee6adb17bc42194f850e8b9b39cf054c2599cce7f0"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086033330-00033",
+      "seed": 86033330,
+      "profile": "normal",
+      "canonical_hash": "f3e4013d55a12518870568e28b0a8bc91ddae2c196c83de41659fc97238e5bed"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086034340-00034",
+      "seed": 86034340,
+      "profile": "normal",
+      "canonical_hash": "005173d1ab04e6d464fc5cc11c4f7112210a2a84e9d9dddf758e71455e04c089"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086035350-00035",
+      "seed": 86035350,
+      "profile": "normal",
+      "canonical_hash": "b682f1a2d399d2dead932da0c76dfe9e3636348af9ba9902dc466badc0206376"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086036360-00036",
+      "seed": 86036360,
+      "profile": "normal",
+      "canonical_hash": "85393863b324271e0b58940dd04b7c74893401fd5ab35c97d4923278ee0a2136"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086037370-00037",
+      "seed": 86037370,
+      "profile": "normal",
+      "canonical_hash": "a1c826183992d46b27dfec4860f4a61ffcd6f079c0a1f81777453f24b96ff02b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086038380-00038",
+      "seed": 86038380,
+      "profile": "normal",
+      "canonical_hash": "6ebb636640974e176a619211e56e875d70bbf755a540562f55e5efb54b96a666"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-normal-0086039390-00039",
+      "seed": 86039390,
+      "profile": "normal",
+      "canonical_hash": "76bc7ef8c79d269552c8370d4e91b58e7a4aa72bcae6668ef6f55e2ce8eea7b7"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086040360-00040",
+      "seed": 86040360,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "b3a8c6fd3a3da1f942ae58a0b198b59fa18d67ba58cadadccbec995cd136baf9"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086041370-00041",
+      "seed": 86041370,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "5c16cf2e523fdb217454bb6b3759cc8e4608144e11e2475a17977ede7f3130f4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086042380-00042",
+      "seed": 86042380,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "403acccefd45c527a21b1538d33ffea4afe5cdfc8a38fe515c64aba3e390b600"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086043390-00043",
+      "seed": 86043390,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "f4d8e58c5dfc9c061dd34813c3e13ddfc03cbb2893f5d28f3decd745c76c7ae8"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086044400-00044",
+      "seed": 86044400,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "2b2965702fb9555cc911a6cde6580c0207c668c4a160a4ec14b1fab6395daa2f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086045410-00045",
+      "seed": 86045410,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "f1741483b074a35ac347cd78503261664a69dfa5bd5f56d8370e5511aa8dcc9b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086046420-00046",
+      "seed": 86046420,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "d3dc8188e08978afcd457937da79ae3fa5ad776bbe2cfea299e02ed18d7cffa8"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086047430-00047",
+      "seed": 86047430,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "cd0b376b35465ab46967f066b27c1a660ed747b04c718b9c688480dd8276c0c6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086048440-00048",
+      "seed": 86048440,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "8d120fb7c4362277a2fa28829f368e309e4591987fcd00f97ab5d7d2b9a21ea2"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086049450-00049",
+      "seed": 86049450,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "ce837325a57b1f200df519ba649c2f09768b7143a11d350b8f2b9c731dfda174"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086050460-00050",
+      "seed": 86050460,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "fdab540225ce9af6b738a52c8c2ae77f75fb50b73260d2b452a496c0e78529bb"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086051470-00051",
+      "seed": 86051470,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "8a6b1826592d1ba4b5262940c72a392b64b456f7e1011831b99516df890bd13b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086052480-00052",
+      "seed": 86052480,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "e27209a1729f480b74ded0fc0efedb785acb84971ce5b5ef670b971b8fb22ddf"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086053490-00053",
+      "seed": 86053490,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "5d95b9fd0e68a08dde5cbc489654551919a50063f2c7994bb9de686fabf904a3"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086054500-00054",
+      "seed": 86054500,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "9aa15ae58885aecaaa93d133ad295775eb4ba93c9cf4be15d6530150104dd487"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086055510-00055",
+      "seed": 86055510,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "11ee11bfe6643b6b2af682b339f5f036f055a66e39619fa8abbfce1c5dd1625b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086056520-00056",
+      "seed": 86056520,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "b49d90105485950c3a8142e211834bbeb51431c3b20d6853675df93515456908"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086057530-00057",
+      "seed": 86057530,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "1a36f39d8ebb3667e4cafb03056cd8476743e3561c7139ee78f55ca7b3c9a186"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086058540-00058",
+      "seed": 86058540,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "f22ff912b41276be5a6c3ba424a8eb2edfe896e400cbb585576f80a3fe9807ea"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086059550-00059",
+      "seed": 86059550,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "a12b62d9f711cc6db1a16d1ed89236d015a294ffda4e6dc0829a144d36022c69"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086060560-00060",
+      "seed": 86060560,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "e3ea3feac13169988fd0db7f924b1b097186d92eec46cb301e7e94c863718df3"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086061570-00061",
+      "seed": 86061570,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "4c3e5dc5b0bde2702e5999765b6084aee06182a43cbc15f7f8376c1bd27ff2c8"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086062580-00062",
+      "seed": 86062580,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "4f9fca23f136115bcdb75dbdaa16952a6a2a0d1bccfb762f4fe33f078b5c6954"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086063590-00063",
+      "seed": 86063590,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "d18e50ff282a5458af855750ddf2dbd4caccf116c72755ca900bb14eda5e96be"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086064600-00064",
+      "seed": 86064600,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "0527daa5f2b95720674161bb34e833ac5da2fda623f9e1f3974119ff350be10a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086065610-00065",
+      "seed": 86065610,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "8062990bc91e8005ef83d1f0c29ff399cd0a2c2520a37cbbe5a84c081e5c0cbe"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086066620-00066",
+      "seed": 86066620,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "3936f4048a737ee52876229cdf88b4e26fec80f7b50979a79c1118d5848bb228"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086067630-00067",
+      "seed": 86067630,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "748df4bfd57be533be682e6d4f8237ea4fc174be4b485aea25d2dbb0f5d8e440"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086068640-00068",
+      "seed": 86068640,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "c8dd3cf5a29d34d8e39e2decc93cdfa3f023efce18bfac25b6fe82fbdf8ae8b4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086069650-00069",
+      "seed": 86069650,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "8bb7d66a2548bc095e3e5b1807ac9c82d6394bf48ab3ff1427064b4470f386b4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086070660-00070",
+      "seed": 86070660,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "d4572fd27b7b83d76bc7b9f7dede2596f7aa5f89099b44df6d2b1c8ee652746a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086071670-00071",
+      "seed": 86071670,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "36471b4e95bb89a4a9c78d18f5cab8a7f94f662de433c5f1ce0168939d1501fd"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086072680-00072",
+      "seed": 86072680,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "6ea48242ba683c122eb5fdac9655310139773273ceb9b8641d3b3a0e79eb1ad4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086073690-00073",
+      "seed": 86073690,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "786eee70ed4e7154b4fa0d6e2d58fe27d0a83ff8d7ff60e602d7f9d0e5f29722"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086074700-00074",
+      "seed": 86074700,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "78e82fdfa4d43372147bd5282ad16d58f2d12bd3be8b29c80958b86e9cf58c52"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086075710-00075",
+      "seed": 86075710,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "11dc57964c27f0410de93efcb84e2a2961f5b4c6208741ce02bc09febea7adc4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086076720-00076",
+      "seed": 86076720,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "f515f11386e1552e87fee8d9004b9d6e63221d6604a27b5554fcbeee339dedc0"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086077730-00077",
+      "seed": 86077730,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "0c5f05001fe8a8fc7bc4e22a9f00400dd033d5d87d2a8e9a318dbbae1b129faa"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086078740-00078",
+      "seed": 86078740,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "cd0d0860995a2c6f8d2527a7f3b99d45949b7dcc7fd447573a95c7856aedc9ba"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-transport_bottleneck-0086079750-00079",
+      "seed": 86079750,
+      "profile": "transport_bottleneck",
+      "canonical_hash": "c5bac61260ecf813d992fba834024922e139c3f33fd8190cd0cb69b4e029a301"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086080720-00080",
+      "seed": 86080720,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "a006bac6b8302b700146c3a807b1e365aad52d06a3e8699c91769200cb2f29a7"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086081730-00081",
+      "seed": 86081730,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "1a64cc62332e5b3a04900fb59c8a99f24f1157db4980333257221284e7219dae"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086082740-00082",
+      "seed": 86082740,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "cfdd6e62a7011df28870f585c2343b5c40b0c9749adb9de139e92c933a8ec507"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086083750-00083",
+      "seed": 86083750,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "ccd17eb42f090db7ec28d91b5257e9ce79c0b8c0e5c21f7bc4ef1dfe8fae776c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086084760-00084",
+      "seed": 86084760,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "dedd2bd38f0e35e3c0449280cc2b5fc91df247a235ffcf70859f3763eefdacbd"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086085770-00085",
+      "seed": 86085770,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "9b400584b35c4cc2a8352643a668ccfd66ac707520a47cb00db26d477293dc68"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086086780-00086",
+      "seed": 86086780,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "3e79098bf631caf7f9a937ddd78367632846cd6e3ec3df74290392973b200124"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086087790-00087",
+      "seed": 86087790,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "2241effe5ea30123ac1545e5784ca446ec6c846233dd4ec45abb47ac084683c8"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086088800-00088",
+      "seed": 86088800,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "218752bbe678e261376d280e2d71c380ca4b14348541885d4d52f9bee7c1b602"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086089810-00089",
+      "seed": 86089810,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "c64eaaf40028778ccb0305427302b7911f086bf935d73a89fd54f000dceda37a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086090820-00090",
+      "seed": 86090820,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "e89e865a213b93682999e663013edef9cee636c211d0c3f06ba233da75ef69d0"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086091830-00091",
+      "seed": 86091830,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "12544e53889798bd67fcf8bf8579184bffb90a56ff1f48974db6da3ab26b0f72"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086092840-00092",
+      "seed": 86092840,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "c80c13898baa5567b4a6272dc55d86602f327fa5224cee8054add2e06da6a527"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086093850-00093",
+      "seed": 86093850,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "f5dee182f5aeb537310670b781db907b6d4c47e5a60fa034c41e808dd391a369"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086094860-00094",
+      "seed": 86094860,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "6d1eba73782cd7059fd1508344acca0b610031b5bcf5c9e6508e352772a73fe2"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086095870-00095",
+      "seed": 86095870,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "8a42ce8b76e2f91db5c0c1222b8089ca5f058c4b0d979135defc2a86e3e67e5e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086096880-00096",
+      "seed": 86096880,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "7b95919a1cf57a7bbc22018553d10e084dfccb590e98ebced8fcd1b42e47977c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086097890-00097",
+      "seed": 86097890,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "8510a36254ab172350f69c1e7223ba645082256276a8f5fb8bb9f549b9e3d60e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086098900-00098",
+      "seed": 86098900,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "2f024ae37c87f01cb80bf3fa273916af20c0fe6b03df80a5676487b957970fb6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086099910-00099",
+      "seed": 86099910,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "ddc613a97d54a3799f121a97d57c06d704519a491d537c31acd6ea6f909ecdd5"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086100920-00100",
+      "seed": 86100920,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "18fdd0635523774c8e92399cb2ce6645109bfea131dffd2ddb2260ca2cf1541f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086101930-00101",
+      "seed": 86101930,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "ccb1433a00ac2643629ad69e8934a81bbdeb11b2f6cd40004f1815edece0c1ab"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086102940-00102",
+      "seed": 86102940,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "e711b4747af9351005c5290f64530e60bf242c53567b22c73c0f264185064124"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086103950-00103",
+      "seed": 86103950,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "1896084d18027aa49ea06e76d5d69503d6a202e61733324c3e4ded9230393b4a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086104960-00104",
+      "seed": 86104960,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "54bd02eb356dfdba1dd090aed4d453de5c50cc555ea828d39a5fd85cceed3946"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086105970-00105",
+      "seed": 86105970,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "773bb37c6af3d16a1acf3490bf66d8d118855b7667b220cb534450a5bf5a97f6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086106980-00106",
+      "seed": 86106980,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "6fa8361d6672e22fbd398c0b53ba7a6fb96585e234340ac564a35f21ee8f8a0f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086107990-00107",
+      "seed": 86107990,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "ffb3960129b431232c14355d13dc99cb171f79e4462f5be85a0d63f615046e12"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086109000-00108",
+      "seed": 86109000,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "ec2c83505bdcd3d112addca65a999686be4b2d541ed5722817e407528faeb9fc"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086110010-00109",
+      "seed": 86110010,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "9cd1f53df1286bde82586e15da5fc10276e3b99db9c1642a0a8580cf651e958f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086111020-00110",
+      "seed": 86111020,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "2fd7e0c98bcd6afe7c481acd9fb40e5c050d02bbafbf5b5b912f170b9f2ad1f0"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086112030-00111",
+      "seed": 86112030,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "d342fc334dbb636f5ed8baaf03ca4cb5d9a19b8721d95aea95648f8513da900b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086113040-00112",
+      "seed": 86113040,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "0b0bf36cef3ba08ea2ef7ad088fe9518b4b898edb6d694b11aec32eabf6d704a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086114050-00113",
+      "seed": 86114050,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "d8b0951b282a701f5baa9400894fbde7fe391a28fcddae0bb88d01fbce8e4b8e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086115060-00114",
+      "seed": 86115060,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "65429fc170b090fc6903000c8335f6652e1c363c0489201044bb260503c703f4"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086116070-00115",
+      "seed": 86116070,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "18ef3888fa202077b1a89847d0c29818cfc969403bb8e122ca74e428ecb46b6a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086117080-00116",
+      "seed": 86117080,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "aba7631ba0d778812e7f76a47c42ddeeee836b7a1f4968b9c226826a1d27cc4b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086118090-00117",
+      "seed": 86118090,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "505144a7dac1a08503b170e5cdf2153fb955e9c4db31325d9d7dbf6ab4bda250"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086119100-00118",
+      "seed": 86119100,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "e6227d047fb304962fdf96c4eda007ca181514cc3300d9cac57516558603ef73"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-machine_bottleneck-0086120110-00119",
+      "seed": 86120110,
+      "profile": "machine_bottleneck",
+      "canonical_hash": "65b7c24bbd3d37ed750c5e198272b3a82362d2a5ea0772dab91efea7bf159916"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086121080-00120",
+      "seed": 86121080,
+      "profile": "failure",
+      "canonical_hash": "94fa0c7c93a202cb922c28079264541c4a4c42ea125a843e0140f374bcc03d7c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086122090-00121",
+      "seed": 86122090,
+      "profile": "failure",
+      "canonical_hash": "38d47a239157da901a7226116793a4de5fb939dd4abb36a9ed1e42acddb6f0ab"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086123100-00122",
+      "seed": 86123100,
+      "profile": "failure",
+      "canonical_hash": "0ab34f6c6c7e047e82226f2bf0eac49f0bb1a104098c62166117b8fe826939ec"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086124110-00123",
+      "seed": 86124110,
+      "profile": "failure",
+      "canonical_hash": "b923eda4b603598abfff86217094ee0d55f42a26095cb30c81c4ba3636dc127c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086125120-00124",
+      "seed": 86125120,
+      "profile": "failure",
+      "canonical_hash": "d6980bd7d723fd8f49cd184b5014bbd0698acb75e304c72e12688306abdde5de"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086126130-00125",
+      "seed": 86126130,
+      "profile": "failure",
+      "canonical_hash": "26777d57458cc955f92c6db8f3f8467b5528519b825e7aefe7c1ef4e69ba758c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086127140-00126",
+      "seed": 86127140,
+      "profile": "failure",
+      "canonical_hash": "f17336026715d00dc8d21635dc9a714e6fad2fc8414d47c13ea8ecd409779617"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086128150-00127",
+      "seed": 86128150,
+      "profile": "failure",
+      "canonical_hash": "c28821388095f942d909fc796cc385cfbb1315793ea1981c4a77118b6ddbb0e5"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086129160-00128",
+      "seed": 86129160,
+      "profile": "failure",
+      "canonical_hash": "c47e202005a3cdbb71290301d15238f7a4c1593de21ea74d2fa32ecbed8c9c48"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086130170-00129",
+      "seed": 86130170,
+      "profile": "failure",
+      "canonical_hash": "824a3346e7bbe0c3f22a916cd611595ceefa60f953e4f7bc92ec598c53b08165"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086131180-00130",
+      "seed": 86131180,
+      "profile": "failure",
+      "canonical_hash": "9a18a83c7ebfee05e8461e0277d371d9a1611968c85294b876c523dc360e50ad"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086132190-00131",
+      "seed": 86132190,
+      "profile": "failure",
+      "canonical_hash": "0b5ae96e0a9d1c6dd2500a01ee8303707474c86102f859a5f466f9189635e956"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086133200-00132",
+      "seed": 86133200,
+      "profile": "failure",
+      "canonical_hash": "6773f45b8a77a0719136cfb6350930b9902c35ba525a4a4f1ad2b258b38d1a99"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086134210-00133",
+      "seed": 86134210,
+      "profile": "failure",
+      "canonical_hash": "c49f2b6db2dfbe44dc65aff43d08075f74875789f7e9243a1449a228c375d33c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086135220-00134",
+      "seed": 86135220,
+      "profile": "failure",
+      "canonical_hash": "6277928c4697b2ad8f1b597a47d58f4993a0aa869ce26e2806cc4e7882ea3946"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086136230-00135",
+      "seed": 86136230,
+      "profile": "failure",
+      "canonical_hash": "46670896283058dd3a269a2908645dd1d5e9d41aaab3a4a1ad4134fffe036de5"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086137240-00136",
+      "seed": 86137240,
+      "profile": "failure",
+      "canonical_hash": "586c2420fc697654698b71e3e0bcf3d554677ce1b177de79eb3564fb64e38ed1"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086138250-00137",
+      "seed": 86138250,
+      "profile": "failure",
+      "canonical_hash": "6a5f9c136df8e6fdc742a9e769d8b7daef38113a0c7646460e19810805a8b3d0"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086139260-00138",
+      "seed": 86139260,
+      "profile": "failure",
+      "canonical_hash": "f0a8c97b0c9f1099994cdc642d82a9b1667e0841f9aa88100cc72e8c30e3a9aa"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086140270-00139",
+      "seed": 86140270,
+      "profile": "failure",
+      "canonical_hash": "a5fb0b6469e49290f056a34bfe0335027367a9cb851792505fe5ddd4f103b598"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086141280-00140",
+      "seed": 86141280,
+      "profile": "failure",
+      "canonical_hash": "45bf88bc68e68473ae272754699b12a39612e165f820404c6455a477f3cfe402"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086142290-00141",
+      "seed": 86142290,
+      "profile": "failure",
+      "canonical_hash": "182cd3a3424664f1bfb0779bfd546e999930bf15bce5996bcff0419845b089b7"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086143300-00142",
+      "seed": 86143300,
+      "profile": "failure",
+      "canonical_hash": "ed03528d67cb5fee249921e096c64b66bc0df544e028a5e0a7f1889da067614f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086144310-00143",
+      "seed": 86144310,
+      "profile": "failure",
+      "canonical_hash": "fd3982b547d1502c9ceb5a374a55dcf88ca1ca038b4595befde0456bda50e4dd"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086145320-00144",
+      "seed": 86145320,
+      "profile": "failure",
+      "canonical_hash": "09a9482b061eba83fda5179ad7ef1a7ad42ea7a346be8bd6c46a2a90fa737d62"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086146330-00145",
+      "seed": 86146330,
+      "profile": "failure",
+      "canonical_hash": "4dda15cb3ae36412b4789e2124ce9d53cb991b0d1ded9f5211cd3c3a93491eaa"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086147340-00146",
+      "seed": 86147340,
+      "profile": "failure",
+      "canonical_hash": "0a41af107d9ccc7397649859ec649d01b029952967dfaa608a2312e3de901edb"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086148350-00147",
+      "seed": 86148350,
+      "profile": "failure",
+      "canonical_hash": "9d8fe64d082a1ee1fb22dcf5d7fa6c833a895fc6c9e9f77a611b37151adad0cc"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086149360-00148",
+      "seed": 86149360,
+      "profile": "failure",
+      "canonical_hash": "ab0a98269771ceed73dd76f66ebffb7f1bf3b904981820b81a98b07b857fd906"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086150370-00149",
+      "seed": 86150370,
+      "profile": "failure",
+      "canonical_hash": "46870477a768db6c2215b68f5fd199b3cfa0c1c58619d427e2d3342d114e3558"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086151380-00150",
+      "seed": 86151380,
+      "profile": "failure",
+      "canonical_hash": "497e2010e704197cc89797176f0162a414cd4c537437d0a197040991ae8c1855"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086152390-00151",
+      "seed": 86152390,
+      "profile": "failure",
+      "canonical_hash": "40d5efbf9f0ea370c5315b61a492fc28bd9cbb1dec8861e275bce4e1fa2e7af5"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086153400-00152",
+      "seed": 86153400,
+      "profile": "failure",
+      "canonical_hash": "fa577ad96c954132213d2f66faab7026a3bcd1bc518cc3c57e056137f8354584"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086154410-00153",
+      "seed": 86154410,
+      "profile": "failure",
+      "canonical_hash": "bbf7773dd0e461e0b6ff21368abc45d5f6687f296441eacb495415bb8b06201c"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086155420-00154",
+      "seed": 86155420,
+      "profile": "failure",
+      "canonical_hash": "b86961f3a5a6c7df63cd7e172fd860bf93094a21847e5578045e5c39140f657a"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086156430-00155",
+      "seed": 86156430,
+      "profile": "failure",
+      "canonical_hash": "97e31c006657f996d7fc84dc790881ea8c4584ce4f5bfb75bf2ced2089bb92f9"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086157440-00156",
+      "seed": 86157440,
+      "profile": "failure",
+      "canonical_hash": "7b24986359dfdc82b0d8d0e7f168be6a8e01574ed6aac75c59cc31f7a316b384"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086158450-00157",
+      "seed": 86158450,
+      "profile": "failure",
+      "canonical_hash": "02ae5b9f18bb892eeb1ca08a1d1241da7bb0cede4a477b0a0831f7d04901a4d8"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086159460-00158",
+      "seed": 86159460,
+      "profile": "failure",
+      "canonical_hash": "5966524cd14cf8f3d59481fcbb4ebe1cadc47eaf7319e4a9e1b6804aa2cac6a3"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-failure-0086160470-00159",
+      "seed": 86160470,
+      "profile": "failure",
+      "canonical_hash": "71be35d28cd2ed86f210f99a76f4b154f4145a0b881dcae566bd48fa75b36e79"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086161440-00160",
+      "seed": 86161440,
+      "profile": "composite",
+      "canonical_hash": "25b433a49ffde504ed48b3b41ffa7ab8faecbefef6e66fbbf899a046960be1cf"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086162450-00161",
+      "seed": 86162450,
+      "profile": "composite",
+      "canonical_hash": "ba61c7e300ad5f906ea70a99074cf0587014abf47eaaa85007d51ce557137e88"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086163460-00162",
+      "seed": 86163460,
+      "profile": "composite",
+      "canonical_hash": "8333562249cc5f51bf684ebc6d5afe6e81e4dee55236a29486d06b4d378dd88d"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086164470-00163",
+      "seed": 86164470,
+      "profile": "composite",
+      "canonical_hash": "91034dfb339fe91412038b88a3d5c5d887645927901e3214b6fe9064059d720f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086165480-00164",
+      "seed": 86165480,
+      "profile": "composite",
+      "canonical_hash": "c211443143e1ee8fa61fa1b5e287108700cdd8f43222937870eeb140f5174117"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086166490-00165",
+      "seed": 86166490,
+      "profile": "composite",
+      "canonical_hash": "15f69da891e5e6e379b8a775a1d10c8274e41c028c1fee01d01f4658c0a47301"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086167500-00166",
+      "seed": 86167500,
+      "profile": "composite",
+      "canonical_hash": "c07f6a3ac9fd10dc79726d2a134344af5d899e25be56bf37877daf27f609cfa3"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086168510-00167",
+      "seed": 86168510,
+      "profile": "composite",
+      "canonical_hash": "64aedfd345a1c0872eef04262af2322b67ec2ec28744ccdf1442d308aeea258f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086169520-00168",
+      "seed": 86169520,
+      "profile": "composite",
+      "canonical_hash": "065b9ba8187fc06990394ec4b6e135937e2dfa1040c728ddc5789566feda0f96"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086170530-00169",
+      "seed": 86170530,
+      "profile": "composite",
+      "canonical_hash": "9d7da116d6bbdddfb5e4a9e47df80df1a0830b26a1c8ef1584eb8afae551661f"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086171540-00170",
+      "seed": 86171540,
+      "profile": "composite",
+      "canonical_hash": "47853a89977b5b76af448853202018ce1f79380ed5905320b07ba02362e4f279"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086172550-00171",
+      "seed": 86172550,
+      "profile": "composite",
+      "canonical_hash": "888ef55d24150715f98a894dd0ebee081c1dbb6f238f2b69da7b43f9b5cb1c29"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086173560-00172",
+      "seed": 86173560,
+      "profile": "composite",
+      "canonical_hash": "f538c6e06525257d78b2db59fccb483920aca84cfe478088ff9707eb1f11d6a6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086174570-00173",
+      "seed": 86174570,
+      "profile": "composite",
+      "canonical_hash": "6f249f9ef1d20ff389037079e25e1f433643c3cf066a4427c3713f0671ff149b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086175580-00174",
+      "seed": 86175580,
+      "profile": "composite",
+      "canonical_hash": "ee3b2f9410cefd002466a39bf41e632bbd75f163564f446cd8c500e5e1f51cda"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086176590-00175",
+      "seed": 86176590,
+      "profile": "composite",
+      "canonical_hash": "3102fc5c60e6e0568098dfebe7789e99d9f474e07ef62bd0880cad76a158b15d"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086177600-00176",
+      "seed": 86177600,
+      "profile": "composite",
+      "canonical_hash": "2197b8a03975cd118feec44484de5d532221962771fdcd0a5642bd73bc123702"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086178610-00177",
+      "seed": 86178610,
+      "profile": "composite",
+      "canonical_hash": "b1236013dacf446117ada53194a93a69daa68ab6d37f5c44b7b44d5b96c3d4c6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086179620-00178",
+      "seed": 86179620,
+      "profile": "composite",
+      "canonical_hash": "30db7c02fc33f8c55eb96506d62d1a3b76d95bbca9ca89fa9c7958f6c8a654fd"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086180630-00179",
+      "seed": 86180630,
+      "profile": "composite",
+      "canonical_hash": "d06b92a99ae2fec6d93c821296f2a14b4e94b3cf1a3633654e591af0604313ea"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086181640-00180",
+      "seed": 86181640,
+      "profile": "composite",
+      "canonical_hash": "0ae88eab805e1b50277e37ef27871079febb1a7b48a6f039f5910a0be657281d"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086182650-00181",
+      "seed": 86182650,
+      "profile": "composite",
+      "canonical_hash": "3978878bf09075e5344e716ee989ad92f465d805fc16c25221432193f507f0c3"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086183660-00182",
+      "seed": 86183660,
+      "profile": "composite",
+      "canonical_hash": "76b8c105858ec2b9b3b81e0e630595fce4d77003c8200738adaf0dd133892180"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086184670-00183",
+      "seed": 86184670,
+      "profile": "composite",
+      "canonical_hash": "9a620c249039a23d1f62d382661eb91ba4b37253fbb6685d19e03a4bdf31912e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086185680-00184",
+      "seed": 86185680,
+      "profile": "composite",
+      "canonical_hash": "af6e6919510455d113ee3b9158bb96c748fd4c96f537060e3654938c09167b20"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086186690-00185",
+      "seed": 86186690,
+      "profile": "composite",
+      "canonical_hash": "d8909592c54d643383381bb478bed9b8c921cbe13812d12e7df0957682c16964"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086187700-00186",
+      "seed": 86187700,
+      "profile": "composite",
+      "canonical_hash": "1f9bae360f0e4641d82088b12196530d6fd48eec000ce5825e16d9348731067d"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086188710-00187",
+      "seed": 86188710,
+      "profile": "composite",
+      "canonical_hash": "5fe5ae76131ae50220830312d4c093bd82027069558a254e93ccf1a04a0d08eb"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086189720-00188",
+      "seed": 86189720,
+      "profile": "composite",
+      "canonical_hash": "0f5f40bc6628f6b35292d867c80acfe25b67f1026b3c41e4ab508a1c0f3c9ce6"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086190730-00189",
+      "seed": 86190730,
+      "profile": "composite",
+      "canonical_hash": "9276b717c3266d7650b8ca8e7bfb7d4510598b3e6207874184faa098cd5c2240"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086191740-00190",
+      "seed": 86191740,
+      "profile": "composite",
+      "canonical_hash": "3c17d18b8a527df7646d484dc2abd5863f2ca96569cc0155778ea1e842594e08"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086192750-00191",
+      "seed": 86192750,
+      "profile": "composite",
+      "canonical_hash": "818b0249f94ece4aae14c93eee796198137ad96b935527e92f1f664553f27979"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086193760-00192",
+      "seed": 86193760,
+      "profile": "composite",
+      "canonical_hash": "116d44f2a12171cbaee782da1a0b2dd8dc7608efbbef0a4c05e48b1a883c61e2"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086194770-00193",
+      "seed": 86194770,
+      "profile": "composite",
+      "canonical_hash": "4d42ec46759c35d501e4820ab2dc8b15afc835ebf4459316733d72e7cdac0a5e"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086195780-00194",
+      "seed": 86195780,
+      "profile": "composite",
+      "canonical_hash": "7b79b1c5d5408f61ec69cbd7fdfe943d2b3239000302c4fb57fd0020547e166b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086196790-00195",
+      "seed": 86196790,
+      "profile": "composite",
+      "canonical_hash": "f0bd6a32af4bc709c3bc83c34f614b6737f9040adea714e12102f9a025c151cc"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086197800-00196",
+      "seed": 86197800,
+      "profile": "composite",
+      "canonical_hash": "73820f1fc84e6149c495f1ea91a0bd031db6351d897302ca3f58651189dbdd0b"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086198810-00197",
+      "seed": 86198810,
+      "profile": "composite",
+      "canonical_hash": "4d2228bd92a772eeb917e6d39341f7e0f9d17cc7747d3160345ff228591d0341"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086199820-00198",
+      "seed": 86199820,
+      "profile": "composite",
+      "canonical_hash": "335cc0530f08fa88d002807996136f9b56a279d1f21b861e37a7eb228558b021"
+    },
+    {
+      "instance_id": "dfjspt-benchmark-composite-0086200830-00199",
+      "seed": 86200830,
+      "profile": "composite",
+      "canonical_hash": "549ac2ed7ba46176e81b1677e842e26382834398526ef7f1c99b9e01a00b68b2"
+    }
+  ]
+}

@@ -186,10 +186,12 @@ const currentFactory = computed(
 
 // 统一清理函数：断联后端 + 清理 store
 async function cleanupFactory() {
-  try {
-    await apiPost(API_ROUTES.FACTORY_CONTROL_DISCONNECT);
-  } catch (e) {
-    console.warn("[FactoryView] disconnect 失败:", e);
+  if (currentFactoryId.value !== "algorithm_platform") {
+    try {
+      await apiPost(API_ROUTES.FACTORY_CONTROL_DISCONNECT);
+    } catch (e) {
+      console.warn("[FactoryView] disconnect 失败:", e);
+    }
   }
   factoryStore.clearAll();
   // 关闭浮层面板（算法池 / 批处理实验），避免退出后仍挂在 App.vue 全局层
@@ -202,9 +204,11 @@ async function cleanupFactory() {
 const enterFactory = async (factoryId) => {
   startLoading("工厂正在准备中", "正在初始化资源，请稍候...");
   try {
-    const response = await apiPost(API_ROUTES.FACTORY_CONTROL_SWITCH, {
-      factory_id: factoryId,
-    }, { timeout: 120000 });
+    const response = factoryId === "algorithm_platform"
+      ? { status: "ok" }
+      : await apiPost(API_ROUTES.FACTORY_CONTROL_SWITCH, {
+        factory_id: factoryId,
+      }, { timeout: 120000 });
 
     if (response.status === "ok") {
       currentFactoryId.value = factoryId;
@@ -213,9 +217,11 @@ const enterFactory = async (factoryId) => {
       isInFactory.value = true;
 
       // 预取数据集（已 memo 化，ConfigPanel 挂载时直接命中缓存）
-      factoryStore.fetchDatasets().catch((e) => {
-        console.error("[FactoryView] 加载数据集失败:", e);
-      });
+      if (factoryId !== "algorithm_platform") {
+        factoryStore.fetchDatasets().catch((e) => {
+          console.error("[FactoryView] 加载数据集失败:", e);
+        });
+      }
 
       const factory = factories.value.find((f) => f.id === factoryId);
       ElMessage.success({
@@ -309,6 +315,10 @@ const currentFactoryComponent = computed(() => {
     case "grid_factory_new":
       return defineAsyncComponent(
         () => import("@/views/factory/DockerFactoryManage.vue"),
+      );
+    case "algorithm_platform":
+      return defineAsyncComponent(
+        () => import("@/views/AlgorithmPlatformView.vue"),
       );
     default:
       return defineAsyncComponent(

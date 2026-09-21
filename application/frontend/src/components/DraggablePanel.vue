@@ -1,8 +1,8 @@
 <template>
   <div
     class="draggable-panel"
-    :class="{ collapsed: isCollapsed, dragging: isDragging }"
-    :style="panelStyle"
+    :class="{ collapsed: isCollapsed, dragging: isDragging, inline: inline }"
+    :style="inline ? inlinePanelStyle : panelStyle"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
@@ -58,6 +58,8 @@ const props = defineProps({
   maxHeight: { type: Number, default: 0 },
   /** 是否显示折叠按钮（某些浮层不需要折叠态） */
   collapsible: { type: Boolean, default: true },
+  /** 嵌入页面布局，不使用 fixed 定位和拖拽坐标。 */
+  inline: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close', 'collapse', 'move'])
@@ -88,6 +90,14 @@ const panelStyle = computed(() => {
   }
   return style
 })
+
+const inlinePanelStyle = computed(() => ({
+  width: '100%',
+  minWidth: '0',
+  left: 'auto',
+  top: 'auto',
+  maxHeight: props.maxHeight > 0 ? `${props.maxHeight}px` : 'none',
+}))
 
 // ==================== 拖拽逻辑 ====================
 

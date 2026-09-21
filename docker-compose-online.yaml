@@ -31,7 +31,6 @@ services:
   # 仿真引擎 — sim_server.py 提供在线控制 API
   # --------------------------------------------------------------------------
   engine:
-    <<: *gpu-deploy
     build:
       context: .
       dockerfile: online.dockerfile
@@ -45,12 +44,17 @@ services:
       - ./sky_executor:/app/sky_executor:ro
       - ./sky_logs:/app/sky_logs
       - ./config:/app/config:ro
+      # Optional deployed policy plugins use the same repository as the
+      # training worker; the engine still executes the formal SkyEngine core.
+      - ../skyengine-DFJSPT:/app/skyengine-DFJSPT:ro
+      - ./experiment:/app/experiment:ro
     environment:
       <<: *common-env
       DATA_DIR: "/dataset"
       SKY_LOG_DIR: "/app/sky_logs"
       PYTHONUNBUFFERED: "1"
       HTTP_TIMEOUT: 30
+      PYTHONPATH: "/app:/app/skyengine-DFJSPT"
 
     command: ["sh", "-c", "${ENGINE_CMD:-uv run python -u sim_server.py}"]
 

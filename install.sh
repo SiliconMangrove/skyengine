@@ -22,6 +22,10 @@ docker info >/dev/null 2>&1 || die "Docker daemon is not available. Start Docker
 [[ -f docker-compose.yml ]] || die "Run this script from the skyengine project directory."
 [[ -f .env.example ]] || die "Missing .env.example."
 
+dfjspt_root="$(dirname "$project_root")/skyengine-DFJSPT"
+[[ -d "$dfjspt_root" ]] || die "Missing sibling algorithm repository: $dfjspt_root"
+[[ -f "$dfjspt_root/dfjsp_t_rl/__init__.py" ]] || die "Invalid DFJSP-T algorithm repository: expected $dfjspt_root/dfjsp_t_rl/__init__.py"
+
 if [[ ! -f .env ]]; then
   cp .env.example .env
 fi
@@ -30,7 +34,7 @@ escape_sed_replacement() {
   printf '%s' "$1" | sed 's/[&|\\]/\\&/g'
 }
 
-set_env_path() {
+set_env_value() {
   local key="$1"
   local value="$2"
   local escaped
@@ -42,19 +46,49 @@ set_env_path() {
   fi
 }
 
-set_env_path SKYENGINE_COMPOSE_PATH "$project_root/docker-compose-online.yaml"
-set_env_path SKYENGINE_BATCH_COMPOSE_PATH "$project_root/docker-compose.yaml"
-set_env_path SKYENGINE_PROJECT_DIR "$project_root"
-set_env_path SKYENGINE_BATCH_DATASET_HOST_DIR "$project_root/dataset"
+set_env_value SKYENGINE_COMPOSE_PATH "$project_root/docker-compose-online.yaml"
+set_env_value SKYENGINE_BATCH_COMPOSE_PATH "$project_root/docker-compose.yaml"
+set_env_value SKYENGINE_PROJECT_HOST_DIR "$project_root"
+set_env_value SKYENGINE_BATCH_DATASET_HOST_DIR "$project_root/dataset"
 
 mkdir -p sky_logs
 
 "${compose[@]}" -f docker-compose.yml config --quiet
+"${compose[@]}" -f docker-compose.yml -f docker-compose.gpu.yml config --quiet
 "${compose[@]}" -f docker-compose-online.yaml config --quiet
 "${compose[@]}" -f docker-compose.yaml config --quiet
 
 printf '%s\n' '[1/2] Building platform images...'
 "${compose[@]}" -f docker-compose.yml build
+
+gpu_mode="$(sed -n 's/^SKYENGINE_GPU_MODE=//p' .env | tail -n 1)"
+gpu_mode="${gpu_mode:-auto}"
+case "$gpu_mode" in
+  auto|cuda|cpu) ;;
+  *) die "SKYENGINE_GPU_MODE must be auto, cuda, or cpu." ;;
+esac
+
+gpu_count=0
+if [[ "$gpu_mode" != "cpu" ]]; then
+  probe_output="$(docker run --rm --gpus all \
+    --entrypoint /app/.venv/bin/python \
+    skyengine-backend:latest \
+    -c 'import torch; n=torch.cuda.device_count() if torch.cuda.is_available() else 0; [(torch.cuda.set_device(i), torch.ones(1).cuda().add_(1).cpu()) for i in range(n)]; print(n)' \
+    2>/dev/null || true)"
+  if [[ "$probe_output" =~ ^[1-9][0-9]*$ ]]; then
+    gpu_count="$probe_output"
+  elif [[ "$gpu_mode" == "cuda" ]]; then
+    die "SKYENGINE_GPU_MODE=cuda, but Docker and the backend PyTorch runtime cannot access an NVIDIA GPU."
+  fi
+fi
+set_env_value SKYENGINE_GPU_COUNT "$gpu_count"
+
+if (( gpu_count > 0 )); then
+  printf 'GPU runtime: CUDA (%s device(s) available to the backend).\n' "$gpu_count"
+else
+  printf 'GPU runtime: CPU (no Docker-accessible CUDA device detected).\n'
+fi
+
 printf '%s\n' '[2/2] Building Python engine images...'
 "${compose[@]}" -p skyengine-online -f docker-compose-online.yaml build engine
 "${compose[@]}" -p skyengine-batch -f docker-compose.yaml build engine

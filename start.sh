@@ -50,6 +50,37 @@ get_env_value() {
   printf '%s' "${value:-}"
 }
 
+gpu_mode="$(get_env_value SKYENGINE_GPU_MODE)"
+gpu_mode="${gpu_mode:-auto}"
+export SKYENGINE_PROJECT_HOST_DIR="$project_root"
+case "$gpu_mode" in
+  auto|cuda|cpu) ;;
+  *)
+    printf 'start.sh: SKYENGINE_GPU_MODE must be auto, cuda, or cpu.\n' >&2
+    exit 1
+    ;;
+esac
+
+platform_compose=(-f docker-compose.yml)
+"${compose[@]}" -f docker-compose.yml build backend frontend
+gpu_count=0
+if [[ "$gpu_mode" != "cpu" ]]; then
+  probe_output="$(docker run --rm --gpus all \
+    --entrypoint /app/.venv/bin/python \
+    skyengine-backend:latest \
+    -c 'import torch; n=torch.cuda.device_count() if torch.cuda.is_available() else 0; [(torch.cuda.set_device(i), torch.ones(1).cuda().add_(1).cpu()) for i in range(n)]; print(n)' \
+    2>/dev/null || true)"
+  if [[ "$probe_output" =~ ^[1-9][0-9]*$ ]]; then
+    gpu_count="$probe_output"
+    platform_compose+=(-f docker-compose.gpu.yml)
+  elif [[ "$gpu_mode" == "cuda" ]]; then
+    printf 'start.sh: CUDA mode was requested, but Docker and backend PyTorch cannot access an NVIDIA GPU.\n' >&2
+    exit 1
+  else
+    printf 'start.sh: no Docker-accessible CUDA device detected; backend will use CPU.\n'
+  fi
+fi
+
 set_env_value() {
   local key="$1"
   local value="$2"
@@ -119,12 +150,12 @@ fi
 # from a non-Unix filesystem. Recreate it when the Vite command shim is not executable.
 if docker container inspect skyengine-frontend >/dev/null 2>&1; then
   if ! docker exec skyengine-frontend sh -c 'test -x /app/node_modules/.bin/vite' >/dev/null 2>&1; then
-    "${compose[@]}" -f docker-compose.yml rm -sf frontend >/dev/null 2>&1 || true
+    "${compose[@]}" "${platform_compose[@]}" rm -sf frontend >/dev/null 2>&1 || true
     docker volume rm skyengine-frontend-node-modules >/dev/null 2>&1 || true
   fi
 fi
 
-container_ids="$("${compose[@]}" -f docker-compose.yml ps -q 2>/dev/null || true)"
+container_ids="$("${compose[@]}" "${platform_compose[@]}" ps -q 2>/dev/null || true)"
 for container_id in $container_ids; do
   if [[ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null)" == "true" ]]; then
     platform_running=1
@@ -190,11 +221,16 @@ set_env_value ENGINE_PORT "$engine_port"
 set_env_value BATCH_ENGINE_PORT "$batch_engine_port"
 
 BACKEND_PORT="$backend_port" FRONTEND_PORT="$frontend_port" \
-  "${compose[@]}" -f docker-compose.yml up -d --build
+  "${compose[@]}" "${platform_compose[@]}" up -d
 ENGINE_PORT="$engine_port" \
   "${compose[@]}" -p skyengine-online -f docker-compose-online.yaml up -d engine
 
-"${compose[@]}" -f docker-compose.yml ps
+"${compose[@]}" "${platform_compose[@]}" ps
+printf 'Backend compute: %s' "$(if (( gpu_count > 0 )); then printf 'CUDA'; else printf 'CPU'; fi)"
+if (( gpu_count > 0 )); then
+  printf ' (%s device(s))' "$gpu_count"
+fi
+printf '\n'
 
 wait_for_http() {
   local name="$1"
@@ -214,8 +250,8 @@ wait_for_http() {
   done
 
   printf 'start.sh: %s did not become ready: %s\n' "$name" "$url" >&2
-  "${compose[@]}" -f docker-compose.yml logs --no-color --tail 80 frontend >&2 || true
-  "${compose[@]}" -f docker-compose.yml logs --no-color --tail 80 backend >&2 || true
+  "${compose[@]}" "${platform_compose[@]}" logs --no-color --tail 80 frontend >&2 || true
+  "${compose[@]}" "${platform_compose[@]}" logs --no-color --tail 80 backend >&2 || true
   exit 1
 }
 

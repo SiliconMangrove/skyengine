@@ -764,6 +764,23 @@ docs/archive/
 sky_logs/*
 !sky_logs/__init__.py
 !sky_logs/logger.py
+
+# 可复用的 SkyEngine 强化学习训练平台源码
+!experiment/
+experiment/*
+!experiment/rl_platform/
+!experiment/rl_platform/**
+!experiment/algorithm_platform/
+!experiment/algorithm_platform/**
+!experiment/algorithm_platform_plugins/
+!experiment/algorithm_platform_plugins/**
+
+# 算法实验平台设计与 API 文档
+!docs/
+docs/*
+!docs/算法实验与优化平台.md
+!docs/算法实验平台核心API.md
+!docs/算法实验平台HTTP_API.md
 logs/
 data/
 启动SkyEngine开发服务.ps1
@@ -772,3 +789,9 @@ data/
 *.db
 
 dataset/run/
+dataset/rl_platform_runs/
+dataset/algorithm_platform/
+
+# Keep Python caches ignored after the experiment source allowlists.
+__pycache__/
+*.py[cod]

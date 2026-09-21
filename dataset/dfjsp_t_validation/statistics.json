@@ -1,0 +1,7 @@
+{
+  "split": "validation",
+  "count": 100,
+  "profiles": {
+    "validation": 100
+  }
+}

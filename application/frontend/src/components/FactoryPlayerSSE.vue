@@ -26,7 +26,7 @@
                 <span class="toolbar-label">当前场景: {{ currentScenario === 'safety' ? '安全巡检' : '未选择' }}</span>
               </div>
 
-              <div class="toolbar-right">
+              <div v-if="!hideScenarioControls" class="toolbar-right">
                 <button v-if="onLoadData" @click="onLoadData" class="glass-btn" title="加载测试数据">
                   📂 加载数据
                 </button>
@@ -40,7 +40,7 @@
         </FactoryVisualization3D>
 
         <!-- 焦点面板：选中 machine/job/agv 后在右上角显示详情 -->
-        <FocusPanel />
+        <FocusPanel v-if="!hideFocusPanel" />
       </div>
     </div>
   </div>
@@ -62,6 +62,14 @@ const props = defineProps({
   onLoadData: {
     type: Function,
     default: null
+  },
+  hideScenarioControls: {
+    type: Boolean,
+    default: false
+  },
+  hideFocusPanel: {
+    type: Boolean,
+    default: false
   },
   editMode: {
     type: Boolean,

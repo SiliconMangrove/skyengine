@@ -1,16 +1,17 @@
 <template>
   <div v-if="visibleBtn" class="global-topnav">
     <!-- 工作空间选择页：算法池 -->
-    <button
-      v-if="visibleBtn === 'algo'"
-      class="nav-pill"
-      :class="{ active: ui.algoPoolOpen }"
-      @click="ui.toggleAlgoPool()"
-      title="算法池"
-    >
-      <span class="pill-icon">🧠</span>
-      <span class="pill-text">算法池</span>
-    </button>
+    <template v-if="visibleBtn === 'algo'">
+      <button
+        class="nav-pill"
+        :class="{ active: ui.algoPoolOpen }"
+        title="算法池"
+        @click="ui.toggleAlgoPool()"
+      >
+        <span class="pill-icon">🧠</span>
+        <span class="pill-text">算法池</span>
+      </button>
+    </template>
 
     <!-- 具体工厂操作页：批处理；不支持时禁用并提示原因 -->
     <button
@@ -29,19 +30,22 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUiPanelStore } from '@/stores/uiPanel'
 import { useFactoryStore } from '@/stores/factory'
 
 const ui = useUiPanelStore()
 const factoryStore = useFactoryStore()
+const route = useRoute()
 
 // 导航状态：'home'（首页）不显示按钮；'selector'（工作空间选择页）显示算法池；'factory'（具体工厂）显示批处理
 // factoryLoading=true 期间（工厂进入/退出加载过渡）一律隐藏，规避 navState race
 const visibleBtn = computed(() => {
+  if (route.path === '/training') return null
   if (ui.factoryLoading) return null
   if (ui.navState === 'selector') return 'algo'
-  if (ui.navState === 'factory') return 'batch'
+  if (ui.navState === 'factory' && currentFactoryId.value !== 'algorithm_platform') return 'batch'
   return null // home / 其他：不渲染
 })
 

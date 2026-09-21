@@ -204,7 +204,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { ElMessage } from "element-plus";
 import { useFactoryStore } from "@/stores/factory";
 import { useMonitorStore } from "@/stores/monitor";
@@ -319,6 +319,18 @@ const connectionStatus = ref({
 onMounted(async () => {
   store.reset();
   await sim.fetchAlgoOptions();
+  const replayRaw = sessionStorage.getItem('skyengine_replay_request');
+  if (replayRaw) {
+    sessionStorage.removeItem('skyengine_replay_request');
+    const replayRequest = JSON.parse(replayRaw);
+    if (replayRequest.config) {
+      store.loadConfigFromFile(replayRequest.config);
+      store.initializeAGVs();
+      await nextTick();
+      ElMessage.info(`正在加载样例 ${replayRequest.instance_id || ''} 到容器化工厂`);
+      await handleExecutePlan();
+    }
+  }
 });
 
 watch(

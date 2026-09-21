@@ -1,11 +1,12 @@
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="inline">
   <DraggablePanel
     v-if="visible"
     title="🎯 焦点"
     :width="FP_WIDTH"
     :max-height="520"
     :collapsible="false"
+    :inline="inline"
     :initial-pos="initialPos"
     @close="handleClose"
   >
@@ -282,6 +283,11 @@ import { useFactoryStore } from '@/stores/factory'
 import DraggablePanel from './DraggablePanel.vue'
 
 const store = useFactoryStore()
+
+const props = defineProps({
+  inline: { type: Boolean, default: false },
+})
+const inline = computed(() => props.inline)
 
 const EXCEPTION_PRESETS = {
   no_event: {},

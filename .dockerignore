@@ -6,9 +6,10 @@ application/frontend/node_modules
 __pycache__
 .pytest_cache
 sky_logs/*
+!sky_logs/__init__.py
+!sky_logs/logger.py
 data/history
 application/frontend/dist
 docs
-experiment
 test
 .uv-cache

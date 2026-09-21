@@ -69,6 +69,32 @@ export const API_ROUTES = {
   BATCH_STATUS: "/batch/status",
   BATCH_STREAM: "/batch/stream",
   BATCH_UPLOAD_INSTANCE: "/batch/upload_instance",
+
+  // 通用算法实验与优化平台
+  ALGORITHM_PLATFORM_CATALOG: "/algorithm-platform/catalog",
+  ALGORITHM_PLATFORM_DATASETS: "/algorithm-platform/datasets",
+  ALGORITHM_PLATFORM_DATASET: "/algorithm-platform/datasets/:dataset_id",
+  ALGORITHM_PLATFORM_DATASET_RESULTS: "/algorithm-platform/datasets/:dataset_id/results",
+  ALGORITHM_PLATFORM_VALIDATE: "/algorithm-platform/validate",
+  ALGORITHM_PLATFORM_COMPILE: "/algorithm-platform/compile",
+  ALGORITHM_PLATFORM_EXPERIMENTS: "/algorithm-platform/experiments",
+  ALGORITHM_PLATFORM_EXPERIMENT: "/algorithm-platform/experiments/:experiment_id",
+  ALGORITHM_PLATFORM_EXECUTIONS: "/algorithm-platform/executions",
+  ALGORITHM_PLATFORM_EXECUTION: "/algorithm-platform/executions/:execution_id",
+  ALGORITHM_PLATFORM_EXECUTION_CANCEL: "/algorithm-platform/executions/:execution_id/cancel",
+  ALGORITHM_PLATFORM_EXECUTION_METRICS: "/algorithm-platform/executions/:execution_id/metrics",
+  ALGORITHM_PLATFORM_EXECUTION_LOGS: "/algorithm-platform/executions/:execution_id/logs",
+  ALGORITHM_PLATFORM_EXECUTION_MANIFEST: "/algorithm-platform/executions/:execution_id/manifest",
+  ALGORITHM_PLATFORM_EXECUTION_COMPARISON: "/algorithm-platform/executions/:execution_id/comparison",
+  ALGORITHM_PLATFORM_EXECUTION_RUNS: "/algorithm-platform/executions/:execution_id/runs",
+  ALGORITHM_PLATFORM_CHECKPOINTS: "/algorithm-platform/executions/:execution_id/checkpoints",
+  ALGORITHM_PLATFORM_CHECKPOINT: "/algorithm-platform/executions/:execution_id/checkpoints/:run_id/:name",
+  ALGORITHM_PLATFORM_CHECKPOINT_EXPORT: "/algorithm-platform/executions/:execution_id/checkpoints/:run_id/:name/export",
+  ALGORITHM_PLATFORM_RUN_REPLAY: "/algorithm-platform/runs/:run_id/replay",
+  ALGORITHM_PLATFORM_REPLAY_REPRODUCE: "/algorithm-platform/executions/:execution_id/runs/:run_id/replay/reproduce",
+  ALGORITHM_PLATFORM_REPLAY_BRANCH: "/algorithm-platform/executions/:execution_id/runs/:run_id/replay/branch",
+  ALGORITHM_PLATFORM_REPLAY_DIFF: "/algorithm-platform/replay/diff",
+  ALGORITHM_PLATFORM_ARTIFACT: "/algorithm-platform/artifacts/:digest",
 };
 
 /**
@@ -79,9 +105,17 @@ export const API_ROUTES = {
  */
 export function getApiUrl(route, params = {}) {
   let url = route;
+  const query = new URLSearchParams();
   Object.keys(params).forEach((key) => {
-    url = url.replace(`:${key}`, params[key]);
+    const token = `:${key}`;
+    if (url.includes(token)) {
+      url = url.replace(token, encodeURIComponent(params[key]));
+    } else if (params[key] !== undefined && params[key] !== null) {
+      query.set(key, params[key]);
+    }
   });
+  const queryString = query.toString();
+  if (queryString) url += `${url.includes("?") ? "&" : "?"}${queryString}`;
   return `${API_BASE_URL}${url}`;
 }
 
@@ -125,13 +159,22 @@ async function request(route, options = {}) {
     const response = await fetch(url, config);
     clearTimeout(timeoutId);
 
+    const contentType = response.headers.get("content-type");
+
     if (!response.ok) {
-      const error = new Error(`HTTP Error: ${response.status}`);
+      const payload = contentType && contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      const detail = payload?.detail ?? payload;
+      const message = typeof detail === "string"
+        ? detail
+        : `HTTP Error: ${response.status}`;
+      const error = new Error(message);
       error.status = response.status;
+      error.detail = detail;
       throw error;
     }
 
-    const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       return response.json();
     }
