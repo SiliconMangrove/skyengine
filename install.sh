@@ -46,9 +46,11 @@ set_env_value() {
   fi
 }
 
+# Persist Linux host paths for the shared Compose files used by start.sh and stop.sh.
 set_env_value SKYENGINE_COMPOSE_PATH "$project_root/docker-compose-online.yaml"
 set_env_value SKYENGINE_BATCH_COMPOSE_PATH "$project_root/docker-compose.yaml"
 set_env_value SKYENGINE_PROJECT_HOST_DIR "$project_root"
+set_env_value SKYENGINE_DOCKER_HOST_DIR "$project_root"
 set_env_value SKYENGINE_BATCH_DATASET_HOST_DIR "$project_root/dataset"
 
 mkdir -p sky_logs

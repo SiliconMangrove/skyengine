@@ -52,7 +52,6 @@ get_env_value() {
 
 gpu_mode="$(get_env_value SKYENGINE_GPU_MODE)"
 gpu_mode="${gpu_mode:-auto}"
-export SKYENGINE_PROJECT_HOST_DIR="$project_root"
 case "$gpu_mode" in
   auto|cuda|cpu) ;;
   *)

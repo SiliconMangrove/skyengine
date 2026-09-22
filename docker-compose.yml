@@ -38,8 +38,8 @@ services:
       - SKYENGINE_COMPOSE_PATH=/opt/skyengine/docker-compose-online.yaml
       - SKYENGINE_BATCH_COMPOSE_PATH=/opt/skyengine/docker-compose-batch.yaml
       - SKYENGINE_PROJECT_DIR=/opt/skyengine/project
-      # DockerProxy 在 Linux 容器内调用 Compose；这里必须传 Docker Desktop VM
-      # 可识别的宿主机路径，不能直接传 Windows 盘符路径。
+      # DockerProxy 在容器内调用 Compose；Linux 使用宿主机项目绝对路径，
+      # Windows 使用 Docker Desktop VM 路径，不能直接传 Windows 盘符路径。
       - SKYENGINE_PROJECT_HOST_DIR=${SKYENGINE_DOCKER_HOST_DIR:?SKYENGINE_DOCKER_HOST_DIR not set}
       - SKYENGINE_BATCH_DATASET_HOST_DIR=/app/dataset
       - ENGINE_URL=http://engine:8080

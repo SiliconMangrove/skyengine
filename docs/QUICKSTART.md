@@ -75,6 +75,8 @@ cd ../skyengine
 
 安装更新摘要后，刷新算法平台页面并重新点击“训练”载入模板；此前保存的实验定义仍保留原数据集摘要。
 
+Linux 的部署路径统一由 `install.sh` 写入 `.env`，包括在线与批处理 Compose 文件路径、项目目录和数据集目录。其中 `SKYENGINE_PROJECT_HOST_DIR` 和 `SKYENGINE_DOCKER_HOST_DIR` 都使用当前项目的绝对路径。`start.sh` 和 `stop.sh` 通过共用的 Compose 文件读取 `.env` 中的路径配置。移动项目目录或从 Windows 迁移到 Linux 后，先重新运行 `./install.sh` 更新配置，再启动服务。
+
 ## 6. 启动服务
 
 ```bash
@@ -153,6 +155,17 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec backend .ven
 - 数据集位于 `dataset/`，批处理和在线引擎会使用项目配置的挂载目录。
 
 ## 常见问题
+
+### 提示 SKYENGINE_DOCKER_HOST_DIR not set
+
+更新后的 Linux 安装脚本会自动补齐该配置。更新代码后，重新执行 `./install.sh`，成功后执行 `./start.sh`。
+
+在 `skyengine` 根目录执行：
+
+```bash
+./install.sh
+./start.sh
+```
 
 ### 前端或后端端口变化
 
