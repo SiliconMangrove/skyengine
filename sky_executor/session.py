@@ -94,6 +94,11 @@ def create_env_from_config(config: dict, *, agent_observation_type: str = "defau
     machine_values = list(machines.values())
     machine_positions = [tuple(m["location"]) for m in machine_values if "location" in m]
     agent_positions = [tuple(a["initialLocation"]) for a in agvs]
+    occupied: dict[tuple[int, int], int] = {}
+    for agv, position in zip(agvs, agent_positions):
+        if position in occupied:
+            raise ValueError(f"AGV {occupied[position]} 和 AGV {agv['id']} 初始位置重复: {position}")
+        occupied[position] = agv["id"]
     material = _material_config(config.get("material_handling_config"), topology)
     extra = [tuple(material[key]) for key in ("raw_material_source", "finished_goods_destination") if key in material]
     jobs_config = config.get("jobs") or {}

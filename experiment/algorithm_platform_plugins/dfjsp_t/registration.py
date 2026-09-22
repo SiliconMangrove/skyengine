@@ -199,6 +199,7 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
         "properties": {
             "episodes": {"type": "integer", "minimum": 1, "default": 1000},
             "num_envs": {"type": "integer", "minimum": 1, "default": 4},
+            "evaluation_num_envs": {"type": "integer", "minimum": 1, "default": 2},
             "checkpoint_interval_steps": {"type": "integer", "minimum": 0, "default": 0},
             "max_steps": {"type": "integer", "minimum": 1, "default": 1000},
             "evaluation_episodes": {

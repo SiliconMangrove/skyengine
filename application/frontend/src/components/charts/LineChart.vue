@@ -52,7 +52,7 @@ const chartOption = computed(() => {
   const series = props.series.map((s) => ({
     name: s.name || '',
     type: 'line',
-    showSymbol: false,
+    showSymbol: s.data?.length === 1,
     smooth: false,
     lineStyle: { width: 2 },
     itemStyle: s.color ? { color: s.color } : undefined,

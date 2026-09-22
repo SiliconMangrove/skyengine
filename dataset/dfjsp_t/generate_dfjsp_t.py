@@ -39,6 +39,18 @@ def make_instance(seed: int, split: str, profile: Profile, ordinal: int) -> dict
     agvs = rng.randint(*profile.agvs)
     size = rng.randint(*profile.map_size)
     topology = generate_topology(rng, machines, size, profile.bottleneck)
+    map_rows: list[str] = topology["map"].splitlines()
+    reserved: set[tuple[int, int]] = {tuple(machine["location"]) for machine in topology["machines"].values()}
+    reserved.update((tuple(topology["depot"]), tuple(topology["product"])))
+    # Fill distinct parking cells column by column, without wrapping vehicles
+    # back onto occupied starting positions on small maps.
+    parking_cells: list[tuple[int, int]] = [
+        (x, y) for x in range(1, topology["gridWidth"] - 1)
+        for y in (*range(1, topology["gridHeight"] - 1, 2), *range(2, topology["gridHeight"] - 1, 2))
+        if map_rows[y][x] != "#" and (x, y) not in reserved
+    ]
+    if agvs > len(parking_cells):
+        raise ValueError(f"地图只有 {len(parking_cells)} 个可用停车格，无法放置 {agvs} 台 AGV")
     dynamic_rate = 0.45 if split == "benchmark" or profile.bottleneck == "composite" else 0.25
     urgent_rate = 0.16 if split == "benchmark" or profile.bottleneck in {"machine", "composite"} else 0.10
     job_list = generate_jobs(rng, jobs, machines, profile.ops, profile.flexibility, profile.proc_time, profile.bottleneck, dynamic_rate, urgent_rate)
@@ -51,7 +63,7 @@ def make_instance(seed: int, split: str, profile: Profile, ordinal: int) -> dict
         "seed": seed,
         "profile": profile.name,
         "topology": topology,
-        "agvs": [{"id": index, "name": f"AGV-{index}", "initialLocation": [1, 1 + (index * 2) % max(2, size - 2)], "velocity": 1.0, "capacity": 1, "status": "IDLE"} for index in range(agvs)],
+        "agvs": [{"id": index, "name": f"AGV-{index}", "initialLocation": list(parking_cells[index]), "velocity": 1.0, "capacity": 1, "status": "IDLE"} for index in range(agvs)],
         "jobs": {"job_list": job_list},
         "material_handling_config": {"raw_material_source": topology["depot"], "pickup_dwell_steps": 1, "dropoff_dwell_steps": 1},
         "processing_time_config": processing,

@@ -16,6 +16,12 @@ def validate_instance(instance: Mapping[str, Any]) -> None:
     if not jobs:
         raise ValueError("实例没有作业")
     machine_ids = {int(key) for key in machines}
+    occupied: dict[tuple[int, int], int] = {}
+    for agv in instance["agvs"]:
+        position: tuple[int, int] = tuple(agv["initialLocation"])
+        if position in occupied:
+            raise ValueError(f"实例 {instance['instance_id']} 中 AGV {occupied[position]} 和 AGV {agv['id']} 初始位置重复: {position}")
+        occupied[position] = agv["id"]
     for job in jobs:
         if not job.get("operations"):
             raise ValueError("作业没有工序")

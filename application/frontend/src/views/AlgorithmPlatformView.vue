@@ -266,6 +266,7 @@
                   :value="field.value"
                   @change="updateConfigParameter(group, field, $event.target.value)"
                 />
+                <p v-if="field.name === 'checkpoint_interval_steps'" class="parameter-hint">累计仿真步数；0 仅保留最佳</p>
               </label>
             </div>
             <div v-else class="parameter-empty">当前算法没有需要调整的配置参数。</div>
@@ -310,7 +311,7 @@
         </p>
 
         <div v-if="validation" class="result-box" :class="validation.valid ? 'success' : 'failure'">
-          <div><strong>{{ validation.valid ? '配置有效' : '配置无效' }}</strong><span v-if="validation.plan_digest">计划摘要 {{ shortId(validation.plan_digest) }}</span></div>
+          <div><strong>{{ validation.valid ? '配置有效' : '配置无效' }}</strong></div>
           <pre v-if="validationMessage">{{ validationMessage }}</pre>
         </div>
         <div v-if="compiled" class="result-box success">
@@ -318,7 +319,7 @@
           <details><summary>查看编译结果</summary><pre>{{ pretty(compiled.plan || compiled.experiment || compiled) }}</pre></details>
         </div>
         <div v-if="storedExperiment" class="result-box success">
-          <div><strong>实验定义已保存</strong><span>{{ storedExperiment.experiment_id }} · {{ shortId(storedExperiment.digest) }}</span></div>
+          <div><strong>实验定义已保存</strong><span>{{ storedExperiment.experiment_id }}</span></div>
         </div>
       </section>
 
@@ -370,7 +371,7 @@
           </div>
           <div class="summary-cards">
             <div><span>用途</span><strong>{{ purposeLabel(selectedExecution.purpose) }}</strong></div>
-            <div><span>计划摘要</span><strong>{{ shortId(selectedExecution.plan_digest) }}</strong></div>
+            <div><span>开始时间</span><strong>{{ displayTime(selectedExecution.started_at) }}</strong></div>
             <div><span>运行单元</span><strong>{{ executionRuns.length }}</strong></div>
             <div><span>更新时间</span><strong>{{ displayTime(selectedExecution.updated_at) }}</strong></div>
           </div>
@@ -378,6 +379,62 @@
             <strong>{{ selectedExecution.failure.code || '执行失败' }}</strong>
             <p>{{ selectedExecution.failure.message || pretty(selectedExecution.failure) }}</p>
           </div>
+
+          <section v-if="trainingRuns.length" class="training-monitor">
+            <div class="subsection-heading">
+              <h3>训练指标</h3>
+              <select v-if="trainingRuns.length > 1" v-model="selectedTrainingRunKey" aria-label="训练运行单元">
+                <option v-for="run in trainingRuns" :key="run.key" :value="run.key">{{ run.label }}</option>
+              </select>
+              <span>{{ trainingUpdates.length }} 次网络更新</span>
+            </div>
+            <p class="training-stage">{{ trainingStageMessage }}</p>
+            <p v-if="samplingStageMessage" class="training-timing">采样：{{ samplingStageMessage }}</p>
+            <p v-if="learnerStageMessage" class="training-timing">训练：{{ learnerStageMessage }}</p>
+            <p v-if="evaluationStageMessage" class="training-timing">{{ evaluationStageMessage }}</p>
+            <div class="summary-cards">
+              <div v-for="metric in trainingMetricDefinitions" :key="metric.key">
+                <span>{{ metric.label }}</span><strong>{{ formatMetricValue(latestTrainingUpdate?.trainer?.[metric.key]) }}</strong>
+              </div>
+            </div>
+            <p v-if="latestTrainingUpdate" class="training-timing">
+              累计 {{ latestTrainingUpdate.total_steps }} 仿真步 · 本批 {{ latestTrainingUpdate.trainer.transitions }} 个决策样本 ·
+              该训练批原采样 {{ formatMetricValue(latestTrainingUpdate.batch_collection_seconds) }} 秒 ·
+              网络更新 {{ formatMetricValue(latestTrainingUpdate.batch_update_seconds) }} 秒
+            </p>
+            <template v-if="trainingBarriers.length">
+              <h4>同步等待记录</h4>
+              <p class="training-timing">同一行对应同时运行的采样和训练。采样等待训练表示 CPU 先完成；训练等待采样表示 GPU 先完成。验证独立运行。</p>
+              <div class="metric-table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>同步轮</th><th>采样回合 / 策略</th><th>训练回合 / 采样策略</th><th>采样完成</th><th>训练完成</th><th>采样耗时</th><th>训练耗时</th><th>采样等待训练</th><th>训练等待采样</th></tr></thead>
+                  <tbody>
+                    <tr v-for="barrier in trainingBarriers" :key="`${barrier.stage}-${barrier.barrier_round}`">
+                      <td>{{ barrier.barrier_round }}{{ barrier.stage === 'warmup' ? '（首批）' : barrier.stage === 'drain' ? '（收尾）' : '' }}</td>
+                      <td>{{ barrier.sampling_end_episode == null ? '—' : `${barrier.sampling_start_episode}—${barrier.sampling_end_episode} / V${barrier.sampling_policy_version}` }}</td>
+                      <td>{{ barrier.training_end_episode == null ? '—' : `${barrier.training_start_episode}—${barrier.training_end_episode} / V${barrier.training_behavior_policy_version}` }}</td>
+                      <td>{{ displayPreciseTime(barrier.sampling_completed_at) }}</td>
+                      <td>{{ displayPreciseTime(barrier.training_completed_at) }}</td>
+                      <td>{{ formatMetricValue(barrier.sampling_seconds) }} 秒</td>
+                      <td>{{ formatMetricValue(barrier.training_seconds) }} 秒</td>
+                      <td>{{ formatMetricValue(barrier.sampling_wait_seconds) }} 秒</td>
+                      <td>{{ formatMetricValue(barrier.training_wait_seconds) }} 秒</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+            <div v-if="trainingUpdates.length" class="training-charts">
+              <article v-for="metric in trainingMetricDefinitions" :key="metric.key">
+                <h4>{{ metric.label }}</h4>
+                <LineChart
+                  :series="[{ name: metric.label, data: trainingUpdates.map(update => ({ x: update.total_steps, y: update.trainer[metric.key] })) }]"
+                  x-label="累计仿真步" :show-data-zoom="false" height="200px"
+                />
+              </article>
+            </div>
+            <p v-else class="training-timing">首批网络更新完成后显示 Loss、策略损失、价值损失和熵。历史记录未保存这些指标时显示为空。</p>
+          </section>
 
           <div class="subsection-heading"><h3>训练 Checkpoint</h3><span>{{ executionCheckpoints.length }} 个</span></div>
           <div v-if="executionCheckpoints.length" class="metric-table-wrap">
@@ -741,6 +798,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import FactoryPlayerSSE from '@/components/FactoryPlayerSSE.vue'
+import LineChart from '@/components/charts/LineChart.vue'
 import { useFactoryStore } from '@/stores/factory'
 import { API_ROUTES, apiGet, apiPost, getApiUrl } from '@/utils/api'
 import './styles/AlgorithmPlatformView.css'
@@ -757,7 +815,8 @@ const tabs = [
 const parameterLabels = {
   episodes: '训练轮数',
   num_envs: '并行采样环境数',
-  checkpoint_interval_steps: 'Checkpoint 保存间隔（累计步数，0 仅保留最佳）',
+  evaluation_num_envs: '并行评估环境数',
+  checkpoint_interval_steps: 'Checkpoint 间隔',
   max_steps: '最大步数',
   evaluation_episodes: '评估轮数',
   evaluation_max_steps: '评估最大步数',
@@ -840,6 +899,7 @@ const tuneTemplate = {
       evaluation_max_steps: 1000,
       validation_interval: 100,
       num_envs: 4,
+      evaluation_num_envs: 2,
       checkpoint_interval_steps: 0,
       device: 'auto',
       gpu_ids: [],
@@ -1053,11 +1113,7 @@ const configOptimizerGroup = computed(() => {
     algorithm_id: optimizer.id,
     version: optimizer.version,
     name: optimizerLabel(optimizer.id),
-    fields: Object.entries(optimizer.parameters || {}).map(([name, value]) => ({
-      name,
-      value,
-      definition: schema[name] || inferredParameterDefinition(value),
-    })),
+    fields: parameterFields(optimizer.parameters || {}, schema),
   }
 })
 const configSearchSpaceFields = computed(() => {
@@ -1084,11 +1140,7 @@ const configParameterGroups = computed(() => {
       version: reference.version,
       name: manifest?.name || reference.id,
       role: interfaceLabel(reference.interface),
-      fields: Object.entries(reference.parameters || {}).map(([name, value]) => ({
-        name,
-        value,
-        definition: schema[name] || inferredParameterDefinition(value),
-      })),
+      fields: parameterFields(reference.parameters || {}, schema),
     }
   })
   return groups
@@ -1100,9 +1152,49 @@ const planSummary = computed(() => {
   const plan = compiled.value.plan || {}
   const trials = asList(plan.trials)
   const runs = asList(plan.runs).length
-  return `${trials.length} 个参数候选 · ${runs} 个运行单元 · ${shortId(compiled.value.plan_digest)}`
+  return `${trials.length} 个参数候选 · ${runs} 个运行单元`
 })
 const selectedExecution = computed(() => selectedExecutionPayload.value?.execution || executions.value.find(item => item.execution_id === selectedExecutionId.value) || null)
+const selectedTrainingRunKey = ref('')
+const trainingMetricDefinitions = [
+  { key: 'loss', label: '总损失 Loss' },
+  { key: 'policy_loss', label: '策略损失 Policy loss' },
+  { key: 'value_loss', label: '价值损失 Value loss' },
+  { key: 'entropy', label: '策略熵 Entropy' },
+]
+const trainingRuns = computed(() => {
+  /** @type {Map<string, {key: string, label: string, events: object[]}>} */
+  const runs = new Map()
+  for (const event of executionLogs.value) {
+    const key = `${event.execution_id}/${event.run_id}`
+    if (event.event_type === 'training_started' || event.event_type === 'training_progress') {
+      if (!runs.has(key)) runs.set(key, { key, label: `${event.execution_id} · ${event.run_id}`, events: [] })
+    }
+    if (runs.has(key)) runs.get(key).events.push(event)
+  }
+  return [...runs.values()]
+})
+watch(trainingRuns, runs => {
+  if (!runs.some(run => run.key === selectedTrainingRunKey.value)) selectedTrainingRunKey.value = runs[0]?.key || ''
+})
+const selectedTrainingEvents = computed(() => trainingRuns.value.find(run => run.key === selectedTrainingRunKey.value)?.events || [])
+const trainingUpdates = computed(() => selectedTrainingEvents.value
+  .filter(event => event.payload?.phase === 'update_completed' && event.payload.trainer.updated)
+  .map(event => event.payload))
+const latestTrainingUpdate = computed(() => trainingUpdates.value.at(-1))
+const trainingBarriers = computed(() => selectedTrainingEvents.value
+  .filter(event => event.payload?.phase === 'barrier_completed').map(event => event.payload))
+const samplingStageMessage = computed(() => selectedTrainingEvents.value
+  .filter(event => ['episode_started', 'collecting', 'sampling_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
+const learnerStageMessage = computed(() => selectedTrainingEvents.value
+  .filter(event => ['updating', 'update_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
+const trainingStageMessage = computed(() => {
+  const event = selectedTrainingEvents.value.filter(item => !['evaluating', 'evaluation_queued', 'evaluation_completed', 'checkpoint_saved'].includes(item.payload?.phase)).at(-1)
+  if (event?.event_type === 'run_finished') return `训练${statusLabel(event.payload.status)}`
+  return event?.payload?.message || '等待训练进度'
+})
+const evaluationStageMessage = computed(() => selectedTrainingEvents.value
+  .filter(event => ['evaluating', 'evaluation_completed', 'evaluation_draining'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
 const canCancelExecution = computed(() => ['compiled', 'running'].includes(selectedExecution.value?.status))
 const showCancelExecution = computed(() => canCancelExecution.value || selectedExecution.value?.status === 'cancel_requested')
 const metricItems = computed(() => asList(metricPayload.value?.items))
@@ -1158,11 +1250,7 @@ const branchParameterFields = computed(() => {
   let parameters
   try { parameters = JSON.parse(branchForm.parameters || '{}') } catch { return [] }
   const schema = selectedBranchAlgorithm.value?.parameter_schema?.properties || {}
-  return Object.entries(parameters).map(([name, value]) => ({
-    name,
-    value,
-    definition: schema[name] || inferredParameterDefinition(value),
-  }))
+  return parameterFields(parameters, schema)
 })
 const branchInputArtifacts = computed(() => {
   try {
@@ -1281,6 +1369,12 @@ function defaultSearchSpace(properties) {
   }))
 }
 function parameterLabel(name) { return parameterLabels[name] || name }
+/** @param {Record<string, unknown>} parameters @param {Record<string, object>} schema */
+function parameterFields(parameters, schema) {
+  const names = [...Object.keys(schema).filter(name => Object.hasOwn(parameters, name)),
+    ...Object.keys(parameters).filter(name => !Object.hasOwn(schema, name)).sort()]
+  return names.map(name => ({ name, value: parameters[name], definition: schema[name] || inferredParameterDefinition(parameters[name]) }))
+}
 function parameterInputValue(value) { return value && typeof value === 'object' ? JSON.stringify(value) : value }
 function parseParameterValue(definition, value) {
   if (definition.type === 'integer') return Number.parseInt(value, 10)
@@ -1337,6 +1431,12 @@ function pretty(value) { return JSON.stringify(value, null, 2) }
 function concise(value) { const text = typeof value === 'string' ? value : JSON.stringify(value); return text == null ? '∅' : text.length > 120 ? `${text.slice(0, 117)}…` : text }
 function shortId(value) { if (!value) return '—'; return value.length > 20 ? `${value.slice(0, 9)}…${value.slice(-7)}` : value }
 function displayTime(value) { if (!value) return '—'; return new Date(value).toLocaleString('zh-CN', { hour12: false }) }
+/** @param {string | null} value */
+function displayPreciseTime(value) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
+}
 function formatBytes(value) { const bytes = Number(value); if (!Number.isFinite(bytes)) return '—'; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1024 ** 2).toFixed(1)} MB` }
 function interfaceLabel(value) { return ({ online: '在线策略', batch: '批求解', iterative: '迭代求解', trainable: '可训练', search_optimizer: '调优器' })[value] || value }
 function optimizerLabel(value) { return ({ 'platform.grid_search': '网格搜索', 'platform.random_search': '随机搜索', 'platform.genetic_search': '遗传搜索' })[value] || value }
@@ -1632,7 +1732,7 @@ async function saveExperiment() {
   try {
     storedExperiment.value = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_EXPERIMENTS, requestBody())
     configDirty.value = false
-    setNotice('实验定义已保存', `${storedExperiment.value.experiment_id} 已按内容摘要持久化。`, 'success')
+    setNotice('实验定义已保存', storedExperiment.value.experiment_id, 'success')
     await loadExperiments()
   } catch (error) { setNotice('保存实验定义失败', errorText(error), 'error') }
   finally { loading.save = false }

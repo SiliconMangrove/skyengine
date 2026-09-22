@@ -181,6 +181,13 @@
 .parameter-grid select:focus,
 .parameter-grid textarea:focus { border-color: var(--line-strong); }
 .parameter-grid select:disabled { opacity: 0.55; cursor: not-allowed; }
+.parameter-grid .parameter-hint { grid-column: 1 / -1; margin: 2px 0 0; color: var(--muted); font-size: 10px; }
+.training-stage { color: var(--mint); font-size: 12px; }
+.training-timing { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.training-monitor select { max-width: 55%; padding: 6px; color: var(--text); background: #0b1627; border: 1px solid var(--line); border-radius: 6px; }
+.training-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.training-charts article { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-soft); }
+.training-charts h4 { margin: 0 0 8px; color: var(--muted); font-size: 11px; }
 .parameter-empty { padding: 14px; color: var(--muted); font-size: 10px; }
 .parameter-empty-state { min-height: 110px; }
 .full-config-details { margin-top: 12px; border-top: 1px solid var(--line); color: var(--muted); }
