@@ -1,3 +1,6 @@
+# Bash scripts must keep Unix line endings on every platform.
+*.sh text eol=lf
+
 # Dataset fingerprints must be identical in Windows and Linux checkouts.
 dataset/**/*.jsonl text eol=lf
 dataset/**/manifest.json text eol=lf

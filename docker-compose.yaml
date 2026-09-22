@@ -3,18 +3,14 @@
 # 架构：engine 对外暴露 HTTP，内部以 REST 调用 mapf / fjsp 组件
 # ============================================================================
 
-x-gpu-deploy: &gpu-deploy
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [ gpu ]
+x-gpu-device: &gpu-device
+  driver: nvidia
+  capabilities: [ gpu ]
 
 x-common-env: &common-env
   SKY_LOG_LEVEL: INFO
-  CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+  # Each container receives one host GPU, exposed as local CUDA device 0.
+  CUDA_VISIBLE_DEVICES: "0"
   SEED: ${SEED:-42}
 
 services:
@@ -23,7 +19,12 @@ services:
   # 核心引擎 — 唯一对外入口
   # --------------------------------------------------------------------------
   engine:
-    <<: *gpu-deploy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - <<: *gpu-device
+              device_ids: ["${SKYENGINE_BATCH_ENGINE_GPU_ID:-0}"]
     build:
       context: .
       dockerfile: dockerfile
@@ -66,9 +67,6 @@ services:
       FJSP_SERVICE_URL: "http://fjsp:8002"
       MAPF_IMAGE: ${MAPF_IMAGE:-skyengine-mapf-gpt:latest} # 供 engine 自动推断 obs_type
 
-      # --- 显卡 ---
-      NVIDIA_VISIBLE_DEVICES: 2
-
     networks:
       - control-net
     command: [ "sh", "-c", "${ENGINE_CMD:-uv run python -u run.py}" ]
@@ -77,14 +75,18 @@ services:
   # 组件 A — MAPF 路径规划（仅内网可达，不对外暴露）
   # --------------------------------------------------------------------------
   mapf:
-    <<: *gpu-deploy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - <<: *gpu-device
+              device_ids: ["${SKYENGINE_BATCH_MAPF_GPU_ID:-0}"]
     image: ${MAPF_IMAGE:-skyengine-mapf-gpt:latest}
     expose:
       - "8001"
     environment:
       <<: *common-env
       TIME_LIMIT: 30
-      NVIDIA_VISIBLE_DEVICES: 2
     networks:
       - control-net
 
@@ -92,14 +94,18 @@ services:
   # 组件 B — FJSP 作业调度
   # --------------------------------------------------------------------------
   fjsp:
-    <<: *gpu-deploy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - <<: *gpu-device
+              device_ids: ["${SKYENGINE_BATCH_FJSP_GPU_ID:-0}"]
     image: ${FJSP_IMAGE:-skyengine-fjsp-pso:latest}
     expose:
       - "8002"
     environment:
       <<: *common-env
       TIME_LIMIT: 5
-      NVIDIA_VISIBLE_DEVICES: 1
     networks:
       - control-net
 
