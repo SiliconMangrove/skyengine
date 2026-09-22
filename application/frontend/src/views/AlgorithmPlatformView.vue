@@ -117,6 +117,7 @@
           <div class="configuration-section-heading">
             <h3>数据集</h3>
             <span>数据集会写入实验定义并参与结果索引</span>
+            <button class="text-button" @click="refreshDatasetReferences">更新数据集引用</button>
           </div>
           <label v-if="configPurpose === 'train'" class="dataset-choice">
             <span>训练数据集</span>
@@ -153,6 +154,13 @@
             <select :value="selectedConfigDataset('test')" @change="applyDatasetToConfig('test', $event.target.value)">
               <option value="" disabled>选择测试数据集</option>
               <option v-for="dataset in testDatasets" :key="dataset.dataset_id" :value="dataset.dataset_id">{{ dataset.name }} · {{ dataset.count }} 个实例</option>
+            </select>
+          </label>
+          <label v-if="configPurpose === 'train'" class="dataset-choice">
+            <span>模型验证数据集</span>
+            <select :value="selectedConfigDataset('validation')" @change="applyDatasetToConfig('validation', $event.target.value)">
+              <option value="" disabled>选择验证数据集</option>
+              <option v-for="dataset in tuningDatasets" :key="dataset.dataset_id" :value="dataset.dataset_id">{{ dataset.name }} · {{ dataset.count }} 个实例</option>
             </select>
           </label>
         </section>
@@ -875,7 +883,7 @@ const tuneTemplate = {
       validation_scenarios: [{
         scenario_id: 'validation_corpus_v1',
         uri: 'dataset/dfjsp_t_validation/validation.jsonl',
-        digest: 'sha256:4c749f7f5ee06ca1e15190845c90d41ec9fce48e8058be7a347f3af703035b2b',
+        digest: '',
         metadata: {
           corpus: true,
           split: 'validation',
@@ -917,13 +925,13 @@ const tuneTemplate = {
     {
       id: 'validation_00000',
       uri: 'dataset/dfjsp_t_validation/validation.jsonl#dfjspt-validation-validation-0042060914-00000',
-      digest: 'sha256:c5fe09197c64d8a0839e3f6fee45e02354e70988eb419687a6543068209b28ea',
+      digest: '',
       metadata: { split: 'validation', instance_id: 'dfjspt-validation-validation-0042060914-00000' },
     },
     {
       id: 'validation_00001',
       uri: 'dataset/dfjsp_t_validation/validation.jsonl#dfjspt-validation-validation-0042061924-00001',
-      digest: 'sha256:5780e728c968943f9c706110b1aa6444e2c65c3d0f6b459e04dd623af54ef081',
+      digest: '',
       metadata: { split: 'validation', instance_id: 'dfjspt-validation-validation-0042061924-00001' },
     },
   ],
@@ -958,7 +966,7 @@ const tuneTemplate = {
       {
         id: 'train_corpus_v1',
         uri: 'dataset/dfjsp_t_train/train.jsonl',
-        digest: 'sha256:f704f40f087fa8ed7f4b2b30fe6ecee4674d76e332e1aef23615b6086794ab20',
+        digest: '',
         metadata: { corpus: true, split: 'training' },
       },
     ],
@@ -966,7 +974,7 @@ const tuneTemplate = {
       {
         id: 'benchmark_00000',
         uri: 'dataset/dfjsp_t_benchmark/benchmark.jsonl#dfjspt-benchmark-normal-0086000000-00000',
-        digest: 'sha256:4f8e5f6543a6ae47329262a1b2403d055429a1d67dfb5e235beb611728223bc8',
+        digest: '',
         metadata: { split: 'benchmark', instance_id: 'dfjspt-benchmark-normal-0086000000-00000' },
       },
     ],
@@ -1005,7 +1013,7 @@ const testTemplate = {
     {
       id: 'benchmark_00000',
       uri: 'dataset/dfjsp_t_benchmark/benchmark.jsonl#dfjspt-benchmark-normal-0086000000-00000',
-      digest: 'sha256:4f8e5f6543a6ae47329262a1b2403d055429a1d67dfb5e235beb611728223bc8',
+      digest: '',
       metadata: { split: 'benchmark', instance_id: 'dfjspt-benchmark-normal-0086000000-00000' },
     },
   ],
@@ -1043,7 +1051,6 @@ const executionRuns = ref([])
 const executionManifest = ref(null)
 const executionCheckpoints = ref([])
 const datasets = ref([])
-const datasetDetails = reactive({})
 const comparisonDatasetId = ref('')
 const datasetComparisonPayload = ref(null)
 const comparisonError = ref('')
@@ -1497,9 +1504,15 @@ function activateTab(tab) {
   if (tab === 'replay' && !executions.value.length) void loadExecutions()
 }
 
-function loadTemplate(kind) {
+async function loadTemplate(kind) {
   const template = kind === 'train' ? trainTemplate : kind === 'test' ? testTemplate : tuneTemplate
   const config = JSON.parse(JSON.stringify(template))
+  try {
+    await resolveDatasetReferences(config)
+  } catch (error) {
+    setNotice('模板数据集无法载入', errorText(error), 'error')
+    return
+  }
   renewExperimentId(config)
   configText.value = JSON.stringify(config, null, 2)
   validation.value = null
@@ -1514,11 +1527,53 @@ function loadTemplate(kind) {
   setNotice('模板已载入', message)
 }
 
+/** @param {object} config */
+async function resolveDatasetReferences(config) {
+  const catalog = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_DATASETS)
+  const references = [...asList(config.scenarios), ...asList(config.tuning?.training_scenarios),
+    ...asList(config.tuning?.benchmark_scenarios), ...asList(config.domain?.parameters?.validation_scenarios)]
+  const uris = [...new Set(references.map(reference => reference.uri.split('#')[0]))]
+  const details = await Promise.all(uris.map(async uri => {
+    const dataset = catalog.items.find(item => item.uri === uri)
+    if (!dataset) throw new Error(`找不到数据集 ${uri}，请重新选择数据集`)
+    return [uri, await loadDatasetDetail(dataset.dataset_id)]
+  }))
+  const byUri = new Map(details)
+  for (const reference of references) {
+    const [uri, instanceId] = reference.uri.split('#')
+    const dataset = byUri.get(uri)
+    if (instanceId) {
+      const instance = dataset.instances.find(item => item.instance_id === instanceId)
+      if (!instance) throw new Error(`数据集中已不存在实例 ${instanceId}，请重新选择数据集`)
+      reference.digest = instance.digest
+    } else {
+      for (const selectedId of asList(reference.metadata?.instance_ids)) {
+        if (!dataset.instances.some(item => item.instance_id === selectedId)) {
+          throw new Error(`数据集中已不存在验证实例 ${selectedId}，请重新选择验证数据集`)
+        }
+      }
+      reference.digest = dataset.digest
+    }
+  }
+}
+
+async function refreshDatasetReferences() {
+  try {
+    const config = parsedConfig()
+    await resolveDatasetReferences(config)
+    renewExperimentId(config)
+    configText.value = JSON.stringify(config, null, 2)
+    markConfigDirty()
+    setNotice('数据集引用已更新', '训练、验证和测试引用已读取当前数据版本，原参数与实例选择保留。', 'success')
+  } catch (error) { setNotice('数据集引用更新失败', errorText(error), 'error') }
+}
+
 function selectedConfigDataset(role) {
   let config
   try { config = parsedConfig() } catch { return '' }
   let scenario
   if (role === 'training') scenario = config.purpose === 'train' ? config.scenarios?.[0] : config.tuning?.training_scenarios?.[0]
+  else if (role === 'validation') scenario = config.domain?.parameters?.validation_scenarios?.[0]
   else if (role === 'benchmark') scenario = config.tuning?.benchmark_scenarios?.[0]
   else scenario = config.scenarios?.[0]
   const uri = scenario?.uri?.split('#')[0]
@@ -1532,10 +1587,7 @@ function renewExperimentId(config) {
 }
 
 async function loadDatasetDetail(datasetId) {
-  if (!datasetDetails[datasetId]) {
-    datasetDetails[datasetId] = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_DATASET, { params: { dataset_id: datasetId } })
-  }
-  return datasetDetails[datasetId]
+  return apiGet(API_ROUTES.ALGORITHM_PLATFORM_DATASET, { params: { dataset_id: datasetId } })
 }
 
 async function applyDatasetToConfig(role, datasetId) {
@@ -1558,6 +1610,14 @@ async function applyDatasetToConfig(role, datasetId) {
     if (role === 'training') {
       if (config.purpose === 'train') config.scenarios = [corpus]
       else config.tuning.training_scenarios = [corpus]
+    } else if (role === 'validation') {
+      const previous = config.domain.parameters.validation_scenarios?.[0]
+      const selectedIds = asList(previous?.metadata?.instance_ids)
+      const ids = new Set(dataset.instances.map(instance => instance.instance_id))
+      const keepSubset = previous?.uri === dataset.uri && selectedIds.length && selectedIds.every(id => ids.has(id))
+      config.domain.parameters.validation_scenarios = [{ ...corpus,
+        metadata: { ...corpus.metadata, instance_ids: keepSubset ? selectedIds : dataset.instances.slice(0, 2).map(instance => instance.instance_id) },
+      }]
     } else if (role === 'benchmark') {
       config.tuning.benchmark_scenarios = instances
     } else {
@@ -1569,7 +1629,7 @@ async function applyDatasetToConfig(role, datasetId) {
     renewExperimentId(config)
     configText.value = JSON.stringify(config, null, 2)
     markConfigDirty()
-    setNotice('数据集已更新', `${dataset.name} 已用于${role === 'training' ? '训练' : role === 'tuning' ? '参数选择' : '测试'}。`)
+    setNotice('数据集已更新', `${dataset.name} 已用于${role === 'training' ? '训练' : role === 'validation' ? '模型验证' : role === 'tuning' ? '参数选择' : '测试'}。`)
   } catch (error) { setNotice('数据集应用失败', errorText(error), 'error') }
 }
 
@@ -1632,7 +1692,7 @@ async function openStoredExperiment(experimentId) {
   finally { loading.experiments = false }
 }
 
-function applyCatalogAlgorithm(algorithm) {
+async function applyCatalogAlgorithm(algorithm) {
   try {
     const config = parsedConfig()
     const previousAlgorithmId = config.algorithms?.[0]?.id
@@ -1653,6 +1713,7 @@ function applyCatalogAlgorithm(algorithm) {
       if (previousAlgorithmId !== algorithm.algorithm_id) config.tuning.search_space = defaultSearchSpace(properties)
       if (firstInterface === 'trainable' && !asList(config.tuning.training_scenarios).length) {
         config.tuning.training_scenarios = JSON.parse(JSON.stringify(tuneTemplate.tuning.training_scenarios))
+        await resolveDatasetReferences(config)
       }
       if (firstInterface !== 'trainable') {
         delete config.tuning.training_scenarios
@@ -2179,7 +2240,13 @@ watch(replayItemIndex, index => {
 })
 
 onMounted(async () => {
+  const initialText = configText.value
   await Promise.all([loadCatalog(), loadDatasets(), loadExperiments(), loadExecutions()])
+  try {
+    const config = JSON.parse(initialText)
+    await resolveDatasetReferences(config)
+    if (configText.value === initialText) configText.value = JSON.stringify(config, null, 2)
+  } catch (error) { setNotice('初始数据集无法载入', errorText(error), 'error') }
   pollTimer = window.setInterval(async () => {
     await loadExecutions()
     if (activeTab.value === 'executions' && selectedExecutionId.value && ['draft', 'compiled', 'pending', 'queued', 'preparing', 'running', 'cancel_requested'].includes(selectedExecution.value?.status)) {

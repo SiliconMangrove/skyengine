@@ -1,0 +1,4 @@
+# Dataset fingerprints must be identical in Windows and Linux checkouts.
+dataset/**/*.jsonl text eol=lf
+dataset/**/manifest.json text eol=lf
+dataset/**/statistics.json text eol=lf

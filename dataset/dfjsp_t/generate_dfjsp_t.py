@@ -76,7 +76,7 @@ def make_instance(seed: int, split: str, profile: Profile, ordinal: int) -> dict
 
 
 def _write_jsonl(path: Path, instances: Iterable[dict]) -> None:
-    with path.open("w", encoding="utf-8") as handle:
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
         for instance in instances:
             handle.write(json.dumps(instance, ensure_ascii=False, separators=(",", ":")) + "\n")
 
@@ -112,7 +112,7 @@ def generate(split: str, count: int, seed: int, output: Path, profile_name: str 
     manifest = {
         "schema_version": 1,
         "generator": "dfjsp_t.generate_dfjsp_t",
-        "generator_version": "1.0",
+        "generator_version": "1.1",
         "split": split,
         "base_seed": seed,
         "seed_namespace": f"{split}:{seed}",
@@ -130,9 +130,9 @@ def generate(split: str, count: int, seed: int, output: Path, profile_name: str 
         "difficulty_distribution": {profile.name: sum(item["profile"] == profile.name for item in instances) for profile, _ in requests},
         "instances": [{"instance_id": item["instance_id"], "seed": item["seed"], "profile": item["profile"], "canonical_hash": item["canonical_hash"]} for item in instances],
     }
-    (output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     summary = {"split": split, "count": len(instances), "profiles": {profile.name: sum(item["profile"] == profile.name for item in instances) for profile, _ in requests}}
-    (output / "statistics.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "statistics.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     return summary
 
 

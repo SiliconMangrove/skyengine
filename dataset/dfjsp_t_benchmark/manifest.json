@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator": "dfjsp_t.generate_dfjsp_t",
-  "generator_version": "1.0",
+  "generator_version": "1.1",
   "split": "benchmark",
   "base_seed": 86000000,
   "seed_namespace": "benchmark:86000000",
@@ -186,7 +186,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086001010-00001",
       "seed": 86001010,
       "profile": "normal",
-      "canonical_hash": "49764dacee05d389ba5fd0318ad28a0b4e3e6575bc4d5d6a22fe8c0c8839c4f5"
+      "canonical_hash": "722c53e8be89747a67f299f57790525c2240f7110a38d5b85f2de5db3b48b742"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086002020-00002",
@@ -204,7 +204,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086004040-00004",
       "seed": 86004040,
       "profile": "normal",
-      "canonical_hash": "7b2f179759be4cb4da3960d8cbb5886ad85d135ee31f99775d24d13a8b1811df"
+      "canonical_hash": "4d240ac8725a1517b3ecd3ab0d0bd38ac70f4709a9b2c567e2e4d4244422d04a"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086005050-00005",
@@ -228,13 +228,13 @@
       "instance_id": "dfjspt-benchmark-normal-0086008080-00008",
       "seed": 86008080,
       "profile": "normal",
-      "canonical_hash": "f5e9508d233ce062e0caec18a26c659e5e220e41605ab8bdef16ac60ae0620de"
+      "canonical_hash": "88cb745ec446a797d832f3580808ab715af6057bd19bd941609fa4db8e4b61e7"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086009090-00009",
       "seed": 86009090,
       "profile": "normal",
-      "canonical_hash": "cba46e3d66d7586bf204d382a55d14f54a8c34535ca074ccb52b999c2f04102e"
+      "canonical_hash": "c3e7e4df22bb2c82d4d400891c78faa395245dd171655141ce4a7f719219d476"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086010100-00010",
@@ -258,7 +258,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086013130-00013",
       "seed": 86013130,
       "profile": "normal",
-      "canonical_hash": "c685a84054a740bf14b51b3c9e3116926ae5445b3fccf91744a3320b98e0c3bd"
+      "canonical_hash": "d684750d3c0f1a425013d14022b9de699bf4c2c54be6f08cc2235ef65b324e50"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086014140-00014",
@@ -276,7 +276,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086016160-00016",
       "seed": 86016160,
       "profile": "normal",
-      "canonical_hash": "2ab8215c8343c149c22745fdddf2cb01254aab0dabb7e87c181ce86bbdc641fc"
+      "canonical_hash": "7c02cf7ff99a43c2c93d8143166cc647edf0126409ce0a01fa0bdb454d8dfc81"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086017170-00017",
@@ -300,13 +300,13 @@
       "instance_id": "dfjspt-benchmark-normal-0086020200-00020",
       "seed": 86020200,
       "profile": "normal",
-      "canonical_hash": "c8c6caf70f24c60a1a1919225ac9ebb928113e92f1c8b319fabf7ea4c2cfef4f"
+      "canonical_hash": "bb9ff8080bb2b840842f5825d2c62b2ec9e5235ae085c017a78c70da24c78c9a"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086021210-00021",
       "seed": 86021210,
       "profile": "normal",
-      "canonical_hash": "74212ed905d4ff6b31a11463c227566071009ac102d4c30f74cc8bbd8051cb89"
+      "canonical_hash": "6db55a0fa95dc82ee77f4ea8d4341c7a1b6b248ac8fc7b34848aae3175961137"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086022220-00022",
@@ -342,7 +342,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086027270-00027",
       "seed": 86027270,
       "profile": "normal",
-      "canonical_hash": "5f4c9e9185236039e2defd89ce37578cf1e478afc7431bfa689a61050a3f937a"
+      "canonical_hash": "e9b6256edaabb2225ff49478ffc611d0ac730fa98f527cb9b6fb33c759c912c9"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086028280-00028",
@@ -354,13 +354,13 @@
       "instance_id": "dfjspt-benchmark-normal-0086029290-00029",
       "seed": 86029290,
       "profile": "normal",
-      "canonical_hash": "67f32a86cf2db7daa752769853f4e8e0644ba2445f777090db88110bbaff73d0"
+      "canonical_hash": "83cd36face8b0c98d75fd510a9b1e317e77551c1074de8b34aa146a398d917dc"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086030300-00030",
       "seed": 86030300,
       "profile": "normal",
-      "canonical_hash": "1df39efc405abdc5b00b7ac03708640d6b3c8bed685ef3c658924be8657fefbf"
+      "canonical_hash": "aa7ec74849a6f6b67cf0cbc0dd4196c2b42bcce011c01607e8e1796e2f9ec965"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086031310-00031",
@@ -372,7 +372,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086032320-00032",
       "seed": 86032320,
       "profile": "normal",
-      "canonical_hash": "052dddc9e24cdb56e05988ee6adb17bc42194f850e8b9b39cf054c2599cce7f0"
+      "canonical_hash": "86858b47b6b93de89365915b5b5c6a38146e72c5fbb7a0c3527dd12dae7cd83f"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086033330-00033",
@@ -384,7 +384,7 @@
       "instance_id": "dfjspt-benchmark-normal-0086034340-00034",
       "seed": 86034340,
       "profile": "normal",
-      "canonical_hash": "005173d1ab04e6d464fc5cc11c4f7112210a2a84e9d9dddf758e71455e04c089"
+      "canonical_hash": "747b00a8826cb179fd720623703b201b2523fc497e6607c06eb2fecef05ec15c"
     },
     {
       "instance_id": "dfjspt-benchmark-normal-0086035350-00035",
@@ -660,7 +660,7 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086080720-00080",
       "seed": 86080720,
       "profile": "machine_bottleneck",
-      "canonical_hash": "a006bac6b8302b700146c3a807b1e365aad52d06a3e8699c91769200cb2f29a7"
+      "canonical_hash": "ab51f63f31f9e286e47fae341c80eff68285c86933678c909f4ea5bbc3162901"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086081730-00081",
@@ -684,7 +684,7 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086084760-00084",
       "seed": 86084760,
       "profile": "machine_bottleneck",
-      "canonical_hash": "dedd2bd38f0e35e3c0449280cc2b5fc91df247a235ffcf70859f3763eefdacbd"
+      "canonical_hash": "a693eb3a809cc4edea374a5bce256bee51e16eead73456409d054bd23db4f9e6"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086085770-00085",
@@ -720,7 +720,7 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086090820-00090",
       "seed": 86090820,
       "profile": "machine_bottleneck",
-      "canonical_hash": "e89e865a213b93682999e663013edef9cee636c211d0c3f06ba233da75ef69d0"
+      "canonical_hash": "a5d0455951546b11596bfb68f79586496727c9232e9bb063b1e7b949a392f8ee"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086091830-00091",
@@ -774,7 +774,7 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086099910-00099",
       "seed": 86099910,
       "profile": "machine_bottleneck",
-      "canonical_hash": "ddc613a97d54a3799f121a97d57c06d704519a491d537c31acd6ea6f909ecdd5"
+      "canonical_hash": "b3c07dab717f6071c753f0f4ba1ba8aa34e66afe1c0d88d8667b4b289debbf97"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086100920-00100",
@@ -798,19 +798,19 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086103950-00103",
       "seed": 86103950,
       "profile": "machine_bottleneck",
-      "canonical_hash": "1896084d18027aa49ea06e76d5d69503d6a202e61733324c3e4ded9230393b4a"
+      "canonical_hash": "c9cbfa75b02304fdd8e522fdd53d3a7081b874c365d910aa7d8b495be394a6e9"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086104960-00104",
       "seed": 86104960,
       "profile": "machine_bottleneck",
-      "canonical_hash": "54bd02eb356dfdba1dd090aed4d453de5c50cc555ea828d39a5fd85cceed3946"
+      "canonical_hash": "e639daf30f4f0429349f893ff98e226c6bdca8826590875ef386971a2e67f55f"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086105970-00105",
       "seed": 86105970,
       "profile": "machine_bottleneck",
-      "canonical_hash": "773bb37c6af3d16a1acf3490bf66d8d118855b7667b220cb534450a5bf5a97f6"
+      "canonical_hash": "91f48c2924e082c8e06ca95bf1f65fd7712832e0c39e4cab834c1aa0314b21bd"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086106980-00106",
@@ -840,7 +840,7 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086111020-00110",
       "seed": 86111020,
       "profile": "machine_bottleneck",
-      "canonical_hash": "2fd7e0c98bcd6afe7c481acd9fb40e5c050d02bbafbf5b5b912f170b9f2ad1f0"
+      "canonical_hash": "e4a9b1de0a0a9ba4b2b5ac59ecb676ce3dae0349fe3759cf8738e2d18cb73ed7"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086112030-00111",
@@ -882,13 +882,13 @@
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086118090-00117",
       "seed": 86118090,
       "profile": "machine_bottleneck",
-      "canonical_hash": "505144a7dac1a08503b170e5cdf2153fb955e9c4db31325d9d7dbf6ab4bda250"
+      "canonical_hash": "a3a22ef6593a86d932a46e9627ac9650094e102fb81a4f0b3c8d027b9d0be0f8"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086119100-00118",
       "seed": 86119100,
       "profile": "machine_bottleneck",
-      "canonical_hash": "e6227d047fb304962fdf96c4eda007ca181514cc3300d9cac57516558603ef73"
+      "canonical_hash": "b6d39de2c0b2bbecd33becdf5838ef3a42ef0ddd7c1f97ed34a90fc40163f3c1"
     },
     {
       "instance_id": "dfjspt-benchmark-machine_bottleneck-0086120110-00119",
@@ -1032,13 +1032,13 @@
       "instance_id": "dfjspt-benchmark-failure-0086143300-00142",
       "seed": 86143300,
       "profile": "failure",
-      "canonical_hash": "ed03528d67cb5fee249921e096c64b66bc0df544e028a5e0a7f1889da067614f"
+      "canonical_hash": "1fc6a1242cb3fa5aefc6d4ffbfdd091ce11a960bb770f9c6f2c2972e6cd0eaa1"
     },
     {
       "instance_id": "dfjspt-benchmark-failure-0086144310-00143",
       "seed": 86144310,
       "profile": "failure",
-      "canonical_hash": "fd3982b547d1502c9ceb5a374a55dcf88ca1ca038b4595befde0456bda50e4dd"
+      "canonical_hash": "ffea545f95165227a66de58d391a3e772e74ebfa8a030fea74262cc5a3b5eae9"
     },
     {
       "instance_id": "dfjspt-benchmark-failure-0086145320-00144",
@@ -1056,7 +1056,7 @@
       "instance_id": "dfjspt-benchmark-failure-0086147340-00146",
       "seed": 86147340,
       "profile": "failure",
-      "canonical_hash": "0a41af107d9ccc7397649859ec649d01b029952967dfaa608a2312e3de901edb"
+      "canonical_hash": "1cf8b1d3047ef6123b79c91091e7cfd8c4ce823d50e96e2f2ecacdb617b9a33a"
     },
     {
       "instance_id": "dfjspt-benchmark-failure-0086148350-00147",
@@ -1104,7 +1104,7 @@
       "instance_id": "dfjspt-benchmark-failure-0086155420-00154",
       "seed": 86155420,
       "profile": "failure",
-      "canonical_hash": "b86961f3a5a6c7df63cd7e172fd860bf93094a21847e5578045e5c39140f657a"
+      "canonical_hash": "13ca180b1130c2f3d8e0481843208017fa39743e3404cd7e63459aa94341f3c2"
     },
     {
       "instance_id": "dfjspt-benchmark-failure-0086156430-00155",
