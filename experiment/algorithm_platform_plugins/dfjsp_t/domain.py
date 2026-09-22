@@ -76,6 +76,7 @@ class DFJSPTDomainAdapter:
         ).resolve()
         self._route_solver = str(parameters.get("route_solver", "astar"))
         self._assigner = str(parameters.get("assigner", "nearest"))
+        self._agent_observation_type = str(parameters.get("agent_observation_type", "default"))
         self._validation_scenarios = tuple(
             _scenario_ref(value)
             for value in parameters.get("validation_scenarios", ())
@@ -151,13 +152,11 @@ class DFJSPTDomainAdapter:
         config["seed"] = context.run.seeds.environment
         session = SimulationSession.from_config(
             config,
-            job_solver="greedy",
-            route_solver=self._route_solver,
-            assigner=self._assigner,
-            mapf_algorithm=self._route_solver,
+            native_actions=True,
+            agent_observation_type=self._agent_observation_type,
             headless=True,
         )
-        return DFJSPTOnlineSession(session, context)
+        return DFJSPTOnlineSession(session, context, route_solver=self._route_solver, assigner=self._assigner)
 
     def validate_solution(
         self,
@@ -273,9 +272,11 @@ class DFJSPTDomainAdapter:
 class DFJSPTOnlineSession:
     """JSON-facing scheduling session over one formal SimulationSession."""
 
-    def __init__(self, session: SimulationSession, context: RunContext):
+    def __init__(self, session: SimulationSession, context: RunContext, *, route_solver: str = "astar", assigner: str = "nearest"):
         self._session = session
         self._context = context
+        self._route_solver = route_solver
+        self._assigner = assigner
         self._environment_seed = context.run.seeds.environment
         self._task_sequence = 0
         self._action_history: list[dict[str, object]] = []
@@ -639,6 +640,13 @@ class DFJSPTOnlineSession:
         self,
         action: Mapping[str, object],
     ) -> dict[str, object]:
+        # Dispatch-only algorithms delegate transport to the platform. Native
+        # policies and action replay never instantiate these solvers.
+        if self._session.coordinator is None:
+            from sky_executor.grid_factory.factory.Component.Coordinator.coordinator import Coordinator
+            self._session.coordinator = Coordinator(
+                job_solver="greedy", route_solver=self._route_solver, assigner=self._assigner,
+            )
         dispatches = []
         pogema = self._session.env.pogema_env
         jobs = {int(job.job_id): job for job in pogema.jobs}

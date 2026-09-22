@@ -39,15 +39,35 @@ services:
     ports:
       - "${ENGINE_PORT:-8080}:8080"
     volumes:
-      - ${DATA_DIR:-./dataset}:/dataset:ro
-      - ./sim_server.py:/app/sim_server.py:ro
-      - ./sky_executor:/app/sky_executor:ro
-      - ./sky_logs:/app/sky_logs
-      - ./config:/app/config:ro
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/dataset
+        target: /dataset
+        read_only: true
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/sim_server.py
+        target: /app/sim_server.py
+        read_only: true
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/sky_executor
+        target: /app/sky_executor
+        read_only: true
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/sky_logs
+        target: /app/sky_logs
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/config
+        target: /app/config
+        read_only: true
       # Optional deployed policy plugins use the same repository as the
       # training worker; the engine still executes the formal SkyEngine core.
-      - ../skyengine-DFJSPT:/app/skyengine-DFJSPT:ro
-      - ./experiment:/app/experiment:ro
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/../skyengine-DFJSPT
+        target: /app/skyengine-DFJSPT
+        read_only: true
+      - type: bind
+        source: ${SKYENGINE_PROJECT_HOST_DIR:?SKYENGINE_PROJECT_HOST_DIR not set}/experiment
+        target: /app/experiment
+        read_only: true
     environment:
       <<: *common-env
       DATA_DIR: "/dataset"

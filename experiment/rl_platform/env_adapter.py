@@ -7,17 +7,13 @@ class SkyEngineTrainingEnv:
     """A headless view of the same SimulationSession used by the GUI factory."""
     backend = "formal_headless"
 
-    def __init__(self, instance: Mapping[str, Any], mapf_algorithm: str = "astar", coordinator: Any = None, *, capture_frames: bool = False):
+    def __init__(self, instance: Mapping[str, Any], *, capture_frames: bool = False):
         from sky_executor.session import SimulationSession
         self.instance = copy.deepcopy(dict(instance))
-        self.mapf_algorithm = mapf_algorithm
         self.capture_frames: bool = capture_frames
         self.session = SimulationSession.from_config(
-            self.instance, job_solver="greedy", route_solver=mapf_algorithm,
-            assigner="nearest", mapf_algorithm=mapf_algorithm, headless=True,
+            self.instance, native_actions=True, headless=True,
         )
-        if coordinator is not None:
-            self.session.coordinator = coordinator
         self.raw_observation = self.session.obs
         self.raw_info = self.session.info
 
@@ -26,8 +22,8 @@ class SkyEngineTrainingEnv:
         self.raw_observation, self.raw_info = self.session.reset(seed=seed)
         return self.raw_observation, {**(self.raw_info or {}), "seed": seed, "backend": self.backend}
 
-    def step(self, action: Mapping[str, Any] | None = None):
-        next_observation, rewards, terminations, truncations, info = self.session.step(action or {})
+    def step(self, action: Mapping[str, Any]):
+        next_observation, rewards, terminations, truncations, info = self.session.step(dict(action))
         self.raw_observation = next_observation
         self.raw_info = info
         terminated = bool((terminations or {}).get("job_done", False))

@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import random
 import time
-from functools import partial
 from numbers import Real
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
@@ -37,7 +36,7 @@ from .domain import DFJSPTDataSplit, DFJSPT_URGENT_PRIORITY
 
 
 ALGORITHM_ID = "ctde_ppo"
-CHECKPOINT_SCHEMA_VERSION = 2
+CHECKPOINT_SCHEMA_VERSION = 3
 
 
 class _FormalRolloutPolicy:
@@ -230,7 +229,7 @@ class DFJSPTPPOTrainable:
             num_envs,
             {"target": "dfjsp_t_rl.policy.DFJSPTPolicyPlugin", "kwargs": self._policy_config},
             {"target": "dfjsp_t_rl.reward.SMDPMakespanReward", "kwargs": _reward_parameters(self._parameters)},
-            partial(SkyEngineTrainingEnv, mapf_algorithm=str(self._parameters.get("mapf_algorithm", "astar"))),
+            SkyEngineTrainingEnv,
             _FormalRolloutPolicy, _formal_metrics,
         )
         with collector:
@@ -593,6 +592,7 @@ def _policy_parameters(
         "search_seconds": float(parameters.get("search_seconds", 0.0)),
         "routing_horizon": int(parameters.get("routing_horizon", 24)),
         "decision_interval": int(parameters.get("decision_interval", 5)),
+        "inference_budget_ms": float(parameters.get("inference_budget_ms", 300.0)),
     }
     return result
 
@@ -669,7 +669,7 @@ def _load_policy(
     if payload["algorithm_id"] != ALGORITHM_ID:
         raise ValueError("artifact was produced by a different algorithm")
     if payload["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
-        raise ValueError("模型结构已升级，请使用第二版候选策略模型或重新训练")
+        raise ValueError("控制器已升级为跨步规划，请使用第三版候选策略模型或重新训练")
     policy_parameters = dict(payload["policy_parameters"])
     policy_parameters["device"] = device
     policy = policy_type(**policy_parameters)
@@ -731,10 +731,7 @@ def _evaluate_policy(
         _raise_if_cancelled(context)
         for repetition in range(repetitions):
             _raise_if_cancelled(context)
-            env = SkyEngineTrainingEnv(
-                problem.instance,
-                mapf_algorithm=str(parameters.get("mapf_algorithm", "astar")),
-            )
+            env = SkyEngineTrainingEnv(problem.instance)
             try:
                 policy.reset()
                 observation, _ = env.reset(

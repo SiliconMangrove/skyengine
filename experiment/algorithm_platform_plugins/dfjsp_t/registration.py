@@ -94,8 +94,9 @@ DFJSPT_DOMAIN_MANIFEST = DomainManifest(
         "type": "object",
         "properties": {
             "scenario_root": {"type": "string"},
-            "route_solver": {"type": "string", "default": "astar"},
-            "assigner": {"type": "string", "default": "nearest"},
+            "route_solver": {"type": "string", "default": "astar", "description": "仅为只输出生产派工的算法补充路由；完整原生动作直接执行"},
+            "assigner": {"type": "string", "default": "nearest", "description": "仅为只输出生产派工的算法补充车辆分配"},
+            "agent_observation_type": {"type": "string", "enum": ["default", "MAPF", "POMAPF"], "default": "default", "description": "车辆观测格式，与路由器选择独立；联合算法使用 planning_observation"},
             "validation_scenarios": {
                 "type": "array",
                 "items": {
@@ -222,13 +223,13 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
                 "default": [],
             },
             "distributed": {"type": "boolean", "default": False},
-            "mapf_algorithm": {"type": "string", "default": "astar"},
             "hidden_dim": {"type": "integer", "minimum": 16, "default": 128},
             "candidate_limit": {"type": "integer", "minimum": 6, "default": 24},
             "scenario_count": {"type": "integer", "minimum": 1, "default": 8},
             "search_seconds": {"type": "number", "minimum": 0, "default": 0.0},
             "routing_horizon": {"type": "integer", "minimum": 2, "default": 24},
             "decision_interval": {"type": "integer", "minimum": 1, "default": 5},
+            "inference_budget_ms": {"type": "number", "minimum": 50, "maximum": 300, "default": 300.0},
             "sequence_length": {"type": "integer", "minimum": 1, "default": 32},
             "max_production_actions": {
                 "type": "integer",

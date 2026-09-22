@@ -193,8 +193,8 @@ def create_env_from_instance(
             ]
         },
     }
-    mapf_algorithm = "mapf_gpt" if (obs_type or os.getenv("OBS_TYPE", "default")) == "MAPF" else "astar"
-    return create_env_from_config(config, mapf_algorithm)
+    agent_observation_type: str = obs_type or os.getenv("OBS_TYPE", "default")
+    return create_env_from_config(config, agent_observation_type=agent_observation_type)
 
 
 # ============================================================

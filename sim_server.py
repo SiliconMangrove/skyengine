@@ -52,18 +52,9 @@ class _SimulationRecoveryHandler:
         return result
 
 
-def create_env_from_config(config: dict, mapf_algorithm: str = "astar"):
-    """
-    从 JSON 配置创建 GridFactoryEnv
-    兼容旧的模块级导入；实际解析委托给 sky_executor.session。
-
-    mapf_algorithm 控制 observation_type:
-    - "mapf_gpt" / "flow_rl": observation_type="MAPF"
-      (dict obs: global_xy/global_target_xy/global_obstacles)
-    - 其他 (astar 等): observation_type="POMAPF" (默认 numpy array obs, 多 layer)
-    http_route_solver 透传 env 返回的 obs，格式由 GridConfig.observation_type 决定。
-    """
-    return shared_create_env_from_config(config, mapf_algorithm)
+def create_env_from_config(config: dict, *, agent_observation_type: str = "default"):
+    """从 JSON 配置创建正式环境；车辆观测格式与算法名称独立。"""
+    return shared_create_env_from_config(config, agent_observation_type=agent_observation_type)
 
 
 # ==================== 仿真管理器 ====================
@@ -432,6 +423,8 @@ class SimulationManager:
     def enqueue_insert_jobs(self, body: dict) -> dict:
         if self.env is None or not self.running:
             return {"status": "error", "phase": "rejected", "message": "仿真未运行，无法插单"}
+        if self._policy_controller is not None or self._replay_enabled:
+            return {"status": "error", "phase": "rejected", "message": "该插单接口仅支持外部 PSO 服务模式"}
         if self._fjsp_algorithm.lower() != "pso" or self._assigner_name.lower() != "nearest":
             return {"status": "error", "phase": "rejected", "message": "第一版仅支持 PSO + nearest"}
         pogema = self.env.pogema_env
@@ -725,35 +718,36 @@ class SimulationManager:
             for index, (config_key, machine) in enumerate(machines.items())
         }
 
-        # 用 use_io.py 同款逻辑解析配置 → 创建环境
-        # 传入 mapf_algo 让 create_env_from_config 选择正确的 observation_type
+        # Native policies and replay provide all actions; only service mode
+        # needs a coordinator. Observation format is a separate protocol field.
+        native_actions: bool = self._policy_controller is not None or self._replay_enabled
+        agent_observation_type: str = str(config.get("agent_observation_type", "default"))
         with self._env_lock:
-            controller_mode = self._policy_controller is not None
             self.session = SimulationSession.from_config(
                 factory_config,
-                job_solver="greedy" if controller_mode else "http",
-                route_solver="astar" if controller_mode else "http",
+                native_actions=native_actions,
+                job_solver="http",
+                route_solver="http",
                 assigner=assigner,
-                mapf_algorithm=mapf_algo,
-                job_solver_kwargs={} if controller_mode else {
+                agent_observation_type=agent_observation_type,
+                job_solver_kwargs={
                     "service_url": "http://fjsp:8002",
                     "algorithm": fjsp_algo,
                 },
-                route_solver_kwargs={} if controller_mode else {
+                route_solver_kwargs={
                     "service_url": "http://mapf:8001",
                     "pogema_env": None,
-                    "accepts_task_observation": mapf_algo == "flow_rl",
+                    "accepts_task_observation": bool(config.get("route_accepts_task_observation", False)),
                 },
             )
             self.env = self.session.env
             self.obs = self.session.obs
 
-        # Coordinator: 固定用 HTTP 求解器，连接算法容器
-        # 算法容器在同一 Docker 网络，用容器名 DNS 通信
         base_coordinator = self.session.coordinator
-        base_coordinator.route_solver.pogema_env = self.env.pogema_env
+        if base_coordinator is not None:
+            base_coordinator.route_solver.pogema_env = self.env.pogema_env
         race_config = config.get("race_fms") or factory_config.get("race_fms") or {}
-        if bool(race_config.get("enabled", False)):
+        if not native_actions and bool(race_config.get("enabled", False)):
             estimator = None
             estimator_path = race_config.get("estimator_path")
             if estimator_path:

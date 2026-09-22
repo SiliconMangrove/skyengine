@@ -444,7 +444,7 @@ def _evaluate_individual(
         for machine in observation["machines"]
     }
     machine_available = {
-        machine_id: now + _machine_load(machine)
+        machine_id: now + _machine_load(machine, observation["planning_observation"]["failure_priors"]["machine_failure"]["repair_time"])
         for machine_id, machine in machine_rows.items()
     }
     unscheduled = set(individual.order)

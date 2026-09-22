@@ -86,7 +86,7 @@ def _exception_config(raw: dict | None, obs_radius: int) -> dict | None:
     return normalized
 
 
-def create_env_from_config(config: dict, mapf_algorithm: str = "astar", *, headless: bool = False) -> GridFactoryEnv:
+def create_env_from_config(config: dict, *, agent_observation_type: str = "default", headless: bool = False) -> GridFactoryEnv:
     """Create the shared Grid environment from the public factory schema."""
     topology = config.get("topology", {})
     agvs = config.get("agvs", [])
@@ -123,8 +123,8 @@ def create_env_from_config(config: dict, mapf_algorithm: str = "astar", *, headl
         targets_xy=agent_positions or None,
         collision_system="soft",
     )
-    if mapf_algorithm in {"mapf_gpt", "flow_rl"}:
-        grid_kwargs["observation_type"] = "MAPF"
+    if agent_observation_type != "default":
+        grid_kwargs["observation_type"] = agent_observation_type
     grid = GridConfig(**grid_kwargs)
 
     custom_jobs = []
@@ -198,7 +198,7 @@ def create_env_from_config(config: dict, mapf_algorithm: str = "astar", *, headl
 class SimulationSession:
     """Framework-independent environment/coordinator session."""
 
-    def __init__(self, env: GridFactoryEnv, coordinator: Coordinator):
+    def __init__(self, env: GridFactoryEnv, coordinator: Coordinator | None = None):
         self.env = env
         self.coordinator = coordinator
         self.obs, self.info = self.env.reset()
@@ -214,17 +214,20 @@ class SimulationSession:
         job_solver: str = "greedy",
         route_solver: str = "astar",
         assigner: str = "nearest",
-        mapf_algorithm: str | None = None,
+        native_actions: bool = False,
+        agent_observation_type: str = "default",
         headless: bool = False,
         **kwargs,
     ):
-        env = create_env_from_config(config, mapf_algorithm or route_solver, headless=headless)
-        coordinator = Coordinator(
-            job_solver=job_solver,
-            route_solver=route_solver,
-            assigner=assigner,
-            **kwargs,
-        )
+        env = create_env_from_config(config, agent_observation_type=agent_observation_type, headless=headless)
+        coordinator: Coordinator | None = None
+        if not native_actions:
+            coordinator = Coordinator(
+                job_solver=job_solver,
+                route_solver=route_solver,
+                assigner=assigner,
+                **kwargs,
+            )
         return cls(env, coordinator)
 
     @classmethod
@@ -241,7 +244,7 @@ class SimulationSession:
         reset = getattr(self.coordinator, "reset", None)
         if callable(reset):
             reset()
-        else:
+        elif self.coordinator is not None:
             for component in (
                 self.coordinator.job_solver,
                 self.coordinator.route_solver,
@@ -260,6 +263,8 @@ class SimulationSession:
         if self.done:
             raise RuntimeError("simulation session is already done")
         if actions is None:
+            if self.coordinator is None:
+                raise ValueError("native-action sessions require an explicit action")
             actions = self.coordinator.decide(self.obs)
         actions = self.normalize_action(actions or {})
         self.last_actions = actions
@@ -364,14 +369,15 @@ class SimulationSession:
         return self.env.metrics_hub.get_heatmaps()
 
     def close(self) -> None:
-        for component in (
-            self.coordinator.job_solver,
-            self.coordinator.route_solver,
-            self.coordinator.assigner,
-        ):
-            close = getattr(component, "close", None)
-            if callable(close):
-                close()
+        if self.coordinator is not None:
+            for component in (
+                self.coordinator.job_solver,
+                self.coordinator.route_solver,
+                self.coordinator.assigner,
+            ):
+                close = getattr(component, "close", None)
+                if callable(close):
+                    close()
         close = getattr(self.env, "close", None)
         if callable(close):
             close()

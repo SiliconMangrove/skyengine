@@ -230,7 +230,7 @@ def _select_machine(
     for option in operation["machine_options"]:
         machine_id = int(option["machine_id"])
         machine = machines[machine_id]
-        load = _machine_load(machine)
+        load = _machine_load(machine, observation["planning_observation"]["failure_priors"]["machine_failure"]["repair_time"])
         distance = (
             0.0
             if previous_location is None
@@ -260,9 +260,12 @@ def _minimum_processing_time(operation: Mapping[str, object]) -> float:
     )
 
 
-def _machine_load(machine: Mapping[str, object]) -> float:
+def _machine_load(machine: Mapping[str, object], repair_prior: Mapping[str, object] | int | None) -> float:
+    repair: float = 0.0
+    if machine["status"] != "OK":
+        repair = _expected_repair_remaining(repair_prior, int(machine["down_elapsed"]))
     return (
-        float(machine["repair_remaining"])
+        repair
         + float(machine["current_remaining_time"])
         + sum(
             float(operation["processing_time"])
@@ -273,3 +276,45 @@ def _machine_load(machine: Mapping[str, object]) -> float:
             for operation in machine["suspended_operations"]
         )
     )
+
+
+def _expected_repair_remaining(prior: Mapping[str, object] | int | None, elapsed: int) -> float:
+    """E[D - elapsed | D > elapsed] for the injector's public integer law."""
+    if prior is None or isinstance(prior, int):
+        return float(max(1, (1 if prior is None else prior) - elapsed))
+    kind: str = str(prior.get("dist", "fixed")).lower()
+    if kind in {"uniform", "discrete_uniform"}:
+        low, high = int(prior.get("low", 1)), int(prior.get("high", 1))
+        lower: int = max(1, elapsed + 1, low)
+        if high >= lower:
+            return (lower + high) / 2 - elapsed
+    elif kind in {"triangular", "discrete_triangular"}:
+        low: int = int(prior.get("low", 1))
+        high: int = int(prior.get("high", low))
+        mode: int = int(prior.get("mode", low))
+        if high == low:
+            return float(max(1, low - elapsed))
+        mass: float = 0.0
+        residual: float = 0.0
+        for duration in range(max(1, elapsed + 1, low), high + 1):
+            cdf: list[float] = []
+            for boundary in (float("-inf") if duration == 1 else duration - .5, duration + .5):
+                if boundary <= low:
+                    cdf.append(0.0)
+                elif boundary >= high:
+                    cdf.append(1.0)
+                elif boundary < mode:
+                    cdf.append((boundary - low) ** 2 / ((high - low) * (mode - low)))
+                else:
+                    cdf.append(1 - (high - boundary) ** 2 / ((high - low) * (high - mode)))
+            probability: float = cdf[1] - cdf[0]
+            mass += probability
+            residual += probability * (duration - elapsed)
+        if mass > 0:
+            return residual / mass
+    else:
+        # Fixed and unrecognized kinds follow ExceptionInjector._sample_duration.
+        return float(max(1, int(prior.get("value", 1)) - elapsed))
+    # An outage beyond the public support cannot expose its hidden recovery date.
+    # Reassess on the next simulator tick until an observable recovery arrives.
+    return 1.0

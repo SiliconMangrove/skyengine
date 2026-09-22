@@ -367,6 +367,8 @@ class DockerProxy:
             "config": self._config,
             "fjsp_algorithm": fjsp_algo,
             "mapf_algorithm": mapf_algo,
+            "agent_observation_type": "MAPF" if mapf_algo in {"mapf_gpt", "flow_rl"} else "default",
+            "route_accepts_task_observation": mapf_algo == "flow_rl",
             "solver_assign": self._algorithm_parts.get("assigner", "nearest"),
         }
 

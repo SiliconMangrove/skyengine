@@ -19,7 +19,7 @@ def _make_env(config: dict, instance: dict):
     backend = str(environment.get("backend", "formal_headless"))
     if backend not in {"formal_headless", "formal"}:
         raise ValueError("训练平台只允许使用 formal_headless 正式工厂环境")
-    return SkyEngineTrainingEnv(instance, mapf_algorithm=str(environment.get("mapf_algorithm", "astar")))
+    return SkyEngineTrainingEnv(instance)
 
 
 def train(config_path: str) -> None:
