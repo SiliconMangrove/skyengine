@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from collections.abc import Mapping
 from typing import Any
 
 
 def _json(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {str(key): _json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [_json(item) for item in value]

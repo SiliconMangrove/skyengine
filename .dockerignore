@@ -13,3 +13,4 @@ application/frontend/dist
 docs
 test
 .uv-cache
+dataset/algorithm_platform

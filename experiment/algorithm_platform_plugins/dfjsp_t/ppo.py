@@ -47,7 +47,7 @@ from .domain import DFJSPTDataSplit, DFJSPT_URGENT_PRIORITY
 
 
 ALGORITHM_ID = "ctde_ppo"
-CHECKPOINT_SCHEMA_VERSION = 3
+CHECKPOINT_SCHEMA_VERSION = 4
 PPO_SELECTION_OBJECTIVE = ObjectiveSpec(
     mode=ComparisonMode.SINGLE,
     components=(ObjectiveComponent(name="episode_reward", metric="episode_reward", direction=Direction.MAXIMIZE),),
@@ -975,7 +975,7 @@ def _load_policy(
     if payload["algorithm_id"] != ALGORITHM_ID:
         raise ValueError("artifact was produced by a different algorithm")
     if payload["schema_version"] != CHECKPOINT_SCHEMA_VERSION:
-        raise ValueError("控制器已升级为跨步规划，请使用第三版候选策略模型或重新训练")
+        raise ValueError("控制器已升级为可执行事务策略，请使用第四版 checkpoint 或从头训练")
     policy_parameters = dict(payload["policy_parameters"])
     policy_parameters["device"] = device
     policy = policy_type(**policy_parameters)

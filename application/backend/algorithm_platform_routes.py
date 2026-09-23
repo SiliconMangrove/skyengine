@@ -665,12 +665,23 @@ def get_execution_logs(
     execution_id: str,
     cursor: str | None = Query(default=None, pattern=r"^[a-f0-9]{32}:[0-9]+$"),
     limit: int = Query(default=1000, ge=1, le=2000),
+    tail: bool = False,
+    before: str | None = Query(default=None, pattern=r"^[a-f0-9]{32}:[0-9]+$"),
+    level: str = Query(default="debug", pattern=r"^(debug|info|warning|error)$"),
 ) -> Response:
     _require_execution(execution_id)
     return Response(
-        content=_event_monitor.page(execution_id, _execution_event_paths(execution_id), cursor, limit),
+        content=_event_monitor.page(execution_id, _execution_event_paths(execution_id), cursor, limit,
+                                    tail=tail, before=before, level=level),
         media_type="application/json",
     )
+
+
+@router.get("/executions/{execution_id}/training-monitor")
+def get_training_monitor(execution_id: str) -> Response:
+    _require_execution(execution_id)
+    return Response(content=_event_monitor.training(execution_id, _execution_event_paths(execution_id)),
+                    media_type="application/json")
 
 
 @router.get("/executions/{execution_id}/manifest")

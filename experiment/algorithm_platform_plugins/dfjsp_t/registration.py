@@ -113,7 +113,7 @@ DFJSPT_DOMAIN_MANIFEST = DomainManifest(
 CTDE_PPO_MANIFEST = AlgorithmManifest(
     algorithm_id="ctde_ppo",
     name="DFJSP-T 图策略与滚动联合调度",
-    version="0.2.0",
+    version="0.3.0",
     protocol_version=PLATFORM_PROTOCOL_VERSION,
     interfaces=frozenset(
         {AlgorithmInterface.TRAINABLE, AlgorithmInterface.ONLINE}
@@ -232,6 +232,9 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
         "training_environment": "formal_headless",
         "frozen_online_inference": True,
         "benchmark_training": False,
+        "checkpoint_schema_version": 4,
+        "action_distribution": "categorical_over_distinct_executable_transactions",
+        "transport_execution": "committed_tasks_with_pibt",
     },
 )
 

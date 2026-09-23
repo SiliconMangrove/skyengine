@@ -445,7 +445,7 @@
               <article v-for="metric in trainingMetricDefinitions" :key="metric.key">
                 <h4>{{ metric.label }}</h4>
                 <LineChart
-                  :series="[{ name: metric.label, data: trainingUpdates.map(update => ({ x: update.total_steps, y: update.trainer[metric.key] })) }]"
+                  :series="trainingChartSeries[metric.key]"
                   x-label="累计仿真步" :show-data-zoom="false" height="200px"
                 />
               </article>
@@ -531,8 +531,9 @@
               <option value="error">仅错误</option>
               <option value="debug">全部（含调试）</option>
             </select>
-            <span>{{ visibleEventLogs.length }} / {{ filteredEventLogs.length }} 条</span>
-            <button v-if="filteredEventLogs.length > eventLogLimit" class="secondary-button" @click="eventLogLimit += 200">更早日志</button>
+            <span>{{ visibleEventLogs.length }} 条{{ historicalLogPage ? ' · 历史页' : ' · 最新' }}</span>
+            <button v-if="(historicalLogPage || latestLogPage)?.has_older" class="secondary-button" :disabled="loading.logHistory" @click="loadEarlierLogs">更早日志</button>
+            <button v-if="historicalLogPage" class="secondary-button" @click="historicalLogPage = null">返回最新</button>
           </div>
           <div v-if="visibleEventLogs.length" class="event-log">
             <div v-for="(event, index) in visibleEventLogs" :key="`${event.execution_id}-${event.run_id}-${event.sequence}`">
@@ -823,7 +824,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import FactoryPlayerSSE from '@/components/FactoryPlayerSSE.vue'
 import LineChart from '@/components/charts/LineChart.vue'
 import ParameterDraftInput from '@/components/ParameterDraftInput.vue'
@@ -898,6 +899,20 @@ const ppoSelectionObjective = {
   feasibility_first: true,
 }
 
+// Ten structural medoids of the standard validation corpus, selected without model scores.
+const defaultValidationInstanceIds = [
+  'dfjspt-validation-validation-0042062934-00002',
+  'dfjspt-validation-validation-0042065964-00005',
+  'dfjspt-validation-validation-0042073034-00012',
+  'dfjspt-validation-validation-0042078084-00017',
+  'dfjspt-validation-validation-0042083134-00022',
+  'dfjspt-validation-validation-0042094244-00033',
+  'dfjspt-validation-validation-0042095254-00034',
+  'dfjspt-validation-validation-0042129594-00068',
+  'dfjspt-validation-validation-0042137674-00076',
+  'dfjspt-validation-validation-0042143734-00082',
+]
+
 const tuneTemplate = {
   schema_version: 1,
   experiment_id: 'dfjspt_ppo_tuning_v1',
@@ -919,17 +934,14 @@ const tuneTemplate = {
         metadata: {
           corpus: true,
           split: 'validation',
-          instance_ids: [
-            'dfjspt-validation-validation-0042060914-00000',
-            'dfjspt-validation-validation-0042061924-00001',
-          ],
+          instance_ids: [...defaultValidationInstanceIds],
         },
       }],
     },
   },
   algorithms: [{
     id: 'ctde_ppo',
-    version: '0.2.0',
+    version: '0.3.0',
     interface: 'trainable',
     budget: {},
     parameters: {
@@ -954,20 +966,12 @@ const tuneTemplate = {
       minibatch_size: 64,
     },
   }],
-  scenarios: [
-    {
-      id: 'validation_00000',
-      uri: 'dataset/dfjsp_t_validation/validation.jsonl#dfjspt-validation-validation-0042060914-00000',
-      digest: '',
-      metadata: { split: 'validation', instance_id: 'dfjspt-validation-validation-0042060914-00000' },
-    },
-    {
-      id: 'validation_00001',
-      uri: 'dataset/dfjsp_t_validation/validation.jsonl#dfjspt-validation-validation-0042061924-00001',
-      digest: '',
-      metadata: { split: 'validation', instance_id: 'dfjspt-validation-validation-0042061924-00001' },
-    },
-  ],
+  scenarios: defaultValidationInstanceIds.map(instanceId => ({
+    id: instanceId,
+    uri: `dataset/dfjsp_t_validation/validation.jsonl#${instanceId}`,
+    digest: '',
+    metadata: { split: 'validation', instance_id: instanceId },
+  })),
   objective: ppoSelectionObjective,
   budget: {},
   tuning: {
@@ -1074,15 +1078,17 @@ const executionError = ref('')
 const selectedExecutionId = ref('')
 const selectedExecutionPayload = ref(null)
 const metricPayload = ref({ items: [] })
-const executionLogs = ref([])
+const executionLogs = shallowRef([])
 const eventLogLevel = ref('info')
-const eventLogLimit = ref(200)
-/** @type {Record<string, number>} Minimum severity shown in the bottom event panel. */
-const eventLogSeverity = { debug: 0, info: 1, warning: 2, error: 3 }
-const filteredEventLogs = computed(() => executionLogs.value.filter(event =>
-  eventSeverity(event) >= eventLogSeverity[eventLogLevel.value]))
-const visibleEventLogs = computed(() => filteredEventLogs.value.slice(-eventLogLimit.value))
-watch(eventLogLevel, () => { eventLogLimit.value = 200 })
+const latestLogPage = shallowRef(null)
+const historicalLogPage = shallowRef(null)
+const visibleEventLogs = computed(() => historicalLogPage.value?.items || executionLogs.value)
+watch(eventLogLevel, () => {
+  latestLogPage.value = historicalLogPage.value = null
+  executionLogs.value = []
+  logRequestRevision += 1
+  executionNeedsRefresh = true
+})
 const executionRuns = ref([])
 const executionManifest = ref(null)
 const executionCheckpoints = ref([])
@@ -1114,7 +1120,7 @@ const branchArtifactsPinned = ref(false)
 const branchInputEpoch = ref(0)
 const branchForm = reactive({ snapshot_sequence: null, algorithm_key: '', parameters: '{}', input_artifacts: '[]', execution_id: '', run_id: '' })
 const notice = reactive({ title: '', text: '', level: 'info' })
-const loading = reactive({ catalog: false, datasets: false, experiments: false, executions: false, execution: false, manifest: false, cancel: false, deleteExecution: false, comparison: false, replay: false, reproduce: false, branch: false, diff: false, submit: false, validate: false, compile: false, save: false })
+const loading = reactive({ catalog: false, datasets: false, experiments: false, executions: false, execution: false, manifest: false, cancel: false, deleteExecution: false, logHistory: false, comparison: false, replay: false, reproduce: false, branch: false, diff: false, submit: false, validate: false, compile: false, save: false })
 
 let pollTimer = null
 /** @type {number} Invalidates replies after switching records or leaving the page. */
@@ -1123,8 +1129,10 @@ let executionRequestRevision = 0
 let executionListRevision = 0
 /** @type {string} Execution whose detail request is in flight. */
 let refreshingExecutionId = ''
-/** @type {string|null} Server cursor for the selected execution's event stream. */
-let executionLogCursor = null
+/** @type {number} Invalidates an old log-level or historical-page request. */
+let logRequestRevision = 0
+/** @type {string} Server monitor generation; changes when the source is replaced. */
+let trainingMonitorGeneration = ''
 /** @type {string} Manifest already loaded for the selected execution. */
 let executionManifestId = ''
 /** @type {boolean} Retry partial loads and take one final snapshot after a terminal transition. */
@@ -1225,39 +1233,25 @@ const trainingMetricDefinitions = [
   { key: 'explained_variance', label: '价值解释方差 Explained variance' },
   { key: 'episode_reward_mean', label: '本批平均累计奖励' },
 ]
-const trainingRuns = computed(() => {
-  /** @type {Map<string, {key: string, label: string, events: object[]}>} */
-  const runs = new Map()
-  for (const event of executionLogs.value) {
-    const key = `${event.execution_id}/${event.run_id}`
-    if (event.event_type === 'training_started' || event.event_type === 'training_progress') {
-      if (!runs.has(key)) runs.set(key, { key, label: `${event.execution_id} · ${event.run_id}`, events: [] })
-    }
-    if (runs.has(key)) runs.get(key).events.push(event)
-  }
-  return [...runs.values()]
-})
+const trainingRuns = shallowRef([])
 watch(trainingRuns, runs => {
   if (!runs.some(run => run.key === selectedTrainingRunKey.value)) selectedTrainingRunKey.value = runs[0]?.key || ''
 })
-const selectedTrainingEvents = computed(() => trainingRuns.value.find(run => run.key === selectedTrainingRunKey.value)?.events || [])
-const trainingUpdates = computed(() => selectedTrainingEvents.value
-  .filter(event => event.payload?.phase === 'update_completed' && event.payload.trainer.updated)
-  .map(event => event.payload))
+const selectedTrainingRun = computed(() => trainingRuns.value.find(run => run.key === selectedTrainingRunKey.value))
+const emptyTrainingRecords = Object.freeze([])
+const trainingUpdates = computed(() => selectedTrainingRun.value?.updates || emptyTrainingRecords)
 const latestTrainingUpdate = computed(() => trainingUpdates.value.at(-1))
-const trainingBarriers = computed(() => selectedTrainingEvents.value
-  .filter(event => event.payload?.phase === 'barrier_completed').map(event => event.payload))
-const samplingStageMessage = computed(() => selectedTrainingEvents.value
-  .filter(event => ['episode_started', 'collecting', 'sampling_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
-const learnerStageMessage = computed(() => selectedTrainingEvents.value
-  .filter(event => ['updating', 'update_progress', 'update_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
+const trainingChartSeries = computed(() => Object.fromEntries(trainingMetricDefinitions.map(metric => [metric.key,
+  [{ name: metric.label, data: trainingUpdates.value.map(update => ({ x: update.total_steps, y: update.trainer[metric.key] })) }]])))
+const trainingBarriers = computed(() => selectedTrainingRun.value?.barriers || emptyTrainingRecords)
+const samplingStageMessage = computed(() => selectedTrainingRun.value?.stages.sampling?.message || '')
+const learnerStageMessage = computed(() => selectedTrainingRun.value?.stages.learner?.message || '')
 const trainingStageMessage = computed(() => {
-  const event = selectedTrainingEvents.value.filter(item => !['evaluating', 'evaluation_queued', 'evaluation_completed', 'checkpoint_saved'].includes(item.payload?.phase)).at(-1)
-  if (event?.event_type === 'run_finished') return `训练${statusLabel(event.payload.status)}`
-  return event?.payload?.message || '等待训练进度'
+  const event = selectedTrainingRun.value?.stages.overall
+  if (event?.event_type === 'run_finished') return `训练${statusLabel(event.status)}`
+  return event?.message || '等待训练进度'
 })
-const evaluationStageMessage = computed(() => selectedTrainingEvents.value
-  .filter(event => ['evaluating', 'evaluation_completed', 'evaluation_draining'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
+const evaluationStageMessage = computed(() => selectedTrainingRun.value?.stages.evaluation?.message || '')
 const canCancelExecution = computed(() => ['compiled', 'running'].includes(selectedExecution.value?.status))
 const showCancelExecution = computed(() => canCancelExecution.value || selectedExecution.value?.status === 'cancel_requested')
 const canDeleteExecution = computed(() => selectedExecution.value?.purpose === 'train'
@@ -1521,18 +1515,6 @@ function minimumInputArtifacts(algorithm, interfaceName) {
 function metricSummary(metrics) { if (!metrics || typeof metrics !== 'object') return '—'; const entries = Object.entries(metrics).slice(0, 5); return entries.length ? entries.map(([key, value]) => `${key}=${typeof value === 'number' ? value.toFixed(3) : concise(value)}`).join(' · ') : '—' }
 function eventMessage(event) { return concise(event.message || event.payload?.message || event.payload || event.details || '') }
 
-/** @param {object} event Structured platform event; only controls the bottom log panel. */
-function eventSeverity(event) {
-  const payload = event.payload || {}
-  const level = String(event.level || payload.level || '').toLowerCase()
-  if (payload.failure || payload.status === 'failed' || ['error', 'critical', 'fatal'].includes(level)) return 3
-  if (['cancelled', 'cancel_requested', 'timed_out'].includes(payload.status) || ['warn', 'warning'].includes(level)) return 2
-  if (level in eventLogSeverity) return eventLogSeverity[level]
-  if (['episode_started', 'episode_completed', 'collecting', 'evaluating', 'update_progress'].includes(payload.phase)) return 0
-  if (['environment_reset', 'observation_published', 'decision_requested', 'candidate_found', 'decision_returned', 'action_validated', 'action_executed', 'state_changed', 'metric_updated', 'snapshot_created', 'algorithm_event', 'domain_event'].includes(event.event_type)) return 0
-  return 1
-}
-
 function setNotice(title, text, level = 'info') { notice.title = title; notice.text = text; notice.level = level }
 function clearNotice() { notice.title = ''; notice.text = '' }
 function errorText(error) { return typeof error?.detail === 'string' ? error.detail : error?.detail ? pretty(error.detail) : error?.message || '请求失败' }
@@ -1698,8 +1680,10 @@ async function applyDatasetToConfig(role, datasetId) {
       const selectedIds = asList(previous?.metadata?.instance_ids)
       const ids = new Set(dataset.instances.map(instance => instance.instance_id))
       const keepSubset = previous?.uri === dataset.uri && selectedIds.length && selectedIds.every(id => ids.has(id))
+      const defaultIds = defaultValidationInstanceIds.every(id => ids.has(id))
+        ? defaultValidationInstanceIds : dataset.instances.slice(0, 10).map(instance => instance.instance_id)
       config.domain.parameters.validation_scenarios = [{ ...corpus,
-        metadata: { ...corpus.metadata, instance_ids: keepSubset ? selectedIds : dataset.instances.slice(0, 2).map(instance => instance.instance_id) },
+        metadata: { ...corpus.metadata, instance_ids: keepSubset ? selectedIds : [...defaultIds] },
       }]
     } else if (role === 'benchmark') {
       config.tuning.benchmark_scenarios = instances
@@ -1968,43 +1952,55 @@ async function selectExecution(executionId, quiet = false) {
     selectedExecutionPayload.value = null
     metricPayload.value = { items: [] }
     executionLogs.value = []
+    latestLogPage.value = historicalLogPage.value = null
+    logRequestRevision += 1
+    trainingRuns.value = []
+    trainingMonitorGeneration = ''
     executionRuns.value = []
     executionManifest.value = null
     executionManifestId = ''
     executionCheckpoints.value = []
-    executionLogCursor = null
-    eventLogLimit.value = 200
     loading.manifest = false
   }
   try {
     const params = { execution_id: executionId }
+    const logRevision = logRequestRevision
     const responses = await Promise.allSettled([
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION, { params }),
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_METRICS, { params }),
-      apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, { params: { ...params, cursor: executionLogCursor, limit: 2000 } }),
+      apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, { params: { ...params, tail: true, limit: 200, level: eventLogLevel.value } }),
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_RUNS, { params }),
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_CHECKPOINTS, { params }),
+      apiGet(API_ROUTES.ALGORITHM_PLATFORM_TRAINING_MONITOR, { params }),
     ])
     if (revision !== executionRequestRevision) return
     const rejected = responses.find(response => response.status === 'rejected')
     if (rejected) throw rejected.reason
-    const [detail, metrics, logs, runs, checkpoints] = responses.map(response => response.value)
+    const [detail, metrics, logs, runs, checkpoints, monitor] = responses.map(response => response.value)
     selectedExecutionPayload.value = detail
     metricPayload.value = metrics || { items: [] }
     executionRuns.value = asList(runs?.items)
     executionCheckpoints.value = asList(checkpoints?.items)
     rememberRuns(executionRuns.value, executionId)
-    let page = logs
-    while (true) {
-      if (revision !== executionRequestRevision) return
-      if (page.reset) executionLogs.value = []
-      if (page.items.length) executionLogs.value.push(...page.items)
-      executionLogCursor = page.next_cursor
-      if (!page.has_more) break
-      page = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, {
-        params: { ...params, cursor: executionLogCursor, limit: 2000 },
-      })
+    if (logRevision === logRequestRevision && latestLogPage.value?.next_cursor !== logs.next_cursor) {
+      if (latestLogPage.value && latestLogPage.value.next_cursor.split(':')[0] !== logs.next_cursor.split(':')[0]) historicalLogPage.value = null
+      executionLogs.value = logs.items
+      latestLogPage.value = logs
     }
+    const previousRuns = new Map((trainingMonitorGeneration === monitor.generation ? trainingRuns.value : []).map(run => [run.key, run]))
+    trainingMonitorGeneration = monitor.generation
+    trainingRuns.value = monitor.runs.map(run => {
+      const previous = previousRuns.get(run.key)
+      // Preserve chart inputs when only a worker or optimizer progress message changed.
+      return { ...run,
+        updateSequence: run.updates.at(-1)?.sequence,
+        barrierSequence: run.barriers.at(-1)?.sequence,
+        updates: previous && previous.updateSequence === run.updates.at(-1)?.sequence
+          ? previous.updates : run.updates.map(event => event.payload),
+        barriers: previous && previous.barrierSequence === run.barriers.at(-1)?.sequence
+          ? previous.barriers : run.barriers.map(event => event.payload),
+      }
+    })
     const manifestId = detail.execution?.result_manifest_id
     if (manifestId && manifestId !== executionManifestId) {
       loading.manifest = true
@@ -2017,7 +2013,8 @@ async function selectExecution(executionId, quiet = false) {
         if (revision === executionRequestRevision && !quiet && ![404, 409].includes(error.status)) setNotice('输出文件清单读取失败', errorText(error), 'error')
       } finally { if (revision === executionRequestRevision) loading.manifest = false }
     }
-    executionNeedsRefresh = (!activeExecutionStatuses.includes(detail.execution.status) && previousStatus !== detail.execution.status)
+    executionNeedsRefresh = logRevision !== logRequestRevision
+      || (!activeExecutionStatuses.includes(detail.execution.status) && previousStatus !== detail.execution.status)
       || Boolean(manifestId && manifestId !== executionManifestId)
   } catch (error) {
     if (revision === executionRequestRevision && !quiet) setNotice('执行详情读取失败', errorText(error), 'error')
@@ -2027,6 +2024,20 @@ async function selectExecution(executionId, quiet = false) {
       refreshingExecutionId = ''
     }
   }
+}
+
+async function loadEarlierLogs() {
+  const page = historicalLogPage.value || latestLogPage.value
+  const revision = ++logRequestRevision
+  const executionId = selectedExecutionId.value
+  loading.logHistory = true
+  try {
+    const response = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, { params: {
+      execution_id: executionId, before: page.before_cursor, limit: 200, level: eventLogLevel.value,
+    } })
+    if (revision === logRequestRevision && executionId === selectedExecutionId.value && !monitorDisposed) historicalLogPage.value = response
+  } catch (error) { if (revision === logRequestRevision) setNotice('日志读取失败', errorText(error), 'error') }
+  finally { loading.logHistory = false }
 }
 
 async function deleteExecution() {
@@ -2043,7 +2054,10 @@ async function deleteExecution() {
     selectedExecutionId.value = ''
     selectedExecutionPayload.value = null
     executionLogs.value = []
-    executionLogCursor = null
+    latestLogPage.value = historicalLogPage.value = null
+    trainingRuns.value = []
+    trainingMonitorGeneration = ''
+    logRequestRevision += 1
     executionRuns.value = []
     executionCheckpoints.value = []
     executionManifest.value = null
@@ -2448,6 +2462,7 @@ watch(replayItemIndex, index => {
 
 async function pollExecutions() {
   try {
+    if (document.hidden || activeTab.value !== 'executions') return
     await loadExecutions()
     if (activeTab.value === 'executions' && selectedExecutionId.value
       && (executionNeedsRefresh || activeExecutionStatuses.includes(selectedExecution.value?.status))) {

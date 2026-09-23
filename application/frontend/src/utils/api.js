@@ -84,6 +84,7 @@ export const API_ROUTES = {
   ALGORITHM_PLATFORM_EXECUTION_CANCEL: "/algorithm-platform/executions/:execution_id/cancel",
   ALGORITHM_PLATFORM_EXECUTION_METRICS: "/algorithm-platform/executions/:execution_id/metrics",
   ALGORITHM_PLATFORM_EXECUTION_LOGS: "/algorithm-platform/executions/:execution_id/logs",
+  ALGORITHM_PLATFORM_TRAINING_MONITOR: "/algorithm-platform/executions/:execution_id/training-monitor",
   ALGORITHM_PLATFORM_EXECUTION_MANIFEST: "/algorithm-platform/executions/:execution_id/manifest",
   ALGORITHM_PLATFORM_EXECUTION_COMPARISON: "/algorithm-platform/executions/:execution_id/comparison",
   ALGORITHM_PLATFORM_EXECUTION_RUNS: "/algorithm-platform/executions/:execution_id/runs",

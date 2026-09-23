@@ -1,4 +1,4 @@
-"""Finite-buffer admission for the research baseline, using a safe drain order.
+"""Shared finite-buffer admission, using a safe drain order.
 
 This is a factory adaptation of the Banker's safety test, not a MAPF theorem.
 A claim includes material in service and committed inbound material so that a
@@ -6,6 +6,31 @@ machine's output and a travelling job cannot consume the same last buffer slot.
 Reference: https://www.cs.utexas.edu/~EWD/transcriptions/EWD06xx/EWD623.html
 """
 from __future__ import annotations
+
+
+def admission_state(state: dict, cancelled: set[tuple[int, int]]) -> dict:
+    """A proposed transaction releases only unexecuted destination claims."""
+    jobs: list[dict] = [{**job, "ops": [dict(op) for op in job["ops"]]} for job in state["jobs"]]
+    for job in jobs:
+        for op in job["ops"]:
+            if (job["job_id"], op["op_id"]) in cancelled:
+                op["assigned_machine"] = None
+    return {**state, "jobs": jobs, "tasks": [task for task in state["tasks"]
+                                            if (task["job_id"], task["op_id"]) not in cancelled]}
+
+
+def safe_dispatches(state: dict, dispatch: dict[tuple[int, int], int],
+                    cancelled: set[tuple[int, int]]) -> bool:
+    """Recheck the complete transaction against the live state at commit time."""
+    proposed: dict = admission_state(state, cancelled)
+    jobs: dict[int, dict] = {job["job_id"]: job for job in proposed["jobs"]}
+    claims: dict[int, set[int]] = buffer_claims(proposed)
+    for (jid, oid), mid in dispatch.items():
+        if not safe_to_admit(proposed, claims, jid, oid, mid):
+            return False
+        claims[mid].add(jid)
+        jobs[jid]["ops"][oid]["assigned_machine"] = mid
+    return True
 
 
 def buffer_claims(state: dict) -> dict[int, set[int]]:
