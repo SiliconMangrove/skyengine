@@ -13,34 +13,13 @@ from experiment.algorithm_platform.models import (
 )
 from experiment.algorithm_platform.registry import PlatformRegistry, default_registry
 
-from .cp_sat import DFJSPTCPsatSolver
 from .domain import DFJSPTDomainAdapter
 from .ppo import DFJSPTPPOTrainable, FrozenDFJSPTPPOPolicy
-from .rolling_ga import RollingHorizonGA
-from .rules import DispatchRulePolicy
+from .research_baseline import MemeticPIBTPolicy
 
 
 PLUGIN_VERSION = "1.0.0"
 DOMAIN_ID = "dfjsp_t"
-
-
-_COMMON_RULE_PROPERTIES = {
-    "dispatch_batch_size": {
-        "type": "integer",
-        "minimum": 1,
-        "default": 1,
-    },
-    "machine_load_weight": {
-        "type": "number",
-        "minimum": 0.0,
-        "default": 1.0,
-    },
-    "transport_weight": {
-        "type": "number",
-        "minimum": 0.0,
-        "default": 1.0,
-    },
-}
 
 
 DFJSPT_DOMAIN_MANIFEST = DomainManifest(
@@ -82,6 +61,7 @@ DFJSPT_DOMAIN_MANIFEST = DomainManifest(
         "type": "object",
         "properties": {
             "C_max_E": {"type": "number", "minimum": 0.0},
+            "episode_reward": {"type": "number"},
             "C_max": {"type": "number", "minimum": 0.0},
             "unfinished_jobs": {"type": "number", "minimum": 0.0},
             "unfinished_urgent_jobs": {"type": "number", "minimum": 0.0},
@@ -126,51 +106,6 @@ DFJSPT_DOMAIN_MANIFEST = DomainManifest(
             "digest": "file_sha256",
             "metadata": ["corpus", "split", "instance_ids"],
         },
-    },
-)
-
-
-CP_SAT_MANIFEST = AlgorithmManifest(
-    algorithm_id="cp_sat_reference",
-    name="DFJSP-T CP-SAT 精确参考算法",
-    version=PLUGIN_VERSION,
-    protocol_version=PLATFORM_PROTOCOL_VERSION,
-    interfaces=frozenset({AlgorithmInterface.BATCH}),
-    entrypoints={
-        AlgorithmInterface.BATCH: (
-            "experiment.algorithm_platform_plugins.dfjsp_t.cp_sat:"
-            "DFJSPTCPsatSolver"
-        )
-    },
-    supported_domains=frozenset({DOMAIN_ID}),
-    parameter_schema={
-        "type": "object",
-        "properties": {
-            "time_limit_seconds": {
-                "type": "number",
-                "exclusiveMinimum": 0.0,
-                "default": 300.0,
-            },
-            "num_workers": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 1,
-            },
-            "log_search_progress": {
-                "type": "boolean",
-                "default": False,
-            },
-        },
-        "additionalProperties": False,
-    },
-    output_artifact_kinds=frozenset(
-        {ArtifactKind.SOLUTION, ArtifactKind.REPORT}
-    ),
-    metadata={
-        "family": "exact_reference",
-        "solver": "OR-Tools CP-SAT",
-        "model_scope": "nominal_dfjsp_t_with_aggregate_agv_capacity",
-        "training_data_usage": "none",
     },
 )
 
@@ -298,168 +233,38 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
 )
 
 
-SPT_MANIFEST = AlgorithmManifest(
-    algorithm_id="spt_rule",
-    name="最短加工时间规则",
+MEMETIC_PIBT_MANIFEST = AlgorithmManifest(
+    algorithm_id="memetic_pibt",
+    name="联合调度 MA + PIBT（有限缓冲）",
     version=PLUGIN_VERSION,
     protocol_version=PLATFORM_PROTOCOL_VERSION,
     interfaces=frozenset({AlgorithmInterface.ONLINE}),
-    entrypoints={
-        AlgorithmInterface.ONLINE: (
-            "experiment.algorithm_platform_plugins.dfjsp_t.rules:"
-            "DispatchRulePolicy"
-        )
-    },
-    supported_domains=frozenset({DOMAIN_ID}),
-    parameter_schema={
-        "type": "object",
-        "properties": _COMMON_RULE_PROPERTIES,
-        "additionalProperties": False,
-    },
-    output_artifact_kinds=frozenset({ArtifactKind.SOLUTION}),
-    metadata={
-        "family": "dispatch_rule",
-        "rule": "SPT",
-        "training_data_usage": "none",
-    },
-)
-
-
-EDD_MANIFEST = AlgorithmManifest(
-    algorithm_id="edd_rule",
-    name="最早交期规则",
-    version=PLUGIN_VERSION,
-    protocol_version=PLATFORM_PROTOCOL_VERSION,
-    interfaces=frozenset({AlgorithmInterface.ONLINE}),
-    entrypoints={
-        AlgorithmInterface.ONLINE: (
-            "experiment.algorithm_platform_plugins.dfjsp_t.rules:"
-            "DispatchRulePolicy"
-        )
-    },
-    supported_domains=frozenset({DOMAIN_ID}),
-    parameter_schema={
-        "type": "object",
-        "properties": _COMMON_RULE_PROPERTIES,
-        "additionalProperties": False,
-    },
-    output_artifact_kinds=frozenset({ArtifactKind.SOLUTION}),
-    metadata={
-        "family": "dispatch_rule",
-        "rule": "EDD",
-        "training_data_usage": "none",
-    },
-)
-
-
-WEIGHTED_RULE_MANIFEST = AlgorithmManifest(
-    algorithm_id="weighted_dispatch_rule",
-    name="可调权重派工规则",
-    version=PLUGIN_VERSION,
-    protocol_version=PLATFORM_PROTOCOL_VERSION,
-    interfaces=frozenset({AlgorithmInterface.ONLINE}),
-    entrypoints={
-        AlgorithmInterface.ONLINE: (
-            "experiment.algorithm_platform_plugins.dfjsp_t.rules:"
-            "DispatchRulePolicy"
-        )
-    },
+    entrypoints={AlgorithmInterface.ONLINE: (
+        "experiment.algorithm_platform_plugins.dfjsp_t.research_baseline:MemeticPIBTPolicy"
+    )},
     supported_domains=frozenset({DOMAIN_ID}),
     parameter_schema={
         "type": "object",
         "properties": {
-            **_COMMON_RULE_PROPERTIES,
-            "processing_time_weight": {"type": "number", "default": 1.0},
-            "due_date_weight": {"type": "number", "default": 1.0},
-            "remaining_work_weight": {"type": "number", "default": 0.0},
-            "priority_weight": {"type": "number", "default": 0.0},
+            "population_size": {"type": "integer", "minimum": 4, "default": 48},
+            "generations": {"type": "integer", "minimum": 1, "default": 20},
+            "local_search_steps": {"type": "integer", "minimum": 0, "default": 12},
+            "horizon_operations": {"type": "integer", "minimum": 1, "default": 32},
+            "lookahead_per_job": {"type": "integer", "minimum": 1, "default": 4},
+            "dispatch_batch_size": {"type": "integer", "minimum": 1, "default": 4},
+            "replan_interval": {"type": "integer", "minimum": 1, "default": 8},
         },
         "additionalProperties": False,
     },
-    output_artifact_kinds=frozenset({ArtifactKind.SOLUTION}),
+    output_artifact_kinds=frozenset({ArtifactKind.REPORT}),
     metadata={
-        "family": "dispatch_rule",
-        "rule": "WEIGHTED",
-        "tunable": True,
-        "training_data_usage": "none",
-    },
-)
-
-
-ROLLING_GA_MANIFEST = AlgorithmManifest(
-    algorithm_id="rolling_ga",
-    name="滚动时域遗传调度算法",
-    version=PLUGIN_VERSION,
-    protocol_version=PLATFORM_PROTOCOL_VERSION,
-    interfaces=frozenset({AlgorithmInterface.ONLINE}),
-    entrypoints={
-        AlgorithmInterface.ONLINE: (
-            "experiment.algorithm_platform_plugins.dfjsp_t.rolling_ga:"
-            "RollingHorizonGA"
-        )
-    },
-    supported_domains=frozenset({DOMAIN_ID}),
-    parameter_schema={
-        "type": "object",
-        "properties": {
-            "population_size": {
-                "type": "integer",
-                "minimum": 4,
-                "default": 48,
-            },
-            "generations": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 40,
-            },
-            "horizon_operations": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 32,
-            },
-            "lookahead_per_job": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 4,
-            },
-            "dispatch_batch_size": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 1,
-            },
-            "crossover_rate": {
-                "type": "number",
-                "minimum": 0.0,
-                "maximum": 1.0,
-                "default": 0.85,
-            },
-            "mutation_rate": {
-                "type": "number",
-                "minimum": 0.0,
-                "maximum": 1.0,
-                "default": 0.15,
-            },
-            "tournament_size": {
-                "type": "integer",
-                "minimum": 2,
-                "default": 3,
-            },
-            "elite_size": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 2,
-            },
-        },
-        "additionalProperties": False,
-    },
-    output_artifact_kinds=frozenset(
-        {ArtifactKind.SOLUTION, ArtifactKind.REPORT}
-    ),
-    metadata={
-        "family": "rolling_horizon_metaheuristic",
-        "objective": ["C_max_E", "C_max", "total_tardiness"],
+        "family": "research_adapted_joint_baseline",
+        "objective": ["predicted_makespan", "predicted_flow_sum"],
         "future_orders_visible": False,
         "training_data_usage": "none",
+        "native_action": True,
+        "references": ["https://doi.org/10.20965/jaciii.2022.p0974", "https://kei18.github.io/pibt2/"],
+        "adaptations": ["rolling visible horizon", "buffer safety admission", "factory handling and PIBT"],
     },
 )
 
@@ -467,54 +272,15 @@ ROLLING_GA_MANIFEST = AlgorithmManifest(
 def register_dfjsp_t_plugins(
     registry: PlatformRegistry = default_registry,
 ) -> None:
-    """Register the formal domain and all built-in reference algorithms."""
+    """Register the formal domain, MA + PIBT baseline and CTDE-PPO."""
 
     registry.register_domain(
         DFJSPT_DOMAIN_MANIFEST,
         lambda reference: DFJSPTDomainAdapter(reference),
     )
     registry.register_algorithm(
-        SPT_MANIFEST,
-        {
-            AlgorithmInterface.ONLINE: lambda reference: DispatchRulePolicy(
-                "SPT",
-                reference.parameters,
-            )
-        },
-    )
-    registry.register_algorithm(
-        EDD_MANIFEST,
-        {
-            AlgorithmInterface.ONLINE: lambda reference: DispatchRulePolicy(
-                "EDD",
-                reference.parameters,
-            )
-        },
-    )
-    registry.register_algorithm(
-        WEIGHTED_RULE_MANIFEST,
-        {
-            AlgorithmInterface.ONLINE: lambda reference: DispatchRulePolicy(
-                "WEIGHTED",
-                reference.parameters,
-            )
-        },
-    )
-    registry.register_algorithm(
-        ROLLING_GA_MANIFEST,
-        {
-            AlgorithmInterface.ONLINE: lambda reference: RollingHorizonGA(
-                reference.parameters
-            )
-        },
-    )
-    registry.register_algorithm(
-        CP_SAT_MANIFEST,
-        {
-            AlgorithmInterface.BATCH: lambda reference: DFJSPTCPsatSolver(
-                reference.parameters
-            )
-        },
+        MEMETIC_PIBT_MANIFEST,
+        {AlgorithmInterface.ONLINE: lambda reference: MemeticPIBTPolicy(reference.parameters)},
     )
     registry.register_algorithm(
         CTDE_PPO_MANIFEST,

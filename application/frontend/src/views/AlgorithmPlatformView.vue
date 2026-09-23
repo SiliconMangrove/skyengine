@@ -854,6 +854,8 @@ const parameterLabels = {
   generations: '迭代代数',
   horizon_operations: '滚动窗口工序数',
   lookahead_per_job: '单作业前瞻工序数',
+  local_search_steps: '局部搜索步数',
+  replan_interval: '重规划间隔（仿真步）',
   dispatch_batch_size: '每次派工数',
   crossover_rate: '交叉率',
   mutation_rate: '变异率',
@@ -864,6 +866,13 @@ const parameterLabels = {
   num_workers: '并行工作数',
   log_search_progress: '记录搜索进度',
   points_per_dimension: '每维取值数',
+}
+
+const ppoSelectionObjective = {
+  mode: 'single',
+  components: [{ name: 'episode_reward', metric: 'episode_reward', direction: 'maximize', aggregation: 'mean' }],
+  constraints: [],
+  feasibility_first: true,
 }
 
 const tuneTemplate = {
@@ -935,15 +944,7 @@ const tuneTemplate = {
       metadata: { split: 'validation', instance_id: 'dfjspt-validation-validation-0042061924-00001' },
     },
   ],
-  objective: {
-    mode: 'lexicographic',
-    components: [
-      { name: 'urgent_makespan', metric: 'C_max_E', direction: 'minimize', aggregation: 'mean' },
-      { name: 'makespan', metric: 'C_max', direction: 'minimize', aggregation: 'mean' },
-    ],
-    constraints: [],
-    feasibility_first: true,
-  },
+  objective: ppoSelectionObjective,
   budget: {},
   tuning: {
     optimizer: {
@@ -1007,7 +1008,7 @@ const testTemplate = {
   repetitions: 1,
   domain: { id: 'dfjsp_t', version: '1.0.0', parameters: { scenario_root: '.', route_solver: 'astar', assigner: 'nearest' } },
   algorithms: [
-    { id: 'spt_rule', version: '1.0.0', interface: 'online', budget: { max_steps: 5000 }, parameters: {} },
+    { id: 'memetic_pibt', version: '1.0.0', interface: 'online', budget: { max_steps: 5000 }, parameters: {} },
   ],
   scenarios: [
     {
@@ -1018,12 +1019,11 @@ const testTemplate = {
     },
   ],
   objective: {
-    mode: 'lexicographic',
+    mode: 'single',
     components: [
-      { name: 'urgent_makespan', metric: 'C_max_E', direction: 'minimize', aggregation: 'mean' },
       { name: 'makespan', metric: 'C_max', direction: 'minimize', aggregation: 'mean' },
     ],
-    constraints: [],
+    constraints: [{ name: '全部订单完成', metric: 'success_rate', operator: 'ge', threshold: 1, aggregation: 'min' }],
     feasibility_first: true,
   },
   budget: {},
@@ -1168,6 +1168,10 @@ const trainingMetricDefinitions = [
   { key: 'policy_loss', label: '策略损失 Policy loss' },
   { key: 'value_loss', label: '价值损失 Value loss' },
   { key: 'entropy', label: '策略熵 Entropy' },
+  { key: 'approx_kl', label: '近似 KL' },
+  { key: 'clip_fraction', label: '裁剪比例 Clip fraction' },
+  { key: 'explained_variance', label: '价值解释方差 Explained variance' },
+  { key: 'episode_reward_mean', label: '本批平均累计奖励' },
 ]
 const trainingRuns = computed(() => {
   /** @type {Map<string, {key: string, label: string, events: object[]}>} */
@@ -1583,6 +1587,9 @@ function selectedConfigDataset(role) {
 function renewExperimentId(config) {
   const mode = ({ train: 'train', tune: 'tune', evaluate: 'test' })[config.purpose] || 'experiment'
   const algorithmId = config.algorithms?.[0]?.id || 'algorithm'
+  if (['train', 'tune'].includes(config.purpose) && config.algorithms.some(item => item.id === 'ctde_ppo' && item.interface === 'trainable')) {
+    config.objective = JSON.parse(JSON.stringify(ppoSelectionObjective))
+  }
   config.experiment_id = `dfjspt_${mode}_${algorithmId}_${Date.now().toString(36)}`
 }
 
@@ -1682,12 +1689,28 @@ async function openStoredExperiment(experimentId) {
   loading.experiments = true
   try {
     const stored = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXPERIMENT, { params: { experiment_id: experimentId } })
-    configText.value = JSON.stringify(stored.spec, null, 2)
+    const config = JSON.parse(JSON.stringify(stored.spec))
+    const objectiveChanged = ['train', 'tune'].includes(config.purpose)
+      && config.algorithms.some(item => item.id === 'ctde_ppo' && item.interface === 'trainable')
+      && (config.objective.mode !== 'single' || config.objective.components.length !== 1
+        || config.objective.components[0].metric !== 'episode_reward' || config.objective.components[0].direction !== 'maximize')
+    if (objectiveChanged) renewExperimentId(config)
+    configText.value = JSON.stringify(config, null, 2)
     validation.value = null
     compiled.value = null
-    storedExperiment.value = stored
-    configDirty.value = false
-    setNotice('实验定义已载入', `${experimentId} 已载入编辑器。`, 'success')
+    storedExperiment.value = objectiveChanged ? null : stored
+    configDirty.value = objectiveChanged
+    validation.value = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_VALIDATE, {
+      config_format: 'json', config,
+    })
+    if (!validation.value.valid) {
+      const messages = asList(validation.value.errors).map(error => error.message).filter(Boolean)
+      setNotice('实验配置需要更新', messages.join('；'), 'error')
+      return
+    }
+    setNotice('实验定义已载入', objectiveChanged
+      ? '已将选模目标改为最大化验证累计奖励，并创建新的实验定义。'
+      : `${experimentId} 已载入编辑器。`, 'success')
   } catch (error) { setNotice('实验定义读取失败', errorText(error), 'error') }
   finally { loading.experiments = false }
 }
@@ -1709,6 +1732,7 @@ async function applyCatalogAlgorithm(algorithm) {
     const parameters = Object.fromEntries(Object.entries(properties).filter(([, definition]) => definition.default !== undefined).map(([name, definition]) => [name, definition.default]))
     const reference = { id: algorithm.algorithm_id, version: algorithm.version, interface: firstInterface, parameters }
     config.algorithms = [reference]
+    if (firstInterface !== 'trainable') config.objective = JSON.parse(JSON.stringify(testTemplate.objective))
     if (config.purpose === 'tune' && config.tuning) {
       if (previousAlgorithmId !== algorithm.algorithm_id) config.tuning.search_space = defaultSearchSpace(properties)
       if (firstInterface === 'trainable' && !asList(config.tuning.training_scenarios).length) {

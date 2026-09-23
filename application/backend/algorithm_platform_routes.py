@@ -74,13 +74,9 @@ from experiment.algorithm_platform import (
 from experiment.algorithm_platform.models import EventType, ExperimentSpec
 from experiment.algorithm_platform.serialization import to_jsonable
 from experiment.algorithm_platform_plugins.dfjsp_t import (
-    CP_SAT_MANIFEST,
+    MEMETIC_PIBT_MANIFEST,
     CTDE_PPO_MANIFEST,
     DFJSPT_DOMAIN_MANIFEST,
-    EDD_MANIFEST,
-    ROLLING_GA_MANIFEST,
-    SPT_MANIFEST,
-    WEIGHTED_RULE_MANIFEST,
     register_dfjsp_t_plugins,
 )
 
@@ -105,11 +101,7 @@ def _ensure_dfjsp_t_plugins_registered() -> None:
     expected_algorithms = {
         (manifest.algorithm_id, manifest.version)
         for manifest in (
-            SPT_MANIFEST,
-            EDD_MANIFEST,
-            WEIGHTED_RULE_MANIFEST,
-            ROLLING_GA_MANIFEST,
-            CP_SAT_MANIFEST,
+            MEMETIC_PIBT_MANIFEST,
             CTDE_PPO_MANIFEST,
         )
     }
@@ -131,11 +123,7 @@ def _ensure_dfjsp_t_plugins_registered() -> None:
         ) != to_jsonable(DFJSPT_DOMAIN_MANIFEST):
             raise RuntimeError("registered DFJSP-T domain manifest does not match")
         for expected in (
-            SPT_MANIFEST,
-            EDD_MANIFEST,
-            WEIGHTED_RULE_MANIFEST,
-            ROLLING_GA_MANIFEST,
-            CP_SAT_MANIFEST,
+            MEMETIC_PIBT_MANIFEST,
             CTDE_PPO_MANIFEST,
         ):
             actual = default_registry.algorithm_manifest(
@@ -1040,7 +1028,44 @@ def _require_inline_experiment(payload: Mapping[str, object]) -> ExperimentSpec:
     return _require_experiment(payload)
 
 
+def _validate_scenario_references(experiment: ExperimentSpec) -> None:
+    """Resolve DFJSP-T data before accepting a new execution."""
+    if experiment.domain.domain_id != DFJSPT_DOMAIN_MANIFEST.domain_id:
+        return
+    adapter = default_registry.create_domain(experiment.domain)
+    scenarios: list[ScenarioRef] = list(experiment.scenarios)
+    if experiment.tuning is not None:
+        scenarios.extend(experiment.tuning.training_scenarios)
+        scenarios.extend(experiment.tuning.benchmark_scenarios)
+    scenarios.extend(
+        ScenarioRef(
+            scenario_id=str(item["scenario_id"]), uri=str(item["uri"]),
+            digest=str(item["digest"]), metadata=dict(item.get("metadata", {})),
+        )
+        for item in experiment.domain.parameters.get("validation_scenarios", ())
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        try:
+            adapter.load_problem(scenario)
+        except (FileNotFoundError, KeyError, ValueError) as error:
+            errors.append(f"{scenario.scenario_id}: {error}")
+    if errors:
+        raise ValueError(
+            "数据集引用不可用，请在实验配置中点击“更新数据集引用”；"
+            "若所选实例已不存在，请重新选择数据集。\n" + "\n".join(errors)
+        )
+
+
 def _compile_view(experiment: ExperimentSpec) -> dict[str, object]:
+    if experiment.purpose in (RunPurpose.TRAIN, RunPurpose.TUNE) and any(
+        algorithm.algorithm_id == "ctde_ppo" and algorithm.interface is AlgorithmInterface.TRAINABLE
+        for algorithm in experiment.algorithms
+    ):
+        from experiment.algorithm_platform_plugins.dfjsp_t.ppo import PPO_SELECTION_OBJECTIVE
+        if experiment.objective != PPO_SELECTION_OBJECTIVE:
+            raise ValueError("PPO 选模目标必须为单目标最大化验证平均累计奖励 episode_reward，请更新实验配置")
+    _validate_scenario_references(experiment)
     if experiment.purpose is RunPurpose.TUNE:
         return {
             "plan_digest": _compiler.digest(experiment),

@@ -107,6 +107,7 @@ class RolloutCollector:
             transitions[-1].truncated = True
         return Trajectory(transitions, episode_id=episode_id,
                           metadata={"bootstrap_value": bootstrap,
+                                    "episode_reward": sum(t.reward for t in transitions),
                                     "simulation_steps": sum(float(t.info["delta_t"]) for t in transitions)})
 
     def collect_batch(self, envs: Sequence[Any], max_steps: int, deterministic: bool = False) -> list[Trajectory]:

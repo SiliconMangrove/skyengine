@@ -18,12 +18,15 @@ from experiment.algorithm_platform.models import (
     ArtifactKind,
     ArtifactRef,
     ComparisonMode,
+    Direction,
     DecisionRequest,
     DecisionResponse,
     DecisionStatus,
     EventType,
     Feedback,
     MetricSet,
+    ObjectiveComponent,
+    ObjectiveSpec,
     RunContext,
     RunPurpose,
 )
@@ -34,7 +37,7 @@ from experiment.algorithm_platform.training_checkpoints import (
     checkpoint_directory, save_training_checkpoint, read_training_checkpoint,
 )
 from experiment.rl_platform import SkyEngineTrainingEnv
-from experiment.rl_platform.api import Trajectory
+from experiment.rl_platform.api import Trajectory, Transition
 from experiment.rl_platform.cpu_affinity import available_worker_cpus
 from experiment.rl_platform.parallel_rollout import ParallelRolloutCollector
 from sky_executor.runtime_log import serialize_action
@@ -44,6 +47,10 @@ from .domain import DFJSPTDataSplit, DFJSPT_URGENT_PRIORITY
 
 ALGORITHM_ID = "ctde_ppo"
 CHECKPOINT_SCHEMA_VERSION = 3
+PPO_SELECTION_OBJECTIVE = ObjectiveSpec(
+    mode=ComparisonMode.SINGLE,
+    components=(ObjectiveComponent(name="episode_reward", metric="episode_reward", direction=Direction.MAXIMIZE),),
+)
 
 
 @dataclass
@@ -100,6 +107,7 @@ class DFJSPTPPOTrainable:
         self._policy_version: int = 0
         self._barrier_round: int = 0
         self._pending_batch: _RolloutBatch | None = None
+        self._training_evaluation: dict[str, float] = {}
 
     def _checkpoint_snapshot(self, context: RunContext, completed: int, steps: int,
                              training_digests: tuple[str, ...]) -> bytes:
@@ -171,6 +179,8 @@ class DFJSPTPPOTrainable:
             raise ValueError("PPO fit requires a training data split")
         if not training_data.problems:
             raise ValueError("PPO training split must contain an instance")
+        if context.run.objective != PPO_SELECTION_OBJECTIVE:
+            raise ValueError("PPO 选模目标必须为单目标最大化验证平均累计奖励 episode_reward，请更新实验配置")
 
         torch, policy_type, reward_type, trainer_type = _algorithm_types()
         _seed_training(torch, context.run.seeds.algorithm)
@@ -468,7 +478,7 @@ class DFJSPTPPOTrainable:
                     "message": f"同步轮 {self._barrier_round}：GPU 训练第 {first_episode + 1}—{next_episode} 回合，"
                                f"采样 V{current.policy_version} / 训练 V{version_before}，滞后 {policy_lag} 轮",
                 })
-                update: dict = self._trainer.update(current.trajectories)
+                update: dict = self._trainer.update(current.trajectories, cancel_check=check_background)
                 torch.cuda.synchronize(self._device)
                 update_finished: float = time.monotonic()
                 update_completed_at: str = datetime.now(timezone.utc).isoformat()
@@ -500,7 +510,8 @@ class DFJSPTPPOTrainable:
                     context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
                         "phase": "episode_completed", "episode": episode + 1, "episodes": episodes, "steps": steps,
                         "device": self._device, "num_envs": batch_count, "metrics": episode_metrics,
-                        "message": f"第 {episode + 1}/{episodes} 回合训练完成，共 {steps} 仿真步",
+                        "message": f"第 {episode + 1}/{episodes} 回合训练完成，共 {steps} 仿真步，"
+                                   f"累计奖励 {episode_metrics['episode_reward']:.4f}",
                     })
                     trajectory.transitions.clear()
                 current.trajectories.clear()
@@ -567,6 +578,7 @@ class DFJSPTPPOTrainable:
         self._trainer.load_state_dict(best_checkpoint["trainer"])
         _raise_if_cancelled(context)
         selection_metrics: dict[str, float] = dict(best_checkpoint["selection_metrics"])
+        self._training_evaluation = dict(selection_metrics)
         del best_checkpoint
         selection = objective_engine.evaluate_metrics((selection_metrics,))
         selection_key = _objective_selection_key(objective_engine, selection)
@@ -685,14 +697,14 @@ class DFJSPTPPOTrainable:
         _raise_if_cancelled(context)
         if self._policy is None:
             raise RuntimeError("PPO policy has not been trained or loaded")
+        if context.run.purpose is RunPurpose.TRAIN:
+            # fit restored this exact checkpoint after its CPU validation.
+            return dict(self._training_evaluation)
         evaluation_digests = {
             problem.scenario_digest
             for problem in evaluation_data.problems
         }
-        if (
-            context.run.purpose is not RunPurpose.TRAIN
-            and self._training_digests.intersection(evaluation_digests)
-        ):
+        if self._training_digests.intersection(evaluation_digests):
             raise ValueError(
                 "frozen evaluation data overlaps the model training corpus"
             )
@@ -1038,6 +1050,8 @@ def _evaluate_policy(
     if max_steps <= 0 or repetitions <= 0:
         raise ValueError("evaluation_max_steps and evaluation_episodes must be positive")
     evaluation_started: float = time.monotonic()
+    _, _, reward_type, _ = _algorithm_types()
+    reward = reward_type(**_reward_parameters(parameters))
     evaluation_count: int = len(data.problems) * repetitions
     if training_episode is not None:
         context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
@@ -1059,10 +1073,18 @@ def _evaluate_policy(
                         seed_offset + problem_index * repetitions + repetition,
                     )
                 )
+                before_metrics: dict = env.metrics()
+                episode_reward: float = 0.0
                 for step in range(max_steps):
                     _raise_if_cancelled(context)
                     action = policy.act(observation, deterministic=True)
-                    observation, _, terminated, truncated, _ = env.step(action)
+                    observation, raw_reward, terminated, truncated, info = env.step(action)
+                    after_metrics: dict = info["metrics"]
+                    episode_reward += reward.compute(Transition(None, None, raw_reward, None, terminated, truncated, {
+                        "before_metrics": before_metrics, "after_metrics": after_metrics, "metrics": after_metrics,
+                        "delta_t": after_metrics["timeline"] - before_metrics.get("timeline", 0.0),
+                    }))
+                    before_metrics = after_metrics
                     if training_episode is not None and ((step + 1) % 100 == 0 or terminated or truncated or step + 1 == max_steps):
                         evaluation_episode: int = problem_index * repetitions + repetition + 1
                         context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
@@ -1073,7 +1095,7 @@ def _evaluate_policy(
                         })
                     if terminated or truncated:
                         break
-                episode_metrics.append({**_formal_metrics(env), **policy.planning_metrics})
+                episode_metrics.append({**_formal_metrics(env), **policy.planning_metrics, "episode_reward": episode_reward})
             finally:
                 env.close()
     summary: dict[str, float] = _summarize_evaluation(episode_metrics)

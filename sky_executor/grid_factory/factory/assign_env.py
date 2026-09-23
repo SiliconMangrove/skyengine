@@ -494,6 +494,9 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
 
     def _finish_dropoff(self, agent_idx: int, transfer: RoutingTask) -> bool:
         if not self._deliver(agent_idx, transfer):
+            # Waiting for buffer space is not physical handling. Allow the
+            # loaded vehicle to yield the shared port to an outgoing pickup.
+            self._set_agv_phase(agent_idx, AGV_PHASE_TO_DROPOFF)
             return False
         self.agv_loaded[agent_idx] = False
         self._set_agv_phase(agent_idx, AGV_PHASE_IDLE)
@@ -526,6 +529,11 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
             if phase == AGV_PHASE_TO_DROPOFF:
                 if position != self._to_internal_xy(transfer.destination):
                     return
+                if transfer.kind == "operation":
+                    machine: Machine = self.hash_machines[transfer.destination]
+                    if len(machine.buffer_jobs) >= machine.buffer_capacity:
+                        machine.buffer_blocked_steps += 1
+                        return
                 transfer.dropoff_start_time = self.env_timeline
                 if self.dropoff_dwell_steps > 0:
                     self._set_agv_phase(agent_idx, AGV_PHASE_DROPPING, self.dropoff_dwell_steps)
@@ -594,6 +602,7 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
                     operation.arrive_machine_at = self.env_timeline
                     self._set_operation_machine(operation, machine)
                     machine.input_queue.append(operation)
+                    machine.urgent_reservations.discard((task.job_id, task.op_id))
                     if machine not in self.activated_machines:
                         self.activated_machines.append(machine)
                 else:

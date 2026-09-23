@@ -150,6 +150,10 @@ class DFJSPTDomainAdapter:
             )
         config = copy.deepcopy(dict(problem.instance))
         config["seed"] = context.run.seeds.environment
+        if context.run.budget.max_steps is not None:
+            # The explicit execution limit must also reach the inner simulator;
+            # otherwise an evaluation can stop at the corpus's shorter limit.
+            config["simulation_control"]["max_steps"] = context.run.budget.max_steps
         session = SimulationSession.from_config(
             config,
             native_actions=True,

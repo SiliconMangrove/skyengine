@@ -11,7 +11,7 @@ from contextlib import suppress
 from multiprocessing.connection import Connection, wait
 from typing import Any, Callable, Mapping, Sequence
 
-from .api import Trajectory
+from .api import Trajectory, Transition
 from .config import load_object
 from .cpu_affinity import bind_worker_cpu
 from .rollout import RolloutCollector
@@ -58,15 +58,23 @@ def _sampling_worker(
                 if evaluation:
                     policy.reset()
                     observation, _ = env.reset(seed=job["seed"])
+                    before_metrics: dict = env.metrics()
+                    episode_reward: float = 0.0
                     for step in range(max_steps):
                         check_cancelled()
                         action = policy.act(observation, deterministic=True)
-                        observation, _, terminated, truncated, _ = env.step(action)
+                        observation, raw_reward, terminated, truncated, info = env.step(action)
+                        after_metrics: dict = info["metrics"]
+                        episode_reward += reward.compute(Transition(None, None, raw_reward, None, terminated, truncated, {
+                            "before_metrics": before_metrics, "after_metrics": after_metrics, "metrics": after_metrics,
+                            "delta_t": after_metrics["timeline"] - before_metrics.get("timeline", 0.0),
+                        }))
+                        before_metrics = after_metrics
                         if (step + 1) % 100 == 0 or terminated or truncated or step + 1 == max_steps:
                             connection.send(("progress", job["episode"], step + 1))
                         if terminated or truncated:
                             break
-                    trajectory = Trajectory([], episode_id=str(job["episode"]))
+                    trajectory = Trajectory([], episode_id=str(job["episode"]), metadata={"episode_reward": episode_reward})
                 else:
                     trajectory = collector.collect(
                         env, max_steps, episode_id=str(job["episode"]), seed=job["seed"],
@@ -74,6 +82,7 @@ def _sampling_worker(
                         cancel_check=check_cancelled,
                     )
                 metrics: dict[str, float] = metrics_reader(env)
+                metrics["episode_reward"] = trajectory.metadata["episode_reward"]
                 metrics.update(getattr(policy, "planning_metrics", {}))
             finally:
                 env.close()

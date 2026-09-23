@@ -12,7 +12,7 @@ Linux 部署需要：
 - 可用的 Docker daemon
 - 至少 8 GB 可用内存和足够的磁盘空间
 
-使用 GPU 算子时，还需要 NVIDIA 驱动和 NVIDIA Container Toolkit。只使用 CPU 时不需要 GPU，仍可使用 SPT、EDD、加权规则、滚动时域 GA、CP-SAT，并可进行超参数探索、测试和数据集结果比较。
+使用 GPU 算子时，还需要 NVIDIA 驱动和 NVIDIA Container Toolkit。只使用 CPU 时不需要 GPU，仍可使用 MA + PIBT 联合调度基线，并可进行超参数探索、测试和数据集结果比较。
 
 ## 2. 获取项目
 
@@ -105,7 +105,7 @@ docker compose -p skyengine-online -f docker-compose-online.yaml logs -f engine
 
 ### 使用通用算法实验工作台
 
-打开前端，在数字车间工作空间列表中选择“算法实验与优化平台”，也可直接访问 `/training`。工作台提供训练、超参数探索和测试三种实验模式，并从后端数据集目录显式选择训练集、调优集和测试集。测试完成后，统一比较页可按测试数据集汇总算法结果，回放页可按数据集、实例和算法选择运行记录。CPU 环境可直接测试规则、滚动 GA 或 CP-SAT，也可对规则外部参数进行探索；CTDE-PPO 使用 `device=auto`，没有 GPU 时会走 CPU，但完整训练耗时会明显增加。
+打开前端，在数字车间工作空间列表中选择“算法实验与优化平台”，也可直接访问 `/training`。工作台提供训练、超参数探索和测试三种实验模式，并从后端数据集目录显式选择训练集、调优集和测试集。测试完成后，统一比较页可按测试数据集汇总算法结果，回放页可按数据集、实例和算法选择运行记录。CPU 环境可直接测试 MA + PIBT，也可对其搜索参数进行探索；CTDE-PPO 使用 `device=auto`，没有 GPU 时会走 CPU，但完整训练耗时会明显增加。
 
 CTDE-PPO 默认使用 4 个并行采样环境。Checkpoint 保存间隔填写累计采样步数：0 仅保留最佳，正数另外保留定期快照。达到间隔后会在该批网络更新完成时保存；监控页可下载 checkpoint 或继续训练。
 

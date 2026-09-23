@@ -756,7 +756,7 @@ class ExceptionInjector:
             return
         if cell in {tuple(pos) for pos in penv.grid.positions_xy}:
             return
-        if cell in {tuple(m.location) for m in penv.machines}:
+        if cell in {penv._to_internal_xy(m.location) for m in penv.machines}:
             return
         original = int(grid[cell])
         if original != 0:
@@ -830,7 +830,7 @@ class ExceptionInjector:
     def _choose_obstacle_cell(self, penv) -> Optional[Tuple[int, int]]:
         grid = penv.grid.obstacles
         occupied = {tuple(pos) for pos in penv.grid.positions_xy}
-        machine_cells = {tuple(m.location) for m in penv.machines}
+        machine_cells: set[Tuple[int, int]] = {penv._to_internal_xy(m.location) for m in penv.machines}
         preserve_connectivity = self.config.get("temporary_obstacle", {}).get("preserve_connectivity", True)
         candidates: List[Tuple[int, int]] = []
         for i in range(grid.shape[0]):
