@@ -509,7 +509,22 @@ class DFJSPTPPOTrainable:
                     "message": f"同步轮 {self._barrier_round}：GPU 训练第 {first_episode + 1}—{next_episode} 回合，"
                                f"采样 V{current.policy_version} / 训练 V{version_before}，滞后 {policy_lag} 轮",
                 })
-                update: dict = self._trainer.update(current.trajectories, cancel_check=check_background)
+                def publish_update_progress(progress: dict) -> None:
+                    stage: str = {"history": "重算历史", "forward": "片段前向",
+                                  "backward": "反向传播", "minibatch_completed": "小批更新完成"}[progress["update_stage"]]
+                    context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
+                        "phase": "update_progress", "episode": first_episode + 1, "episodes": episodes,
+                        "batch_end_episode": next_episode, "barrier_round": self._barrier_round,
+                        "device": self._device, "training_started_at": update_started_at, **progress,
+                        "message": f"同步轮 {self._barrier_round}：GPU {stage}，"
+                                   f"epoch {progress['epoch']}/{progress['epochs']}，"
+                                   f"小批 {progress['minibatch']}/{progress['minibatches']}，"
+                                   f"已更新 {progress['optimizer_steps']}/{progress['optimizer_steps_total']} 次，"
+                                   f"耗时 {progress['elapsed_seconds']:.1f} 秒",
+                    })
+
+                update: dict = self._trainer.update(current.trajectories, cancel_check=check_background,
+                                                   progress_callback=publish_update_progress)
                 torch.cuda.synchronize(self._device)
                 update_finished: float = time.monotonic()
                 update_completed_at: str = datetime.now(timezone.utc).isoformat()
@@ -904,6 +919,8 @@ def _trainer_parameters(parameters: Mapping[str, object]) -> dict[str, object]:
         "entropy_coef": float(parameters.get("entropy_coef", 0.01)),
         "minibatch_size": int(parameters.get("minibatch_size", 64)),
         "sequence_length": int(parameters.get("sequence_length", 32)),
+        "graph_batch_size": int(parameters.get("graph_batch_size", 16)),
+        "input_cache_mb": int(parameters.get("input_cache_mb", 256)),
     }
 
 

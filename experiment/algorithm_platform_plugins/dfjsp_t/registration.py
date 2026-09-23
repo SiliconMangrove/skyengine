@@ -168,6 +168,8 @@ CTDE_PPO_MANIFEST = AlgorithmManifest(
             "decision_interval": {"type": "integer", "minimum": 1, "default": 5},
             "inference_budget_ms": {"type": "number", "minimum": 50, "maximum": 300, "default": 300.0},
             "sequence_length": {"type": "integer", "minimum": 1, "default": 32},
+            "graph_batch_size": {"type": "integer", "minimum": 1, "default": 16},
+            "input_cache_mb": {"type": "integer", "minimum": 0, "default": 256},
             "max_production_actions": {
                 "type": "integer",
                 "minimum": 1,

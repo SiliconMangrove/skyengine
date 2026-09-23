@@ -275,6 +275,8 @@
                   @input="markConfigDirty" @change="updateConfigParameter(group, field, $event.target.value)"
                 />
                 <p v-if="field.name === 'checkpoint_interval_steps'" class="parameter-hint">累计仿真步数；0 仅保留最佳</p>
+                <p v-if="field.name === 'graph_batch_size'" class="parameter-hint">每次合并编码的决策图数量；显存紧张时调小，不改变 PPO 小批大小。</p>
+                <p v-if="field.name === 'input_cache_mb'" class="parameter-hint">训练输入缓存上限（MiB），不含模型与梯度；0 关闭缓存。</p>
               </label>
             </div>
             <div v-else class="parameter-empty">当前算法没有需要调整的配置参数。</div>
@@ -829,6 +831,8 @@ const tabs = [
 const parameterLabels = {
   episodes: '训练轮数',
   num_envs: '并行采样环境数',
+  graph_batch_size: '图编码批量',
+  input_cache_mb: '训练输入缓存（MiB）',
   dynamic_sampling: '动态领取采样任务（同步时丢弃未完成任务）',
   evaluation_num_envs: '并行评估环境数',
   checkpoint_interval_steps: 'Checkpoint 间隔',
@@ -1211,7 +1215,7 @@ const trainingBarriers = computed(() => selectedTrainingEvents.value
 const samplingStageMessage = computed(() => selectedTrainingEvents.value
   .filter(event => ['episode_started', 'collecting', 'sampling_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
 const learnerStageMessage = computed(() => selectedTrainingEvents.value
-  .filter(event => ['updating', 'update_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
+  .filter(event => ['updating', 'update_progress', 'update_completed'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
 const trainingStageMessage = computed(() => {
   const event = selectedTrainingEvents.value.filter(item => !['evaluating', 'evaluation_queued', 'evaluation_completed', 'checkpoint_saved'].includes(item.payload?.phase)).at(-1)
   if (event?.event_type === 'run_finished') return `训练${statusLabel(event.payload.status)}`
