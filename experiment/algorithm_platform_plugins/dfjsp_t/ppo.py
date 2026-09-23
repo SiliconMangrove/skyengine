@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import itertools
 import random
 import threading
 import time
@@ -62,6 +63,7 @@ class _RolloutBatch:
     completed_at: str
     started_monotonic: float
     completed_monotonic: float
+    sampling_statistics: dict[str, object]
 
     @property
     def seconds(self) -> float:
@@ -108,6 +110,7 @@ class DFJSPTPPOTrainable:
         self._barrier_round: int = 0
         self._pending_batch: _RolloutBatch | None = None
         self._training_evaluation: dict[str, float] = {}
+        self._trained_sampling_jobs: set[int] = set()
 
     def _checkpoint_snapshot(self, context: RunContext, completed: int, steps: int,
                              training_digests: tuple[str, ...]) -> bytes:
@@ -133,6 +136,7 @@ class DFJSPTPPOTrainable:
             "policy_parameters": policy_parameters,
             "policy": {key: value.detach().cpu() for key, value in self._policy.state_dict().items()},
             "trainer": self._trainer.state_dict(), "completed_episodes": completed,
+            "trained_sampling_jobs": sorted(self._trained_sampling_jobs),
             "total_steps": steps, "training_scenario_digests": training_digests,
             "seeds": dict(self._checkpoint_seeds),
             "pipeline": {"policy_version": self._policy_version, "barrier_round": self._barrier_round},
@@ -223,6 +227,9 @@ class DFJSPTPPOTrainable:
             import numpy as np
             self._trainer.load_state_dict(resume_payload["trainer"])
             completed_episodes = int(resume_payload["completed_episodes"])
+            # Older full-batch checkpoints trained the contiguous prefix.
+            self._trained_sampling_jobs = set(resume_payload["trained_sampling_jobs"]
+                if "trained_sampling_jobs" in resume_payload else range(completed_episodes))
             total_steps = int(resume_payload["total_steps"])
             algorithm_seed = int(resume_payload["seeds"]["algorithm"])
             environment_seed = int(resume_payload["seeds"]["environment"])
@@ -249,6 +256,12 @@ class DFJSPTPPOTrainable:
             raise ValueError("episodes must be positive")
         if completed_episodes >= episodes:
             raise ValueError("训练总轮数必须大于 checkpoint 已完成轮数")
+        # This queue is owned only by the sampling thread. Checkpoints record
+        # trained IDs, so untrained/abandoned jobs are regenerated on resume.
+        pending_job_ids: list[int] = list(itertools.islice(
+            (job_id for job_id in itertools.count() if job_id not in self._trained_sampling_jobs),
+            episodes - completed_episodes,
+        ))
         max_steps = int(self._parameters.get("max_steps", 1000))
         if context.run.budget.max_steps is not None:
             max_steps = min(max_steps, context.run.budget.max_steps)
@@ -273,6 +286,8 @@ class DFJSPTPPOTrainable:
         best_key: tuple[float, ...] | None = None
 
         num_envs: int = min(int(self._parameters.get("num_envs", 4)), episodes - completed_episodes)
+        dynamic_sampling: bool = self._parameters.get("dynamic_sampling", False)
+        sampling_mode: str = "refill_until_each_worker_completed" if dynamic_sampling else "fixed_batch"
         evaluation_count: int = len(selection_data.problems) * int(self._parameters.get("evaluation_episodes", 1))
         evaluation_num_envs: int = min(int(self._parameters.get("evaluation_num_envs", 2)), evaluation_count)
         if num_envs < 1 or evaluation_num_envs < 1:
@@ -361,44 +376,58 @@ class DFJSPTPPOTrainable:
             })
 
         def collect_batch(first: int, weights: bytes, version: int, round_index: int) -> _RolloutBatch:
-            count: int = min(num_envs, episodes - first, validation_interval - first % validation_interval)
+            nonlocal pending_job_ids
+            job_ids: list[int] = pending_job_ids if dynamic_sampling else pending_job_ids[
+                :min(num_envs, validation_interval - first % validation_interval)]
+            count: int = min(num_envs, len(job_ids))
             jobs: list[dict] = [
                 {"episode": episode, "instance": training_data.problems[episode % len(training_data.problems)].instance,
                  "seed": _episode_seed(environment_seed, episode),
                  "algorithm_seed": _episode_seed(algorithm_seed, episode)}
-                for episode in range(first, first + count)
+                for episode in job_ids
             ]
             collection_started: float = time.monotonic()
             started_at: str = datetime.now(timezone.utc).isoformat()
             context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
-                "phase": "episode_started", "episode": first + 1, "batch_end_episode": first + count,
+                "phase": "episode_started", "episode": first + 1,
                 "episodes": episodes, "num_envs": count, "sampling_device": sampling_device,
+                "sampling_mode": sampling_mode, "pending_jobs": len(jobs),
                 "sampling_cpu_ids": sampling_cpu_ids[:count], "policy_version": version,
                 "barrier_round": round_index, "sampling_started_at": started_at,
-                "message": f"同步轮 {round_index}：CPU 使用 V{version} 采样第 {first + 1}—{first + count} 回合",
+                "message": f"同步轮 {round_index}：{count} 个 CPU 使用 V{version} "
+                           + ("动态领取任务，每个 worker 至少完成一次后同步" if dynamic_sampling
+                              else "各采样一个回合，全部完成后同步"),
             })
 
             def publish_progress(episode: int, steps: int) -> None:
                 context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
-                    "phase": "collecting", "episode": episode + 1, "episodes": episodes,
+                    "phase": "collecting", "episode": first + 1, "sampling_job_id": episode,
+                    "episodes": episodes,
                     "step": steps, "max_steps": max_steps, "num_envs": count,
                     "sampling_device": sampling_device, "policy_version": version, "barrier_round": round_index,
-                    "message": f"同步轮 {round_index}：V{version} 第 {episode + 1}/{episodes} 回合采样 {steps}/{max_steps} 步",
+                    "message": f"同步轮 {round_index}：V{version} 采样任务 {episode + 1}，{steps}/{max_steps} 步",
                 })
 
             trajectories: list[Trajectory] = collector.collect(jobs, None, max_steps, publish_progress,
-                                                               check_background, weights=weights)
+                check_background, weights=weights, stop_after_each_worker=dynamic_sampling)
+            completed_ids: set[int] = {int(item.metadata["episode"]) for item in trajectories}
+            retry_ids: list[int] = collector.discarded_episode_ids
+            attempted_ids: set[int] = completed_ids | set(retry_ids)
+            pending_job_ids = retry_ids + [job_id for job_id in pending_job_ids if job_id not in attempted_ids]
             completed_monotonic: float = time.monotonic()
             completed_at: str = datetime.now(timezone.utc).isoformat()
             for trajectory in trajectories:
                 trajectory.metadata["behavior_policy_version"] = version
             batch = _RolloutBatch(trajectories, first, version, started_at, completed_at,
-                                  collection_started, completed_monotonic)
+                                  collection_started, completed_monotonic, dict(collector.round_statistics))
             context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
-                "phase": "sampling_completed", "episode": first + count, "batch_start_episode": first + 1,
+                "phase": "sampling_completed", "episode": first + len(trajectories), "batch_start_episode": first + 1,
                 "policy_version": version, "barrier_round": round_index, "sampling_completed_at": completed_at,
-                "sampling_seconds": batch.seconds,
-                "message": f"同步轮 {round_index}：CPU 采样完成，耗时 {batch.seconds:.2f} 秒",
+                "sampling_seconds": batch.seconds, **batch.sampling_statistics,
+                "message": f"同步轮 {round_index}：收集 {len(trajectories)} 个完整回合，"
+                           + (f"丢弃 {len(retry_ids)} 个未接收任务（{collector.round_statistics['discarded_steps']} 步），"
+                              "下一轮优先重跑；" if retry_ids else "")
+                           + f"耗时 {batch.seconds:.2f} 秒",
             })
             return batch
 
@@ -435,6 +464,7 @@ class DFJSPTPPOTrainable:
                 "sampling_started_at": self._pending_batch.started_at,
                 "sampling_completed_at": self._pending_batch.completed_at,
                 "sampling_seconds": self._pending_batch.seconds, "training_completed_at": None,
+                "sampling_statistics": self._pending_batch.sampling_statistics,
                 "training_seconds": None, "sampling_wait_seconds": 0.0, "training_wait_seconds": 0.0,
                 "barrier_released_at": datetime.now(timezone.utc).isoformat(),
                 "message": "首批采样完成，进入采样与训练并行阶段",
@@ -471,7 +501,8 @@ class DFJSPTPPOTrainable:
                 update_started: float = time.monotonic()
                 context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
                     "phase": "updating", "episode": first_episode + 1, "episodes": episodes,
-                    "batch_end_episode": next_episode, "num_envs": batch_count, "steps": transition_count,
+                    "batch_end_episode": next_episode, "num_envs": num_envs, "batch_episodes": batch_count,
+                    "steps": transition_count,
                     "transitions": decision_count, "device": self._device, "barrier_round": self._barrier_round,
                     "behavior_policy_version": current.policy_version, "learner_policy_version": version_before,
                     "policy_lag": policy_lag, "training_started_at": update_started_at,
@@ -496,21 +527,25 @@ class DFJSPTPPOTrainable:
                     "device": self._device, "trainer": dict(to_jsonable(update)),
                     "message": f"同步轮 {self._barrier_round}：GPU 更新完成，耗时 {update_seconds:.2f} 秒，模型 V{self._policy_version}",
                 })
-                for trajectory in current.trajectories:
-                    episode: int = int(trajectory.metadata["episode"])
+                for offset, trajectory in enumerate(current.trajectories):
+                    job_id: int = int(trajectory.metadata["episode"])
+                    episode: int = first_episode + offset
+                    self._trained_sampling_jobs.add(job_id)
                     steps: int = int(trajectory.metadata["simulation_steps"])
                     episode_metrics: dict = trajectory.metadata["metrics"]
                     stats_history.append({
-                        "episode": episode, "transitions": len(trajectory.transitions), "simulation_steps": steps,
-                        "num_envs": batch_count, "collection_seconds": trajectory.metadata["collection_seconds"],
+                        "episode": episode, "sampling_job_id": job_id,
+                        "transitions": len(trajectory.transitions), "simulation_steps": steps,
+                        "num_envs": num_envs, "collection_seconds": trajectory.metadata["collection_seconds"],
                         "batch_collection_seconds": current.seconds, "batch_update_seconds": update_seconds,
                         "behavior_policy_version": current.policy_version, "policy_lag": policy_lag,
                         "trainer": dict(to_jsonable(update)), "metrics": episode_metrics,
                     })
                     context.event_publisher.emit(EventType.TRAINING_PROGRESS, {
                         "phase": "episode_completed", "episode": episode + 1, "episodes": episodes, "steps": steps,
-                        "device": self._device, "num_envs": batch_count, "metrics": episode_metrics,
-                        "message": f"第 {episode + 1}/{episodes} 回合训练完成，共 {steps} 仿真步，"
+                        "sampling_job_id": job_id,
+                        "device": self._device, "num_envs": num_envs, "metrics": episode_metrics,
+                        "message": f"第 {episode + 1}/{episodes} 回合训练完成（采样任务 {job_id + 1}），共 {steps} 仿真步，"
                                    f"累计奖励 {episode_metrics['episode_reward']:.4f}",
                     })
                     trajectory.transitions.clear()
@@ -539,6 +574,7 @@ class DFJSPTPPOTrainable:
                     "sampling_started_at": None if sampled is None else sampled.started_at,
                     "sampling_completed_at": None if sampled is None else sampled.completed_at,
                     "sampling_seconds": None if sampled is None else sampled.seconds,
+                    "sampling_statistics": None if sampled is None else sampled.sampling_statistics,
                     "training_start_episode": first_episode + 1, "training_end_episode": completed_episodes,
                     "training_behavior_policy_version": current.policy_version,
                     "training_policy_version_before": version_before, "training_policy_version_after": self._policy_version,
@@ -653,6 +689,9 @@ class DFJSPTPPOTrainable:
                 "evaluation_cpu_ids": evaluation_cpu_ids,
                 "max_policy_lag": 1,
                 "barrier_history": tuple(barrier_history),
+                "sampling_mode": sampling_mode,
+                "dynamic_sampling": dynamic_sampling,
+                "trained_sampling_jobs": sorted(self._trained_sampling_jobs),
                 "latest_policy_version": self._policy_version,
                 "best_policy_version": best_metadata["policy_version"],
                 "max_steps": max_steps,

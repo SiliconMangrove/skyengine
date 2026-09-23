@@ -415,11 +415,16 @@
               <p class="training-timing">同一行对应同时运行的采样和训练。采样等待训练表示 CPU 先完成；训练等待采样表示 GPU 先完成。验证独立运行。</p>
               <div class="metric-table-wrap">
                 <table class="data-table">
-                  <thead><tr><th>同步轮</th><th>采样回合 / 策略</th><th>训练回合 / 采样策略</th><th>采样完成</th><th>训练完成</th><th>采样耗时</th><th>训练耗时</th><th>采样等待训练</th><th>训练等待采样</th></tr></thead>
+                  <thead><tr><th>同步轮</th><th>采样回合 / 策略</th><th>保留 / 丢弃回合</th><th>训练回合 / 采样策略</th><th>采样完成</th><th>训练完成</th><th>采样耗时</th><th>训练耗时</th><th>采样等待训练</th><th>训练等待采样</th></tr></thead>
                   <tbody>
                     <tr v-for="barrier in trainingBarriers" :key="`${barrier.stage}-${barrier.barrier_round}`">
                       <td>{{ barrier.barrier_round }}{{ barrier.stage === 'warmup' ? '（首批）' : barrier.stage === 'drain' ? '（收尾）' : '' }}</td>
                       <td>{{ barrier.sampling_end_episode == null ? '—' : `${barrier.sampling_start_episode}—${barrier.sampling_end_episode} / V${barrier.sampling_policy_version}` }}</td>
+                      <td v-if="barrier.sampling_statistics">
+                        {{ barrier.sampling_statistics.completed_jobs }} / {{ barrier.sampling_statistics.discarded_jobs }}
+                        <small>丢弃 {{ barrier.sampling_statistics.discarded_steps }} 步</small>
+                      </td>
+                      <td v-else>—</td>
                       <td>{{ barrier.training_end_episode == null ? '—' : `${barrier.training_start_episode}—${barrier.training_end_episode} / V${barrier.training_behavior_policy_version}` }}</td>
                       <td>{{ displayPreciseTime(barrier.sampling_completed_at) }}</td>
                       <td>{{ displayPreciseTime(barrier.training_completed_at) }}</td>
@@ -824,6 +829,7 @@ const tabs = [
 const parameterLabels = {
   episodes: '训练轮数',
   num_envs: '并行采样环境数',
+  dynamic_sampling: '动态领取采样任务（同步时丢弃未完成任务）',
   evaluation_num_envs: '并行评估环境数',
   checkpoint_interval_steps: 'Checkpoint 间隔',
   max_steps: '最大步数',
@@ -917,6 +923,7 @@ const tuneTemplate = {
       evaluation_max_steps: 1000,
       validation_interval: 100,
       num_envs: 4,
+      dynamic_sampling: false,
       evaluation_num_envs: 2,
       checkpoint_interval_steps: 0,
       device: 'auto',
@@ -1388,9 +1395,11 @@ function defaultSearchSpace(properties) {
 function parameterLabel(name) { return parameterLabels[name] || name }
 /** @param {Record<string, unknown>} parameters @param {Record<string, object>} schema */
 function parameterFields(parameters, schema) {
-  const names = [...Object.keys(schema).filter(name => Object.hasOwn(parameters, name)),
+  const names = [...Object.keys(schema).filter(name => Object.hasOwn(parameters, name) || Object.hasOwn(schema[name], 'default')),
     ...Object.keys(parameters).filter(name => !Object.hasOwn(schema, name)).sort()]
-  return names.map(name => ({ name, value: parameters[name], definition: schema[name] || inferredParameterDefinition(parameters[name]) }))
+  return names.map(name => ({ name,
+    value: Object.hasOwn(parameters, name) ? parameters[name] : schema[name].default,
+    definition: schema[name] || inferredParameterDefinition(parameters[name]) }))
 }
 function parameterInputValue(value) { return value && typeof value === 'object' ? JSON.stringify(value) : value }
 function parseParameterValue(definition, value) {
