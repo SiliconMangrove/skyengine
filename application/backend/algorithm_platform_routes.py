@@ -41,7 +41,6 @@ from experiment.algorithm_platform import (
     ExecutionStatus,
     ExperimentRepository,
     ExperimentCompiler,
-    EventRecord,
     LocalArtifactStore,
     LocalOrchestrator,
     LocalReplayOrchestrator,
@@ -68,10 +67,10 @@ from experiment.algorithm_platform import (
     experiment_spec_to_mapping,
     extract_decisions,
     load_replay_trace,
-    read_events,
     replay_plan_digest,
 )
 from experiment.algorithm_platform.models import EventType, ExperimentSpec
+from experiment.algorithm_platform.event_monitor import ExecutionEventMonitor
 from experiment.algorithm_platform.serialization import to_jsonable
 from experiment.algorithm_platform_plugins.dfjsp_t import (
     MEMETIC_PIBT_MANIFEST,
@@ -166,6 +165,7 @@ _replay_orchestrator = LocalReplayOrchestrator(
 _execution_threads: dict[str, threading.Thread] = {}
 _execution_cancel_events: dict[str, threading.Event] = {}
 _execution_threads_lock = threading.Lock()
+_event_monitor = ExecutionEventMonitor()
 
 
 @router.get("/catalog")
@@ -459,6 +459,22 @@ def get_execution(execution_id: str) -> dict[str, object]:
     )
 
 
+@router.delete("/executions/{execution_id}")
+def delete_execution(execution_id: str) -> dict[str, object]:
+    _validate_component_identifier(execution_id, "execution_id")
+    with _execution_threads_lock:
+        record = _require_execution(execution_id)
+        if record.purpose is not RunPurpose.TRAIN:
+            raise HTTPException(status_code=409, detail="only training records can be deleted")
+        if execution_id in _execution_threads or record.status not in {
+            ExecutionStatus.SUCCEEDED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED,
+        }:
+            raise HTTPException(status_code=409, detail="训练尚未结束，请等待执行完全停止后再删除记录")
+        _execution_repository.archive(execution_id, PLATFORM_ROOT / "trash" / "execution_records")
+        _event_monitor.discard(execution_id)
+    return {"execution_id": execution_id, "deleted": True}
+
+
 @router.post("/executions/{execution_id}/cancel", status_code=202)
 def cancel_execution(execution_id: str) -> dict[str, object]:
     record = _require_execution(execution_id)
@@ -558,7 +574,7 @@ def get_execution_metrics(execution_id: str) -> dict[str, object]:
     record = _require_execution(execution_id)
     runs = _run_payloads(execution_id)
     report = _execution_report_payload(record)
-    execution_events = _execution_events(execution_id)
+    execution_events = _event_monitor.summary(execution_id, _execution_event_paths(execution_id))
     metric_items: dict[tuple[str, str], dict[str, object]] = {
         (
             str(
@@ -645,15 +661,15 @@ def get_execution_metrics(execution_id: str) -> dict[str, object]:
 
 
 @router.get("/executions/{execution_id}/logs")
-def get_execution_logs(execution_id: str) -> dict[str, object]:
+def get_execution_logs(
+    execution_id: str,
+    cursor: str | None = Query(default=None, pattern=r"^[a-f0-9]{32}:[0-9]+$"),
+    limit: int = Query(default=1000, ge=1, le=2000),
+) -> Response:
     _require_execution(execution_id)
-    events = _execution_events(execution_id)
-    return _json_response(
-        {
-            "execution_id": execution_id,
-            "items": events,
-            "count": len(events),
-        }
+    return Response(
+        content=_event_monitor.page(execution_id, _execution_event_paths(execution_id), cursor, limit),
+        media_type="application/json",
     )
 
 
@@ -1400,7 +1416,7 @@ def _run_payloads(execution_id: str) -> tuple[dict[str, object], ...]:
                     "workspace_execution_id": manifest_execution_id,
                 }
                 break
-    for event in _execution_events(execution_id):
+    for event in _event_monitor.summary(execution_id, _execution_event_paths(execution_id)):
         key = (event.execution_id, event.run_id)
         if event.event_type is EventType.RUN_STARTED:
             run_payloads.setdefault(
@@ -1439,7 +1455,7 @@ def _run_payloads(execution_id: str) -> tuple[dict[str, object], ...]:
     return tuple(run_payloads[key] for key in sorted(run_payloads))
 
 
-def _execution_events(execution_id: str) -> tuple[EventRecord, ...]:
+def _execution_event_paths(execution_id: str) -> tuple[Path, ...]:
     paths: list[Path] = []
     standard_root = PLATFORM_ROOT / "executions"
     direct = standard_root / execution_id
@@ -1472,21 +1488,7 @@ def _execution_events(execution_id: str) -> tuple[EventRecord, ...]:
             for digest in sorted(event_artifacts)
         )
 
-    events = [
-        event
-        for path in sorted(set(paths))
-        for event in read_events(path)
-    ]
-    return tuple(
-        sorted(
-            events,
-            key=lambda event: (
-                event.execution_id,
-                event.run_id,
-                event.sequence,
-            ),
-        )
-    )
+    return tuple(sorted(set(paths)))
 
 
 def _load_run_trace(

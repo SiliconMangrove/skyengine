@@ -275,8 +275,9 @@
                   @input="markConfigDirty" @change="updateConfigParameter(group, field, $event.target.value)"
                 />
                 <p v-if="field.name === 'checkpoint_interval_steps'" class="parameter-hint">累计仿真步数；0 仅保留最佳</p>
-                <p v-if="field.name === 'graph_batch_size'" class="parameter-hint">每次合并编码的决策图数量；显存紧张时调小，不改变 PPO 小批大小。</p>
-                <p v-if="field.name === 'input_cache_mb'" class="parameter-hint">训练输入缓存上限（MiB），不含模型与梯度；0 关闭缓存。</p>
+                <p v-if="field.name === 'dynamic_sampling'" class="parameter-hint" title="空闲进程继续领取任务；同步时丢弃未完成任务，下一轮重跑。">同步时丢弃未完成任务</p>
+                <p v-if="field.name === 'graph_batch_size'" class="parameter-hint" title="每次合并编码的决策图数量，不改变 PPO 小批大小。">显存紧张时调小</p>
+                <p v-if="field.name === 'input_cache_mb'" class="parameter-hint" title="仅限制训练输入缓存，不包含模型、梯度和中间激活。">0 关闭缓存</p>
               </label>
             </div>
             <div v-else class="parameter-empty">当前算法没有需要调整的配置参数。</div>
@@ -377,6 +378,7 @@
                 {{ selectedExecution.status === 'cancel_requested' ? '正在取消' : '取消执行' }}
               </button>
               <span class="status-pill" :class="statusClass(selectedExecution.status)">{{ statusLabel(selectedExecution.status) }}</span>
+              <button v-if="canDeleteExecution" class="secondary-button" :disabled="loading.deleteExecution" @click="deleteExecution">删除记录</button>
             </div>
           </div>
           <div class="summary-cards">
@@ -521,16 +523,26 @@
             <article><span>基准测试</span><strong>{{ benchmarkItems.length }}</strong><p>基准测试结果不反向参与参数选择。</p></article>
           </div>
 
-          <div class="subsection-heading"><h3>标准事件与日志</h3><span>{{ executionLogs.length }} 条</span></div>
-          <div v-if="executionLogs.length" class="event-log">
-            <div v-for="(event, index) in executionLogs" :key="`${event.sequence ?? index}-${event.run_id ?? ''}`">
+          <div class="subsection-heading">
+            <h3>标准事件与日志</h3>
+            <select v-model="eventLogLevel" aria-label="事件日志级别">
+              <option value="info">信息及以上</option>
+              <option value="warning">警告及以上</option>
+              <option value="error">仅错误</option>
+              <option value="debug">全部（含调试）</option>
+            </select>
+            <span>{{ visibleEventLogs.length }} / {{ filteredEventLogs.length }} 条</span>
+            <button v-if="filteredEventLogs.length > eventLogLimit" class="secondary-button" @click="eventLogLimit += 200">更早日志</button>
+          </div>
+          <div v-if="visibleEventLogs.length" class="event-log">
+            <div v-for="(event, index) in visibleEventLogs" :key="`${event.execution_id}-${event.run_id}-${event.sequence}`">
               <span>{{ event.sequence ?? index }}</span>
               <time>{{ displayTime(event.wall_time || event.created_at) }}</time>
               <b>{{ eventTypeLabel(event.event_type || event.type || event.level) }}</b>
               <code>{{ eventMessage(event) }}</code>
             </div>
           </div>
-          <div v-else class="empty-state inline"><strong>暂无事件日志</strong><p>该执行记录尚未产生可显示的事件。</p></div>
+          <div v-else class="empty-state inline"><strong>暂无事件日志</strong><p>当前级别下没有可显示的事件。</p></div>
         </template>
         <div v-else class="empty-state large"><strong>选择一条执行记录</strong><p>这里会展示执行状态、运行指标、候选评价和事件日志。</p></div>
       </section>
@@ -816,7 +828,7 @@ import FactoryPlayerSSE from '@/components/FactoryPlayerSSE.vue'
 import LineChart from '@/components/charts/LineChart.vue'
 import ParameterDraftInput from '@/components/ParameterDraftInput.vue'
 import { useFactoryStore } from '@/stores/factory'
-import { API_ROUTES, apiGet, apiPost, getApiUrl } from '@/utils/api'
+import { API_ROUTES, apiDelete, apiGet, apiPost, getApiUrl } from '@/utils/api'
 import './styles/AlgorithmPlatformView.css'
 
 const factoryStore = useFactoryStore()
@@ -832,8 +844,8 @@ const parameterLabels = {
   episodes: '训练轮数',
   num_envs: '并行采样环境数',
   graph_batch_size: '图编码批量',
-  input_cache_mb: '训练输入缓存（MiB）',
-  dynamic_sampling: '动态领取采样任务（同步时丢弃未完成任务）',
+  input_cache_mb: '输入缓存（MiB）',
+  dynamic_sampling: '动态采样',
   evaluation_num_envs: '并行评估环境数',
   checkpoint_interval_steps: 'Checkpoint 间隔',
   max_steps: '最大步数',
@@ -1063,6 +1075,14 @@ const selectedExecutionId = ref('')
 const selectedExecutionPayload = ref(null)
 const metricPayload = ref({ items: [] })
 const executionLogs = ref([])
+const eventLogLevel = ref('info')
+const eventLogLimit = ref(200)
+/** @type {Record<string, number>} Minimum severity shown in the bottom event panel. */
+const eventLogSeverity = { debug: 0, info: 1, warning: 2, error: 3 }
+const filteredEventLogs = computed(() => executionLogs.value.filter(event =>
+  eventSeverity(event) >= eventLogSeverity[eventLogLevel.value]))
+const visibleEventLogs = computed(() => filteredEventLogs.value.slice(-eventLogLimit.value))
+watch(eventLogLevel, () => { eventLogLimit.value = 200 })
 const executionRuns = ref([])
 const executionManifest = ref(null)
 const executionCheckpoints = ref([])
@@ -1094,9 +1114,24 @@ const branchArtifactsPinned = ref(false)
 const branchInputEpoch = ref(0)
 const branchForm = reactive({ snapshot_sequence: null, algorithm_key: '', parameters: '{}', input_artifacts: '[]', execution_id: '', run_id: '' })
 const notice = reactive({ title: '', text: '', level: 'info' })
-const loading = reactive({ catalog: false, datasets: false, experiments: false, executions: false, execution: false, manifest: false, cancel: false, comparison: false, replay: false, reproduce: false, branch: false, diff: false, submit: false, validate: false, compile: false, save: false })
+const loading = reactive({ catalog: false, datasets: false, experiments: false, executions: false, execution: false, manifest: false, cancel: false, deleteExecution: false, comparison: false, replay: false, reproduce: false, branch: false, diff: false, submit: false, validate: false, compile: false, save: false })
 
 let pollTimer = null
+/** @type {number} Invalidates replies after switching records or leaving the page. */
+let executionRequestRevision = 0
+/** @type {number} Keeps an older list request from restoring removed records. */
+let executionListRevision = 0
+/** @type {string} Execution whose detail request is in flight. */
+let refreshingExecutionId = ''
+/** @type {string|null} Server cursor for the selected execution's event stream. */
+let executionLogCursor = null
+/** @type {string} Manifest already loaded for the selected execution. */
+let executionManifestId = ''
+/** @type {boolean} Retry partial loads and take one final snapshot after a terminal transition. */
+let executionNeedsRefresh = false
+const activeExecutionStatuses = ['draft', 'compiled', 'pending', 'queued', 'preparing', 'running', 'cancel_requested']
+/** @type {boolean} Prevents an in-flight poll from restarting after unmount. */
+let monitorDisposed = false
 let replayTimer = null
 
 const busy = computed(() => loading.submit || loading.validate || loading.compile || loading.save)
@@ -1225,6 +1260,8 @@ const evaluationStageMessage = computed(() => selectedTrainingEvents.value
   .filter(event => ['evaluating', 'evaluation_completed', 'evaluation_draining'].includes(event.payload?.phase)).at(-1)?.payload?.message || '')
 const canCancelExecution = computed(() => ['compiled', 'running'].includes(selectedExecution.value?.status))
 const showCancelExecution = computed(() => canCancelExecution.value || selectedExecution.value?.status === 'cancel_requested')
+const canDeleteExecution = computed(() => selectedExecution.value?.purpose === 'train'
+  && ['succeeded', 'failed', 'cancelled'].includes(selectedExecution.value?.status))
 const metricItems = computed(() => asList(metricPayload.value?.items))
 const candidateItems = computed(() => asList(metricPayload.value?.candidates))
 const benchmarkItems = computed(() => asList(metricPayload.value?.benchmark))
@@ -1483,6 +1520,18 @@ function minimumInputArtifacts(algorithm, interfaceName) {
 }
 function metricSummary(metrics) { if (!metrics || typeof metrics !== 'object') return '—'; const entries = Object.entries(metrics).slice(0, 5); return entries.length ? entries.map(([key, value]) => `${key}=${typeof value === 'number' ? value.toFixed(3) : concise(value)}`).join(' · ') : '—' }
 function eventMessage(event) { return concise(event.message || event.payload?.message || event.payload || event.details || '') }
+
+/** @param {object} event Structured platform event; only controls the bottom log panel. */
+function eventSeverity(event) {
+  const payload = event.payload || {}
+  const level = String(event.level || payload.level || '').toLowerCase()
+  if (payload.failure || payload.status === 'failed' || ['error', 'critical', 'fatal'].includes(level)) return 3
+  if (['cancelled', 'cancel_requested', 'timed_out'].includes(payload.status) || ['warn', 'warning'].includes(level)) return 2
+  if (level in eventLogSeverity) return eventLogSeverity[level]
+  if (['episode_started', 'episode_completed', 'collecting', 'evaluating', 'update_progress'].includes(payload.phase)) return 0
+  if (['environment_reset', 'observation_published', 'decision_requested', 'candidate_found', 'decision_returned', 'action_validated', 'action_executed', 'state_changed', 'metric_updated', 'snapshot_created', 'algorithm_event', 'domain_event'].includes(event.event_type)) return 0
+  return 1
+}
 
 function setNotice(title, text, level = 'info') { notice.title = title; notice.text = text; notice.level = level }
 function clearNotice() { notice.title = ''; notice.text = '' }
@@ -1883,47 +1932,129 @@ async function submitExecution(mode) {
 }
 
 async function loadExecutions() {
+  const revision = ++executionListRevision
   loading.executions = true
   executionError.value = ''
   try {
     const data = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTIONS)
+    if (revision !== executionListRevision || monitorDisposed) return
     executions.value = asList(data.items)
-    if (selectedExecutionId.value && !executions.value.some(item => item.execution_id === selectedExecutionId.value)) selectedExecutionId.value = ''
-  } catch (error) { executionError.value = errorText(error); executions.value = [] }
-  finally { loading.executions = false }
+    if (selectedExecutionId.value && !executions.value.some(item => item.execution_id === selectedExecutionId.value)) {
+      selectedExecutionId.value = ''
+      selectedExecutionPayload.value = null
+      executionRequestRevision += 1
+      refreshingExecutionId = ''
+      loading.execution = false
+      loading.manifest = false
+    }
+  } catch (error) {
+    if (revision === executionListRevision && !monitorDisposed) {
+      executionError.value = errorText(error)
+      executions.value = []
+    }
+  } finally { if (revision === executionListRevision) loading.executions = false }
 }
 
 async function selectExecution(executionId, quiet = false) {
+  if (monitorDisposed || loading.deleteExecution || refreshingExecutionId === executionId) return
+  const changed = selectedExecutionId.value !== executionId
   selectedExecutionId.value = executionId
-  loading.execution = true
-  executionManifest.value = null
-  executionCheckpoints.value = []
+  const revision = ++executionRequestRevision
+  refreshingExecutionId = executionId
+  executionNeedsRefresh = true
+  const previousStatus = selectedExecutionPayload.value?.execution?.status
+  loading.execution = !quiet
+  if (changed) {
+    selectedExecutionPayload.value = null
+    metricPayload.value = { items: [] }
+    executionLogs.value = []
+    executionRuns.value = []
+    executionManifest.value = null
+    executionManifestId = ''
+    executionCheckpoints.value = []
+    executionLogCursor = null
+    eventLogLimit.value = 200
+    loading.manifest = false
+  }
   try {
     const params = { execution_id: executionId }
-    const [detail, metrics, logs, runs, checkpoints] = await Promise.all([
+    const responses = await Promise.allSettled([
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION, { params }),
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_METRICS, { params }),
-      apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, { params }),
+      apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, { params: { ...params, cursor: executionLogCursor, limit: 2000 } }),
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_RUNS, { params }),
       apiGet(API_ROUTES.ALGORITHM_PLATFORM_CHECKPOINTS, { params }),
     ])
+    if (revision !== executionRequestRevision) return
+    const rejected = responses.find(response => response.status === 'rejected')
+    if (rejected) throw rejected.reason
+    const [detail, metrics, logs, runs, checkpoints] = responses.map(response => response.value)
     selectedExecutionPayload.value = detail
     metricPayload.value = metrics || { items: [] }
-    executionLogs.value = asList(logs?.items)
     executionRuns.value = asList(runs?.items)
     executionCheckpoints.value = asList(checkpoints?.items)
     rememberRuns(executionRuns.value, executionId)
-    if (detail.execution?.result_manifest_id) {
+    let page = logs
+    while (true) {
+      if (revision !== executionRequestRevision) return
+      if (page.reset) executionLogs.value = []
+      if (page.items.length) executionLogs.value.push(...page.items)
+      executionLogCursor = page.next_cursor
+      if (!page.has_more) break
+      page = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_LOGS, {
+        params: { ...params, cursor: executionLogCursor, limit: 2000 },
+      })
+    }
+    const manifestId = detail.execution?.result_manifest_id
+    if (manifestId && manifestId !== executionManifestId) {
       loading.manifest = true
       try {
-        executionManifest.value = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_MANIFEST, { params })
+        const manifest = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION_MANIFEST, { params })
+        if (revision !== executionRequestRevision) return
+        executionManifest.value = manifest
+        executionManifestId = manifestId
       } catch (error) {
-        if (!quiet && ![404, 409].includes(error.status)) setNotice('输出文件清单读取失败', errorText(error), 'error')
-      } finally { loading.manifest = false }
+        if (revision === executionRequestRevision && !quiet && ![404, 409].includes(error.status)) setNotice('输出文件清单读取失败', errorText(error), 'error')
+      } finally { if (revision === executionRequestRevision) loading.manifest = false }
     }
+    executionNeedsRefresh = (!activeExecutionStatuses.includes(detail.execution.status) && previousStatus !== detail.execution.status)
+      || Boolean(manifestId && manifestId !== executionManifestId)
   } catch (error) {
-    if (!quiet) setNotice('执行详情读取失败', errorText(error), 'error')
-  } finally { loading.execution = false }
+    if (revision === executionRequestRevision && !quiet) setNotice('执行详情读取失败', errorText(error), 'error')
+  } finally {
+    if (revision === executionRequestRevision) {
+      loading.execution = false
+      refreshingExecutionId = ''
+    }
+  }
+}
+
+async function deleteExecution() {
+  if (!canDeleteExecution.value) return
+  const executionId = selectedExecutionId.value
+  if (!window.confirm(`删除训练记录 ${executionId}？记录将移入回收目录，实验定义、日志及模型文件保留。`)) return
+  loading.deleteExecution = true
+  executionRequestRevision += 1
+  refreshingExecutionId = ''
+  loading.execution = false
+  loading.manifest = false
+  try {
+    await apiDelete(API_ROUTES.ALGORITHM_PLATFORM_EXECUTION, { params: { execution_id: executionId } })
+    selectedExecutionId.value = ''
+    selectedExecutionPayload.value = null
+    executionLogs.value = []
+    executionLogCursor = null
+    executionRuns.value = []
+    executionCheckpoints.value = []
+    executionManifest.value = null
+    executionManifestId = ''
+    metricPayload.value = { items: [] }
+    executions.value = executions.value.filter(item => item.execution_id !== executionId)
+    knownReplayRuns.value = knownReplayRuns.value.filter(item => item.owner_execution_id !== executionId && item.execution_id !== executionId)
+    await loadExecutions()
+    setNotice('训练记录已删除', '记录已移入回收目录，日志和模型文件仍保留。', 'success')
+  } catch (error) { setNotice('删除记录失败', errorText(error), 'error') }
+  finally { loading.deleteExecution = false }
 }
 
 async function cancelExecution() {
@@ -2315,6 +2446,18 @@ watch(replayItemIndex, index => {
   if (frameIndex >= 0) replayFrameIndex.value = frameIndex
 })
 
+async function pollExecutions() {
+  try {
+    await loadExecutions()
+    if (activeTab.value === 'executions' && selectedExecutionId.value
+      && (executionNeedsRefresh || activeExecutionStatuses.includes(selectedExecution.value?.status))) {
+      await selectExecution(selectedExecutionId.value, true)
+    }
+  } finally {
+    if (!monitorDisposed) pollTimer = window.setTimeout(pollExecutions, 4000)
+  }
+}
+
 onMounted(async () => {
   const initialText = configText.value
   const revision = configRevision
@@ -2324,16 +2467,13 @@ onMounted(async () => {
     await resolveDatasetReferences(config)
     if (configRevision === revision) configText.value = JSON.stringify(config, null, 2)
   } catch (error) { if (configRevision === revision) setNotice('初始数据集无法载入', errorText(error), 'error') }
-  pollTimer = window.setInterval(async () => {
-    await loadExecutions()
-    if (activeTab.value === 'executions' && selectedExecutionId.value && ['draft', 'compiled', 'pending', 'queued', 'preparing', 'running', 'cancel_requested'].includes(selectedExecution.value?.status)) {
-      await selectExecution(selectedExecutionId.value, true)
-    }
-  }, 4000)
+  if (!monitorDisposed) pollTimer = window.setTimeout(pollExecutions, 4000)
 })
 
 onBeforeUnmount(() => {
-  if (pollTimer) window.clearInterval(pollTimer)
+  monitorDisposed = true
+  executionRequestRevision += 1
+  if (pollTimer) window.clearTimeout(pollTimer)
   stopReplayPlayback()
   factoryStore.reset()
 })

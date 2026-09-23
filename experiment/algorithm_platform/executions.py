@@ -109,6 +109,19 @@ class ExecutionRepository:
             plan_digest=plan_digest,
         )
 
+    def archive(self, execution_id: str, trash_root: Path) -> Path:
+        """Remove a terminal record from the index without deleting its data."""
+        with self._lock:
+            record = self.get(execution_id)
+            if record.status not in {
+                ExecutionStatus.SUCCEEDED, ExecutionStatus.FAILED,
+                ExecutionStatus.CANCELLED,
+            }:
+                raise ValueError("only terminal execution records can be deleted")
+            destination = trash_root / execution_id / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            destination.mkdir(parents=True, exist_ok=False)
+            return self._path(execution_id).rename(destination / f"{execution_id}.json")
+
     def started(self, execution_id: str) -> ExecutionRecord:
         now = datetime.now(timezone.utc)
         return self._transition(
