@@ -165,7 +165,7 @@
           </label>
         </section>
 
-        <section v-if="configPurpose === 'tune'" class="tuning-settings">
+        <section v-if="configPurpose === 'tune'" :key="`tuning-${configInputEpoch}`" class="tuning-settings">
           <div class="configuration-section-heading">
             <h3>超参数探索设置</h3>
             <span>优化方式负责提出下一组待评价参数</span>
@@ -198,14 +198,14 @@
                 <option value="true">是</option>
                 <option value="false">否</option>
               </select>
-              <input
+              <ParameterDraftInput
                 v-else
                 :type="field.definition.type === 'integer' || field.definition.type === 'number' ? 'number' : 'text'"
                 :min="field.definition.minimum"
                 :max="field.definition.maximum"
                 :step="field.definition.type === 'integer' ? 1 : 'any'"
                 :value="field.value"
-                @change="updateConfigParameter(configOptimizerGroup, field, $event.target.value)"
+                @input="markConfigDirty" @change="updateConfigParameter(configOptimizerGroup, field, $event.target.value)"
               />
             </label>
           </div>
@@ -215,19 +215,19 @@
               <article v-for="field in configSearchSpaceFields" :key="field.name">
                 <header><strong>{{ parameterLabel(field.name) }}</strong><code>{{ field.name }}</code></header>
                 <label v-if="field.dimension.kind === 'categorical'">候选值
-                  <input :value="field.dimension.choices.join(', ')" @change="updateSearchChoices(field.name, $event.target.value)" />
+                  <ParameterDraftInput :value="field.dimension.choices.join(', ')" @input="markConfigDirty" @change="updateSearchChoices(field.name, $event.target.value)" />
                 </label>
                 <template v-else>
-                  <label>下限<input type="number" :value="field.dimension.low" :step="field.dimension.kind === 'integer' ? 1 : 'any'" @change="updateSearchNumber(field.name, 'low', $event.target.value)" /></label>
-                  <label>上限<input type="number" :value="field.dimension.high" :step="field.dimension.kind === 'integer' ? 1 : 'any'" @change="updateSearchNumber(field.name, 'high', $event.target.value)" /></label>
-                  <label v-if="field.dimension.step !== undefined">步长<input type="number" :value="field.dimension.step" step="any" @change="updateSearchNumber(field.name, 'step', $event.target.value)" /></label>
+                  <label>下限<ParameterDraftInput type="number" :value="field.dimension.low" :step="field.dimension.kind === 'integer' ? 1 : 'any'" @input="markConfigDirty" @change="updateSearchNumber(field.name, 'low', $event.target.value)" /></label>
+                  <label>上限<ParameterDraftInput type="number" :value="field.dimension.high" :step="field.dimension.kind === 'integer' ? 1 : 'any'" @input="markConfigDirty" @change="updateSearchNumber(field.name, 'high', $event.target.value)" /></label>
+                  <label v-if="field.dimension.step !== undefined">步长<ParameterDraftInput type="number" :value="field.dimension.step" step="any" @input="markConfigDirty" @change="updateSearchNumber(field.name, 'step', $event.target.value)" /></label>
                 </template>
               </article>
             </div>
           </div>
         </section>
 
-        <section class="parameter-workbench">
+        <section :key="`parameters-${configInputEpoch}`" class="parameter-workbench">
           <div class="parameter-intro">
             <div><h3>算法参数</h3><p>参数修改会同步写入实验配置。</p></div>
             <span>{{ configParameterGroups.length }} 个参数组</span>
@@ -258,21 +258,21 @@
                   <option value="true">是</option>
                   <option value="false">否</option>
                 </select>
-                <textarea
+                <ParameterDraftInput multiline
                   v-else-if="field.definition.type === 'array' || field.definition.type === 'object'"
                   :value="parameterInputValue(field.value)"
                   rows="2"
                   spellcheck="false"
-                  @change="updateConfigParameter(group, field, $event.target.value)"
-                ></textarea>
-                <input
+                  @input="markConfigDirty" @change="updateConfigParameter(group, field, $event.target.value)"
+                ></ParameterDraftInput>
+                <ParameterDraftInput
                   v-else
                   :type="field.definition.type === 'integer' || field.definition.type === 'number' ? 'number' : 'text'"
                   :min="field.definition.minimum"
                   :max="field.definition.maximum"
                   :step="field.definition.type === 'integer' ? 1 : 'any'"
                   :value="field.value"
-                  @change="updateConfigParameter(group, field, $event.target.value)"
+                  @input="markConfigDirty" @change="updateConfigParameter(group, field, $event.target.value)"
                 />
                 <p v-if="field.name === 'checkpoint_interval_steps'" class="parameter-hint">累计仿真步数；0 仅保留最佳</p>
               </label>
@@ -640,7 +640,7 @@
         </label>
         <section class="branch-parameter-editor">
           <h4>算法参数</h4>
-          <div v-if="branchParameterFields.length" class="parameter-grid">
+          <div v-if="branchParameterFields.length" :key="branchInputEpoch" class="parameter-grid">
             <label v-for="field in branchParameterFields" :key="field.name" :class="{ wide: field.definition.type === 'array' || field.definition.type === 'object' }">
               <span>{{ parameterLabel(field.name) }}</span>
               <small>{{ field.name }}</small>
@@ -660,14 +660,14 @@
                 <option value="true">是</option>
                 <option value="false">否</option>
               </select>
-              <textarea
+              <ParameterDraftInput multiline
                 v-else-if="field.definition.type === 'array' || field.definition.type === 'object'"
                 :value="parameterInputValue(field.value)"
                 rows="2"
                 spellcheck="false"
                 @change="updateBranchParameter(field, $event.target.value)"
-              ></textarea>
-              <input
+              ></ParameterDraftInput>
+              <ParameterDraftInput
                 v-else
                 :type="field.definition.type === 'integer' || field.definition.type === 'number' ? 'number' : 'text'"
                 :min="field.definition.minimum"
@@ -807,6 +807,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import FactoryPlayerSSE from '@/components/FactoryPlayerSSE.vue'
 import LineChart from '@/components/charts/LineChart.vue'
+import ParameterDraftInput from '@/components/ParameterDraftInput.vue'
 import { useFactoryStore } from '@/stores/factory'
 import { API_ROUTES, apiGet, apiPost, getApiUrl } from '@/utils/api'
 import './styles/AlgorithmPlatformView.css'
@@ -1035,6 +1036,10 @@ const initialConfig = JSON.parse(JSON.stringify(trainTemplate))
 renewExperimentId(initialConfig)
 const configText = ref(JSON.stringify(initialConfig, null, 2))
 const configDirty = ref(false)
+const configInputEpoch = ref(0)
+/** @type {number} Monotonic edit/request revision, including unfinished field input. */
+let configRevision = 0
+watch(configText, () => { configRevision += 1 }, { flush: 'sync' })
 const validation = ref(null)
 const compiled = ref(null)
 const storedExperiment = ref(null)
@@ -1075,6 +1080,7 @@ const reproductionReport = ref(null)
 const branchReport = ref(null)
 const viewingBranchTrace = ref(false)
 const branchArtifactsPinned = ref(false)
+const branchInputEpoch = ref(0)
 const branchForm = reactive({ snapshot_sequence: null, algorithm_key: '', parameters: '{}', input_artifacts: '[]', execution_id: '', run_id: '' })
 const notice = reactive({ title: '', text: '', level: 'info' })
 const loading = reactive({ catalog: false, datasets: false, experiments: false, executions: false, execution: false, manifest: false, cancel: false, comparison: false, replay: false, reproduce: false, branch: false, diff: false, submit: false, validate: false, compile: false, save: false })
@@ -1509,15 +1515,19 @@ function activateTab(tab) {
 }
 
 async function loadTemplate(kind) {
+  const revision = ++configRevision
   const template = kind === 'train' ? trainTemplate : kind === 'test' ? testTemplate : tuneTemplate
   const config = JSON.parse(JSON.stringify(template))
   try {
     await resolveDatasetReferences(config)
   } catch (error) {
+    if (revision !== configRevision) return
     setNotice('模板数据集无法载入', errorText(error), 'error')
     return
   }
+  if (revision !== configRevision) return
   renewExperimentId(config)
+  configInputEpoch.value += 1
   configText.value = JSON.stringify(config, null, 2)
   validation.value = null
   compiled.value = null
@@ -1562,14 +1572,16 @@ async function resolveDatasetReferences(config) {
 }
 
 async function refreshDatasetReferences() {
+  const revision = ++configRevision
   try {
     const config = parsedConfig()
     await resolveDatasetReferences(config)
+    if (revision !== configRevision) return
     renewExperimentId(config)
     configText.value = JSON.stringify(config, null, 2)
     markConfigDirty()
     setNotice('数据集引用已更新', '训练、验证和测试引用已读取当前数据版本，原参数与实例选择保留。', 'success')
-  } catch (error) { setNotice('数据集引用更新失败', errorText(error), 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('数据集引用更新失败', errorText(error), 'error') }
 }
 
 function selectedConfigDataset(role) {
@@ -1599,8 +1611,10 @@ async function loadDatasetDetail(datasetId) {
 
 async function applyDatasetToConfig(role, datasetId) {
   if (!datasetId) return
+  const revision = ++configRevision
   try {
     const dataset = await loadDatasetDetail(datasetId)
+    if (revision !== configRevision) return
     const config = parsedConfig()
     const corpus = {
       id: dataset.dataset_id,
@@ -1637,7 +1651,7 @@ async function applyDatasetToConfig(role, datasetId) {
     configText.value = JSON.stringify(config, null, 2)
     markConfigDirty()
     setNotice('数据集已更新', `${dataset.name} 已用于${role === 'training' ? '训练' : role === 'validation' ? '模型验证' : role === 'tuning' ? '参数选择' : '测试'}。`)
-  } catch (error) { setNotice('数据集应用失败', errorText(error), 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('数据集应用失败', errorText(error), 'error') }
 }
 
 function formatConfig() {
@@ -1645,7 +1659,7 @@ function formatConfig() {
   catch (error) { setNotice('完整配置无法整理', error.message, 'error') }
 }
 
-function markConfigDirty() { configDirty.value = true; validation.value = null; compiled.value = null; storedExperiment.value = null }
+function markConfigDirty() { configRevision += 1; configDirty.value = true; validation.value = null; compiled.value = null; storedExperiment.value = null }
 
 function parsedConfig() {
   return JSON.parse(configText.value)
@@ -1686,23 +1700,29 @@ async function loadExperiments() {
 }
 
 async function openStoredExperiment(experimentId) {
+  let revision = ++configRevision
   loading.experiments = true
   try {
     const stored = await apiGet(API_ROUTES.ALGORITHM_PLATFORM_EXPERIMENT, { params: { experiment_id: experimentId } })
+    if (revision !== configRevision) return
     const config = JSON.parse(JSON.stringify(stored.spec))
     const objectiveChanged = ['train', 'tune'].includes(config.purpose)
       && config.algorithms.some(item => item.id === 'ctde_ppo' && item.interface === 'trainable')
       && (config.objective.mode !== 'single' || config.objective.components.length !== 1
         || config.objective.components[0].metric !== 'episode_reward' || config.objective.components[0].direction !== 'maximize')
     if (objectiveChanged) renewExperimentId(config)
+    configInputEpoch.value += 1
     configText.value = JSON.stringify(config, null, 2)
     validation.value = null
     compiled.value = null
     storedExperiment.value = objectiveChanged ? null : stored
     configDirty.value = objectiveChanged
-    validation.value = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_VALIDATE, {
+    revision = configRevision
+    const result = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_VALIDATE, {
       config_format: 'json', config,
     })
+    if (revision !== configRevision) return
+    validation.value = result
     if (!validation.value.valid) {
       const messages = asList(validation.value.errors).map(error => error.message).filter(Boolean)
       setNotice('实验配置需要更新', messages.join('；'), 'error')
@@ -1711,11 +1731,12 @@ async function openStoredExperiment(experimentId) {
     setNotice('实验定义已载入', objectiveChanged
       ? '已将选模目标改为最大化验证累计奖励，并创建新的实验定义。'
       : `${experimentId} 已载入编辑器。`, 'success')
-  } catch (error) { setNotice('实验定义读取失败', errorText(error), 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('实验定义读取失败', errorText(error), 'error') }
   finally { loading.experiments = false }
 }
 
 async function applyCatalogAlgorithm(algorithm) {
+  const revision = ++configRevision
   try {
     const config = parsedConfig()
     const previousAlgorithmId = config.algorithms?.[0]?.id
@@ -1738,6 +1759,7 @@ async function applyCatalogAlgorithm(algorithm) {
       if (firstInterface === 'trainable' && !asList(config.tuning.training_scenarios).length) {
         config.tuning.training_scenarios = JSON.parse(JSON.stringify(tuneTemplate.tuning.training_scenarios))
         await resolveDatasetReferences(config)
+        if (revision !== configRevision) return
       }
       if (firstInterface !== 'trainable') {
         delete config.tuning.training_scenarios
@@ -1747,8 +1769,9 @@ async function applyCatalogAlgorithm(algorithm) {
     renewExperimentId(config)
     configText.value = JSON.stringify(config, null, 2)
     markConfigDirty()
+    configInputEpoch.value += 1
     setNotice('已选择算法', `${algorithm.name || algorithm.algorithm_id} 已写入实验配置。`)
-  } catch (error) { setNotice('无法应用算法', `请先修复完整配置：${error.message}`, 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('无法应用算法', `请先修复完整配置：${error.message}`, 'error') }
 }
 
 function applyConfigOptimizer(key) {
@@ -1768,6 +1791,7 @@ function applyConfigOptimizer(key) {
   renewExperimentId(config)
   configText.value = JSON.stringify(config, null, 2)
   markConfigDirty()
+  configInputEpoch.value += 1
   setNotice('参数优化方式已更新', `当前使用${optimizerLabel(optimizer.algorithm_id)}。`)
 }
 
@@ -1783,10 +1807,13 @@ function applyCatalogDomain(domain) {
 }
 
 async function validateConfig() {
+  const revision = ++configRevision
   loading.validate = true
   validation.value = null
   try {
-    validation.value = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_VALIDATE, requestBody())
+    const result = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_VALIDATE, requestBody())
+    if (revision !== configRevision) return
+    validation.value = result
     if (validation.value.valid) {
       configDirty.value = false
       setNotice('配置校验通过', '领域能力、算法协议、目标、预算和数据分区均已由后端检查。', 'success')
@@ -1795,31 +1822,38 @@ async function validateConfig() {
       setNotice('配置校验失败', messages.join('；') || '实验定义未通过平台校验。', 'error')
     }
   } catch (error) {
+    if (revision !== configRevision) return
     validation.value = { valid: false, detail: error.detail || error.message }
     setNotice('配置校验失败', errorText(error), 'error')
   } finally { loading.validate = false }
 }
 
 async function compileConfig() {
+  const revision = ++configRevision
   loading.compile = true
   compiled.value = null
   try {
-    compiled.value = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_COMPILE, requestBody())
+    const result = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_COMPILE, requestBody())
+    if (revision !== configRevision) return
+    compiled.value = result
     configDirty.value = false
     setNotice('计划已编译', compiled.value.dynamic ? '参数候选将在调优过程中自动生成。' : '参数候选与运行单元计划已固定。', 'success')
-  } catch (error) { setNotice('计划编译失败', errorText(error), 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('计划编译失败', errorText(error), 'error') }
   finally { loading.compile = false }
 }
 
 async function saveExperiment() {
+  const revision = ++configRevision
   loading.save = true
   storedExperiment.value = null
   try {
-    storedExperiment.value = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_EXPERIMENTS, requestBody())
+    const result = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_EXPERIMENTS, requestBody())
+    if (revision !== configRevision) return
+    storedExperiment.value = result
     configDirty.value = false
     setNotice('实验定义已保存', storedExperiment.value.experiment_id, 'success')
     await loadExperiments()
-  } catch (error) { setNotice('保存实验定义失败', errorText(error), 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('保存实验定义失败', errorText(error), 'error') }
   finally { loading.save = false }
 }
 
@@ -1899,16 +1933,18 @@ function checkpointDownloadUrl(checkpoint) {
 }
 
 async function useCheckpoint(checkpoint, purpose) {
+  const revision = ++configRevision
+  const source = selectedExecutionPayload.value.experiment.spec
   try {
     const artifact = await apiPost(API_ROUTES.ALGORITHM_PLATFORM_CHECKPOINT_EXPORT, {}, { params: {
       execution_id: selectedExecutionId.value, run_id: checkpoint.run_id,
       name: checkpoint.name, workspace_execution_id: checkpoint.workspace_execution_id,
     } })
+    if (revision !== configRevision) return
     if (purpose === 'test') {
       fillArtifactIntoTest(artifact)
       return
     }
-    const source = selectedExecutionPayload.value.experiment.spec
     const config = JSON.parse(JSON.stringify(source))
     config.purpose = 'train'
     delete config.tuning
@@ -1923,8 +1959,9 @@ async function useCheckpoint(checkpoint, purpose) {
     configText.value = JSON.stringify(config, null, 2)
     markConfigDirty()
     activeTab.value = 'configure'
+    configInputEpoch.value += 1
     setNotice('Checkpoint 已用于继续训练', `已完成 ${checkpoint.completed_episodes} 轮、${checkpoint.total_steps} 步。请将训练总轮数设为大于已完成轮数，再提交。`, 'success')
-  } catch (error) { setNotice('Checkpoint 加载失败', errorText(error), 'error') }
+  } catch (error) { if (revision !== configRevision) return; setNotice('Checkpoint 加载失败', errorText(error), 'error') }
 }
 
 async function copyArtifactRef(artifact) {
@@ -1964,6 +2001,7 @@ function fillArtifactIntoTest(artifact) {
   configText.value = JSON.stringify(config, null, 2)
   markConfigDirty()
   activeTab.value = 'configure'
+  configInputEpoch.value += 1
   setNotice('模型已用于测试', `已选择 ${algorithm.name || algorithm.algorithm_id} 和该模型文件，请确认测试数据集后开始测试。`, 'success')
 }
 
@@ -2087,6 +2125,7 @@ function initializeBranchForm() {
 }
 
 function applyBranchAlgorithmDefaults(resetArtifacts) {
+  branchInputEpoch.value += 1
   const schema = selectedBranchAlgorithm.value?.parameter_schema
   const properties = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {}
   branchForm.parameters = JSON.stringify(Object.fromEntries(Object.entries(properties).filter(([, definition]) => definition.default !== undefined).map(([name, definition]) => [name, definition.default])), null, 2)
@@ -2265,12 +2304,13 @@ watch(replayItemIndex, index => {
 
 onMounted(async () => {
   const initialText = configText.value
+  const revision = configRevision
   await Promise.all([loadCatalog(), loadDatasets(), loadExperiments(), loadExecutions()])
   try {
     const config = JSON.parse(initialText)
     await resolveDatasetReferences(config)
-    if (configText.value === initialText) configText.value = JSON.stringify(config, null, 2)
-  } catch (error) { setNotice('初始数据集无法载入', errorText(error), 'error') }
+    if (configRevision === revision) configText.value = JSON.stringify(config, null, 2)
+  } catch (error) { if (configRevision === revision) setNotice('初始数据集无法载入', errorText(error), 'error') }
   pollTimer = window.setInterval(async () => {
     await loadExecutions()
     if (activeTab.value === 'executions' && selectedExecutionId.value && ['draft', 'compiled', 'pending', 'queued', 'preparing', 'running', 'cancel_requested'].includes(selectedExecution.value?.status)) {
