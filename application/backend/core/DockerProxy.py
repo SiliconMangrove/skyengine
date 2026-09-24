@@ -373,8 +373,11 @@ class DockerProxy:
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            await client.post(f"{self._engine_url}/sim/create", json=sim_config)
-            await client.post(f"{self._engine_url}/sim/play")
+            response: httpx.Response = await client.post(f"{self._engine_url}/sim/create", json=sim_config)
+            if response.is_error:
+                raise RuntimeError(f"创建仿真失败（HTTP {response.status_code}）：{response.text}")
+            response = await client.post(f"{self._engine_url}/sim/play")
+            response.raise_for_status()
 
         # 4. 标记流式传输就绪
         self._streaming = True

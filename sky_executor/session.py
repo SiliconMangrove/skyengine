@@ -31,7 +31,7 @@ def _obstacle_map(topology: dict, machine_positions: list[tuple[int, int]], agen
                 blocked.add((int(area.get("x", 0)) + dx, int(area.get("y", 0)) + dy))
     blocked.difference_update(machine_positions, agent_positions, extra_passable)
     return "\n".join(
-        "".join("#" if (x, y) in blocked else "." for y in range(size))
+        "".join("#" if x >= width or y >= height or (x, y) in blocked else "." for y in range(size))
         for x in range(size)
     )
 

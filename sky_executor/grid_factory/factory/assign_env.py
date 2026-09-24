@@ -266,12 +266,13 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
         self.buffered_tasks.clear()
         self.reschedule_count = self.reassigned_operation_count = self.reassigned_transport_count = 0
         self._shipping_sequence = -1
+        reachable: set[tuple[int, int]] = self._require_connected_layout()
         # Observation padding is outside the factory and cannot host material stations.
         offset: int = self.grid_config.obs_radius or 0
         cells: list[tuple[int, int]] = [self._to_public_xy((x, y))
             for x in range(offset, self.grid.obstacles.shape[0] - offset)
             for y in range(offset, self.grid.obstacles.shape[1] - offset)
-            if self.grid.obstacles[x, y] == 0 and self._to_public_xy((x, y)) not in self.hash_machines]
+            if self._to_public_xy((x, y)) in reachable and self._to_public_xy((x, y)) not in self.hash_machines]
         if not cells:
             raise ValueError("layout needs a traversable material station outside the machines")
         source: tuple[int, int] = self.raw_material_source if self.raw_material_source is not None else cells[0]
@@ -305,7 +306,6 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
                 op.transfer_requested = False
                 op.deviation_reported = False
         self.hash_operations = self.create_hash_operations()
-        self._require_connected_layout()
         self.event_epoch = 0
         self.map_epoch = 0
         self.machine_epoch = 0
@@ -887,17 +887,18 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
         if not self._in_step:
             self._pending_events.append(event)
 
-    def _require_connected_layout(self) -> None:
+    def _require_connected_layout(self) -> set[tuple[int, int]]:
         endpoints: set[tuple[int, int]] = {machine.location for machine in self.machines}
         endpoints.update(self._to_public_xy(pos) for pos in self.grid.positions_xy)
-        endpoints.update(job.raw_material_source for job in self._all_jobs)
-        endpoints.update(job.finished_goods_destination for job in self._all_jobs)
+        endpoints.update(job.raw_material_source for job in self._all_jobs if job.raw_material_source is not None)
+        endpoints.update(job.finished_goods_destination for job in self._all_jobs if job.finished_goods_destination is not None)
+        endpoints.update(pos for pos in (self.raw_material_source, self.finished_goods_destination) if pos is not None)
         cells: set[tuple[int, int]] = {self._to_internal_xy(pos) for pos in endpoints}
         grid = self.grid.obstacles
         for x, y in cells:
             if not (0 <= x < grid.shape[0] and 0 <= y < grid.shape[1]) or grid[x, y] != 0:
                 raise ValueError("material stations, machines and AGVs must lie on traversable cells")
-        start = next(iter(cells))
+        start: tuple[int, int] = min(cells)
         seen: set = {start}
         queue = deque([start])
         while queue:
@@ -909,4 +910,6 @@ class PogemaLifeLongWithAssign(ReschedulingActions, PogemaLifeLong):
                     seen.add(neighbour)
                     queue.append(neighbour)
         if not cells <= seen:
-            raise ValueError("required factory endpoints must share a connected four-neighbour road network")
+            unreachable: list[tuple[int, int]] = sorted(self._to_public_xy(pos) for pos in cells - seen)
+            raise ValueError(f"工厂机器、AGV 和物料站必须位于同一四邻接连通区域；与 {self._to_public_xy(start)} 不连通的位置：{unreachable}")
+        return {self._to_public_xy(pos) for pos in seen}

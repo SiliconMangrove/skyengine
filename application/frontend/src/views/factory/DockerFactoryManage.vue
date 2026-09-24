@@ -499,7 +499,14 @@ const testPlay = async () => {
     eventTypes: ['state'],
     eventHandlers: {
       state: (data) => {
-        if (data.status === 'idle' || data.status === 'no_factory' || data.status === 'error') {
+        if (data.status === 'error') {
+          disconnectAllSSE();
+          store.isPlaying = false;
+          sim.isRunningTest.value = false;
+          ElMessage.error(`仿真执行失败：${data.error}`);
+          return;
+        }
+        if (data.status === 'idle' || data.status === 'no_factory') {
           return;
         }
         if (data.frame) {
@@ -567,15 +574,23 @@ const testPlay = async () => {
   // 2. 发送 play 请求（首次可能 > 30s，用 120s 兜底）
   try {
     const resp = await apiPost(API_ROUTES.FACTORY_CONTROL_PLAY, null, { timeout: 120000 });
+    if (resp.status === 'error') {
+      throw new Error(resp.message);
+    }
     monitorStore.startRun({
       runId: resp?.run_id || `run_${Date.now()}`,
       factoryType: 'grid_factory_new',
     });
     ElMessage.success('✅ 启动执行成功');
   } catch (error) {
-    // play 超时不断开 SSE — DockerProxy 仍在后台跑，engine 最终会产 frame
-    console.warn('[DockerFactory] play 请求超时或失败，SSE 保持连接等待:', error.message);
-    ElMessage.warning(`play 请求超时，SSE 保持连接等待数据...`);
+    if (error.isTimeout) {
+      ElMessage.warning('启动请求超时，正在等待仿真状态...');
+      return;
+    }
+    disconnectAllSSE();
+    store.isPlaying = false;
+    sim.isRunningTest.value = false;
+    ElMessage.error(`启动仿真失败：${error.message}`);
   }
 };
 

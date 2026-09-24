@@ -26,7 +26,7 @@ from collections import deque
 from copy import deepcopy
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from sky_executor.grid_factory.factory.Utils.structure import Job, Operation
 from sky_executor.grid_factory.factory.Component.Coordinator.coordinator import Coordinator
@@ -1039,7 +1039,10 @@ manager = SimulationManager()
 
 @app.post("/sim/create")
 async def create_sim(config: dict):
-    manager.create(config)
+    try:
+        manager.create(config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"status": "ok"}
 
 

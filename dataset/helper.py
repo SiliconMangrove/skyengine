@@ -36,6 +36,7 @@ import json
 import math
 import os
 import random
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -170,14 +171,31 @@ def load_mapf_yaml(path: str, map_name: Optional[str] = None) -> dict:
 
 
 def _get_free_cells(map_str: str) -> list[tuple[int, int]]:
-    """从地图字符串提取所有可通行格子 (.)"""
+    """按地图顺序返回最大四邻接连通区域，供机器、AGV 和物料站选址。"""
     lines = map_str.strip().split("\n")
     cells = []
     for y, row in enumerate(lines):
         for x, ch in enumerate(row):
             if ch != "#":
                 cells.append((x, y))
-    return cells
+    remaining: set[tuple[int, int]] = set(cells)
+    largest: set[tuple[int, int]] = set()
+    for start in cells:
+        if start not in remaining:
+            continue
+        component: set[tuple[int, int]] = {start}
+        queue: deque[tuple[int, int]] = deque([start])
+        remaining.remove(start)
+        while queue:
+            x, y = queue.popleft()
+            for neighbour in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if neighbour in remaining:
+                    remaining.remove(neighbour)
+                    component.add(neighbour)
+                    queue.append(neighbour)
+        if len(component) > len(largest):
+            largest = component
+    return [cell for cell in cells if cell in largest]
 
 
 def _place_on_grid(
@@ -195,11 +213,13 @@ def _place_on_grid(
     free = _get_free_cells(map_str)
     if not free:
         raise ValueError("地图上无可通行的格子")
+    if len(free) < n_items:
+        raise ValueError(f"最大连通区域只有 {len(free)} 个格子，无法放置 {n_items} 个设备")
 
     rng = random.Random(seed)
 
     if strategy == "random" or n_items <= 1:
-        return rng.sample(free, min(n_items, len(free)))
+        return rng.sample(free, n_items)
 
     # spread: 将地图划分为 n_items 个区域, 每个区域内随机选一个
     lines = map_str.strip().split("\n")
@@ -216,8 +236,8 @@ def _place_on_grid(
     for i in range(n_items):
         r = i // max(cols, 1)
         c = i % max(cols, 1)
-        x_min, x_max = int(r * cell_w), int((r + 1) * cell_w)
-        y_min, y_max = int(c * cell_h), int((c + 1) * cell_h)
+        x_min, x_max = int(c * cell_w), int((c + 1) * cell_w)
+        y_min, y_max = int(r * cell_h), int((r + 1) * cell_h)
 
         used = set(positions)
         candidates = [
@@ -226,8 +246,6 @@ def _place_on_grid(
         ]
         if not candidates:
             candidates = [p for p in free if p not in used]  # fallback
-        if not candidates:
-            candidates = free  # final fallback
         positions.append(rng.choice(candidates))
 
     return positions
@@ -260,6 +278,8 @@ def init_agvs(
     # 排除机器占用的格子，防止 AGV 与机器重叠
     machine_set = set(machine_positions)
     free = [p for p in free if p not in machine_set]
+    if len(free) < num_agvs:
+        raise ValueError(f"最大连通区域的非机器格只有 {len(free)} 个，无法放置 {num_agvs} 台 AGV")
 
     if not machine_positions:
         return _place_on_grid(map_str, num_agvs, seed=seed, strategy="spread")
@@ -422,12 +442,17 @@ def convert_to_grid_factory(
     map_str = map_data["map"]
     width = map_data["width"]
     height = map_data["height"]
+    free_cells: list[tuple[int, int]] = _get_free_cells(map_str)
+    required_cells: int = n_machines + num_agvs + 2
+    if len(free_cells) < required_cells:
+        raise ValueError(f"最大连通区域只有 {len(free_cells)} 个格子，机器、AGV 和两个物料站共需 {required_cells} 个格子")
 
     # --- 机器位置 (均匀分布) ---
     m_positions = _place_on_grid(map_str, n_machines, seed=seed, strategy="spread")
 
     # --- AGV 位置 (枢纽策略) ---
     agv_positions = init_agvs(map_str, m_positions, num_agvs=num_agvs, seed=seed)
+    station_cells: list[tuple[int, int]] = sorted(set(free_cells) - set(m_positions) - set(agv_positions))
 
     # --- 构建 machines 字典 ---
     machines_dict = {}
@@ -513,6 +538,8 @@ def convert_to_grid_factory(
         "material_handling_config": {
             "pickup_dwell_steps": 2,
             "dropoff_dwell_steps": 2,
+            "raw_material_source": list(station_cells[0]),
+            "finished_goods_destination": list(station_cells[-1]),
         },
         "renderConfig": _default_render_config(width, height),
         "metadata": {
