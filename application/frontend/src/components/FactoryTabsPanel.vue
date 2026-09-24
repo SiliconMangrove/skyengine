@@ -22,21 +22,20 @@
       </button>
     </div>
 
-    <!-- 动态 Tab 内容 -->
-    <template v-for="tab in tabs" :key="tab.key">
-      <slot v-if="modelValue === tab.key" :name="`tab-${tab.key}`">
+    <!-- 切换时整体替换内容容器，隔离各面板的 DOM、过渡动画与滚动位置。 -->
+    <div :key="currentTab.key" class="factory-tab-content">
+      <slot :name="`tab-${currentTab.key}`">
         <!-- 默认渲染内置面板 -->
-        <ControlPanel v-if="tab.key === 'control'" :disabled="isEditMode" />
+        <ControlPanel v-if="currentTab.key === 'control'" :disabled="isEditMode" />
         <ConfigPanel
-          v-else-if="tab.key === 'config'"
-          ref="configPanelRef"
+          v-else-if="currentTab.key === 'config'"
           @edit-mode-change="$emit('edit-mode-change', $event)"
         />
-        <MetricsPanel v-else-if="tab.key === 'metrics'" :show-chart="true" :factory-type="factoryType" />
-        <EventPanel v-else-if="tab.key === 'events'" title="系统日志" />
-        <AgentPanel v-else-if="tab.key === 'agent'" />
+        <MetricsPanel v-else-if="currentTab.key === 'metrics'" :show-chart="true" :factory-type="factoryType" />
+        <EventPanel v-else-if="currentTab.key === 'events'" title="系统日志" />
+        <AgentPanel v-else-if="currentTab.key === 'agent'" />
       </slot>
-    </template>
+    </div>
   </DraggablePanel>
 
   <!-- 边缘切换按钮 -->
@@ -76,4 +75,18 @@ const currentTab = computed(
 
 <style scoped>
 @import "../views/styles/FactoryManage.css";
+
+:deep(.dp-body) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.factory-tab-content {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 </style>
