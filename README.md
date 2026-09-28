@@ -1,105 +1,104 @@
-# SkyEngine 天工柔性制造仿真与调度平台
+# SkyEngine: Flexible Manufacturing Simulation and Scheduling Platform
 
-简体中文 | [English](README.en.md)
+English | [简体中文](README.zh-CN.md)
 
-**SkyEngine（天工）** 是面向柔性制造系统的仿真与调度一体化平台。它将工序加工、物料运输、机器与 AGV 资源放在同一工厂场景中，连接算法决策、仿真执行、可视化和实验分析，为调度研究与制造系统演示提供共同环境。
+**SkyEngine (Tiangong)** is an integrated simulation and scheduling platform for flexible manufacturing systems. It brings processing operations, material transport, machines, and AGV resources into a shared factory scenario, connecting algorithmic decisions, simulation execution, visualization, and experimental analysis. It provides a common environment for scheduling research and manufacturing system demonstrations.
 
-项目希望回答一个具体问题：当加工、运输、资源竞争和动态扰动共同影响生产时，调度方案在实际仿真过程中会如何执行，又该如何比较和改进？围绕这一问题，天工将工序调度、任务分配和路径规划组织为可替换的组件，并逐步扩展出训练、参数探索、数据集测试和过程回放能力。
+The project addresses a concrete question: when processing, transport, resource contention, and dynamic disturbances jointly affect production, how will a schedule execute in simulation, and how can it be compared and improved? To address this question, SkyEngine organizes operation scheduling, task allocation, and path planning into interchangeable components, while progressively adding training, parameter exploration, dataset testing, and execution replay capabilities.
 
-## 核心能力
+## Core Capabilities
 
-| 方向 | 内容 |
+| Area | Description |
 | --- | --- |
-| 工厂仿真 | 描述作业工序、可选机器、AGV、道路、物料站和缓冲，模拟加工与运输衔接 |
-| 调度与规划 | 接入工序调度、任务分配、路径规划及联合调度算法，在相同场景下研究不同决策方式 |
-| 动态场景 | 表达订单释放、设备故障、加工时间波动及对未执行安排的重调度 |
-| 可视化与分析 | 查看车辆位置、机器加工、订单进度、指标与事件，导出运行记录并进行离线分析 |
-| 算法实验 | 创建训练、超参数探索和测试任务，管理模型与检查点，比较数据集结果并回放运行过程 |
-| 部署与集成 | 通过 Docker Compose 部署平台、仿真引擎与外部算法服务，支持 CPU 或 GPU 计算配置 |
+| Factory simulation | Model job operations, eligible machines, AGVs, roads, material stations, and buffers, and simulate the coordination of processing and transport |
+| Scheduling and planning | Integrate operation scheduling, task allocation, path planning, and joint scheduling algorithms to study different decision methods in the same scenarios |
+| Dynamic scenarios | Represent order releases, equipment failures, processing-time variations, and rescheduling of plans that have not yet been executed |
+| Visualization and analysis | View vehicle positions, machine processing, order progress, metrics, and events; export execution records for offline analysis |
+| Algorithm experiments | Create training, hyperparameter exploration, and testing tasks; manage models and checkpoints; compare dataset results and replay execution |
+| Deployment and integration | Deploy the platform, simulation engine, and external algorithm services with Docker Compose, with CPU or GPU computing configurations |
 
-网格工厂用于加工与多车运输的联合研究；PacketFactory 提供非网格工厂环境；StaticFactory 用于场景展示与界面开发。不同环境保留各自的配置方式和运行语义。
+The grid factory supports joint research on processing and multi-vehicle transport; PacketFactory provides a non-grid factory environment; StaticFactory supports scenario demonstrations and interface development. Each environment retains its own configuration methods and execution semantics.
 
-## 总体结构
+## Overall Architecture
 
-天工由平台服务、工厂仿真和算法组件协同组成：
+SkyEngine combines platform services, factory simulation, and algorithm components:
 
 ```text
-用户界面：工厂管理 · 实时看板 · 日志分析 · 算法实验工作台
-                         │
-平台服务：运行控制 · 实验编排 · 指标与事件 · 模型及结果管理
-                         │
-工厂仿真：作业 · 机器 · AGV · 道路 · 物料与动态扰动
-                         ↕
-算法组件：工序调度 · 任务分配 · 路径规划 · 联合调度策略
+User interface: Factory management · Live dashboards · Log analysis · Algorithm experiment workbench
+                                         │
+Platform services: Run control · Experiment orchestration · Metrics and events · Model and result management
+                                         │
+Factory simulation: Jobs · Machines · AGVs · Roads · Materials and dynamic disturbances
+                                         ↕
+Algorithm components: Operation scheduling · Task allocation · Path planning · Joint scheduling policies
 ```
 
-平台负责组织运行和展示结果，工厂环境负责资源约束与状态推进，算法根据观测产生决策。通过这种分工，可以在保留工厂和界面的情况下替换算法，也可以让训练、测试与工厂部署复用正式仿真内核。
+The platform organizes runs and presents results, factory environments enforce resource constraints and advance state, and algorithms generate decisions from observations. This separation allows algorithms to be replaced while retaining the factory and interface, and enables training, testing, and factory deployment to reuse the production simulation core.
 
-项目适合柔性制造与运筹优化研究者、多智能体路径规划研究者，以及需要展示和分析制造调度过程的工程团队。
+The project is intended for researchers in flexible manufacturing, operations research, and multi-agent path finding, as well as engineering teams that need to demonstrate and analyze manufacturing scheduling processes.
 
-## 开发历程
+## Development History
 
-### 2026 年 9 月：DFJSP-T 联合调度
+### September 2026: DFJSP-T Joint Scheduling
 
-统一训练与正式工厂的运行内核，完善物料运输、成品交付和有限缓冲语义；引入图策略、候选重调度、滚动交通规划和并行采样。
+Unified the execution core used by training and production factories, refined the semantics of material transport, finished-product delivery, and finite buffers, and introduced graph-based policies, candidate rescheduling, rolling traffic planning, and parallel sampling.
 
-### 2026 年 9 月：通用算法实验平台
+### September 2026: General-Purpose Algorithm Experiment Platform
 
-将训练、超参数探索和测试纳入统一实验工作台，增加数据集管理、结果比较、模型与检查点交接，以及记录回放、复现和快照分支。
+Brought training, hyperparameter exploration, and testing into a unified experiment workbench, adding dataset management, result comparison, model and checkpoint handoff, recorded execution replay, reproduction, and snapshot branching.
 
-### 2026 年 6—7 月：运行分析与交互完善
+### June–July 2026: Execution Analysis and Interaction Improvements
 
-细化机器工序和订单展示，推进动态插单、状态与事件记录、运行归档、离线分析、配置化指标看板和批处理。
+Refined the display of machine operations and orders, and advanced dynamic order insertion, state and event recording, run archiving, offline analysis, configurable metric dashboards, and batch processing.
 
-### 2026 年上半年：服务抽象与容器化
+### First Half of 2026: Service Abstraction and Containerization
 
-发展工厂生命周期管理与 DockerProxy，将平台、仿真引擎与 FJSP/MAPF 算法服务通过容器连接。
+Developed factory lifecycle management and DockerProxy, connecting the platform, simulation engine, and FJSP/MAPF algorithm services through containers.
 
-2026-01 · v1.0.0 正式版
+2026-01 · v1.0.0 Stable Release
 
-完成仿真—调度—服务—可视化的端到端闭环，架构接口稳定，系统进入可扩展、可复现的稳定阶段。
+Completed the end-to-end loop across simulation, scheduling, services, and visualization. With stable architectural interfaces, the system entered a stable phase supporting extensibility and reproducibility.
 
 2025-12 · v0.9.0
 
-完成算法层与服务层解耦，引入 Factory Proxy 与统一指标系统，平台化架构基本成型。
+Decoupled the algorithm and service layers, introduced Factory Proxy and a unified metrics system, and established the foundations of the platform architecture.
 
 2025-10 · v0.8.0
 
-确立 Factory 为核心抽象，引入 Coordinator，实现工序调度、任务分配与路径规划的分层协同。
+Established Factory as the core abstraction and introduced Coordinator, enabling layered coordination of operation scheduling, task allocation, and path planning.
 
 2025-08 · v0.7.0
 
-从调度原型演进为系统级仿真框架，引入事件驱动模型与基础可视化能力。
+Evolved from a scheduling prototype into a system-level simulation framework, introducing an event-driven model and basic visualization capabilities.
 
 2025-06 · v0.6.0
 
-完成最小可运行原型，验证柔性制造调度与多智能体仿真的整体建模可行性。
+Completed a minimal runnable prototype and demonstrated the feasibility of the overall modeling approach for flexible manufacturing scheduling and multi-agent simulation.
 
-## 使用入口
+## Getting Started
 
-- [快速部署](docs/QUICKSTART.md)
-- [用户文档](docs/README.md)
-- [算法实验与优化平台](docs/算法实验与优化平台.md)
+- [Quick Deployment](docs/QUICKSTART.md)
+- [User Documentation](docs/README.md)
+- [Algorithm Experiment and Optimization Platform](docs/算法实验与优化平台.md)
 
-## 开发与研究
+## Development and Research
 
-- [开发文档索引](../docs/README.md)
-- [研究问题与实现差距](../docs/文档功能与实现差距.md)
-- [Agent 接续索引](../memory/README.md)
+- [Developer Documentation Index](../docs/README.md)
+- [Research Questions and Implementation Gaps](../docs/文档功能与实现差距.md)
+- [Agent Handoff Index](../memory/README.md)
 
-相关仓库在工作区中保持同级：
+Related repositories are kept as sibling directories in the workspace:
 
-| 仓库 | 职责 |
+| Repository | Responsibility |
 | --- | --- |
-| `skyengine` | 平台服务、前端、工厂仿真与实验基础设施 |
-| skyengine-DFJSPT | DFJSP-T 联合调度策略、候选搜索、交通规划与 PPO |
-| [SkyEngine-FJSP](https://github.com/skyrimforest/SkyEngine-FJSP) | 工序调度算法及其 HTTP 容器服务 |
-| [SkyEngine-MAPF](https://github.com/skyrimforest/SkyEngine-MAPF) | 多智能体路径规划算法及其 HTTP 容器服务 |
+| `skyengine` | Platform services, frontend, factory simulation, and experiment infrastructure |
+| skyengine-DFJSPT | DFJSP-T joint scheduling policies, candidate search, traffic planning, and PPO |
+| [SkyEngine-FJSP](https://github.com/skyrimforest/SkyEngine-FJSP) | Operation scheduling algorithms and their containerized HTTP services |
+| [SkyEngine-MAPF](https://github.com/skyrimforest/SkyEngine-MAPF) | Multi-agent path finding algorithms and their containerized HTTP services |
 
-## 联系与许可
+## Contact and License
 
-* [谢磊 lxie@nju.edu.cn](mailto:lxie@nju.edu.cn)
-* [吴昊 wuhao@smail.nju.edu.cn](mailto:wuhao@smail.nju.edu.cn)
+* [Lei Xie lxie@nju.edu.cn](mailto:lxie@nju.edu.cn)
+* [Hao Wu wuhao@smail.nju.edu.cn](mailto:wuhao@smail.nju.edu.cn)
 
-许可见 [LICENSE](LICENSE)。
-
+See [LICENSE](LICENSE) for licensing information.
