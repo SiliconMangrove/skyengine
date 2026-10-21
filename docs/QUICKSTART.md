@@ -52,15 +52,15 @@ docker compose build
 
 `skyengine-DFJSPT` 与 FJSP/MAPF 容器算子仓库用途不同：它提供可直接导入的 `dfjsp_t_rl` Python 包，其中包括 CTDE-PPO 策略、训练器和插件注册入口，不需要在本步骤构建独立算法镜像。
 
-将交付包中的该仓库放到 `skyengine` 的同级目录，并保留小写目录名：
+从公开的 [skyengine-DFJSPT 仓库](https://github.com/SiliconMangrove/skyengine-DFJSPT) 获取 `v0.3.0`。在上一节的 `SkyEngine-MAPF` 目录中执行，将它放到与 `skyengine` 同级的位置：
 
 ```bash
-cp -a /path/to/delivery/skyengine-DFJSPT /path/to/workspace/skyengine-DFJSPT
+git clone --branch v0.3.0 https://github.com/SiliconMangrove/skyengine-DFJSPT.git ../skyengine-DFJSPT
 ```
 
-如果团队另有正式版本库地址，也可以从该授权来源检出，但最终目录必须准确命名为 `skyengine-DFJSPT`，且其中应存在 `dfjsp_t_rl/__init__.py`。
+目录必须准确命名为 `skyengine-DFJSPT`，且其中应存在 `dfjsp_t_rl/__init__.py`。该公开版本记录的配套 SkyEngine 提交为 `800fc454dc29124e95e04e9abc58db3d87fd0383`；完整版本固定方式和使用说明见算法仓库的[中文首页](https://github.com/SiliconMangrove/skyengine-DFJSPT/blob/main/README.zh-CN.md)。
 
-安装脚本会检查该目录是否完整；如提示缺失，请先补齐交付包再继续安装。
+安装脚本会检查该目录是否完整；如提示缺失，请先完成上述克隆再继续安装。
 
 ## 5. 安装 SkyEngine
 
