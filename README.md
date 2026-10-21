@@ -92,7 +92,7 @@ Related repositories are kept as sibling directories in the workspace:
 | Repository | Responsibility |
 | --- | --- |
 | `skyengine` | Platform services, frontend, factory simulation, and experiment infrastructure |
-| skyengine-DFJSPT | DFJSP-T joint scheduling policies, candidate search, traffic planning, and PPO |
+| [skyengine-DFJSPT](https://github.com/SiliconMangrove/skyengine-DFJSPT) | DFJSP-T joint scheduling policies, candidate search, traffic planning, and PPO |
 | [SkyEngine-FJSP](https://github.com/skyrimforest/SkyEngine-FJSP) | Operation scheduling algorithms and their containerized HTTP services |
 | [SkyEngine-MAPF](https://github.com/skyrimforest/SkyEngine-MAPF) | Multi-agent path finding algorithms and their containerized HTTP services |
 

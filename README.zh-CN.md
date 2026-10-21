@@ -92,7 +92,7 @@
 | 仓库 | 职责 |
 | --- | --- |
 | `skyengine` | 平台服务、前端、工厂仿真与实验基础设施 |
-| skyengine-DFJSPT | DFJSP-T 联合调度策略、候选搜索、交通规划与 PPO |
+| [skyengine-DFJSPT](https://github.com/SiliconMangrove/skyengine-DFJSPT) | DFJSP-T 联合调度策略、候选搜索、交通规划与 PPO |
 | [SkyEngine-FJSP](https://github.com/skyrimforest/SkyEngine-FJSP) | 工序调度算法及其 HTTP 容器服务 |
 | [SkyEngine-MAPF](https://github.com/skyrimforest/SkyEngine-MAPF) | 多智能体路径规划算法及其 HTTP 容器服务 |
 
